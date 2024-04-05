@@ -6,41 +6,12 @@
 edgeshare_t     g_edgeshare[MAX_MAP_EDGES];
 vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP_FACES]?
 bool            g_sky_lighting_fix = DEFAULT_SKY_LIGHTING_FIX;
-#ifndef HLRAD_GROWSAMPLE
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-vec3_t          g_face_texnormals[MAX_MAP_FACES];
-#endif
-#endif
 
 //#define TEXTURE_STEP   16.0
 
-#ifndef HLRAD_GROWSAMPLE
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-bool GetIntertexnormal (int facenum1, int facenum2, vec_t *out)
-{
-	vec3_t normal;
-	const dplane_t *p1 = getPlaneFromFaceNumber (facenum1);
-	const dplane_t *p2 = getPlaneFromFaceNumber (facenum2);
-	VectorAdd (g_face_texnormals[facenum1], g_face_texnormals[facenum2], normal);
-	if (!VectorNormalize (normal)
-		|| DotProduct (normal, p1->normal) <= NORMAL_EPSILON
-		|| DotProduct (normal, p2->normal) <= NORMAL_EPSILON
-		)
-	{
-		return false;
-	}
-	if (out)
-	{
-		VectorCopy (normal, out);
-	}
-	return true;
-}
-#endif
-#endif
 // =====================================================================================
 //  PairEdges
 // =====================================================================================
-#ifdef HLRAD_SMOOTH_FACELIST
 typedef struct
 {
 	int numclipplanes;
@@ -59,9 +30,7 @@ bool TestFaceIntersect (intersecttest_t *t, int facenum)
 	for (k = 0; k < t->numclipplanes; k++)
 	{
 		if (!w->Clip (t->clipplanes[k], false
-#ifdef ZHLT_WINDING_EPSILON
 			, ON_EPSILON*4
-#endif
 			))
 		{
 			break;
@@ -118,8 +87,6 @@ void FreeIntersectTest (intersecttest_t *t)
 	free (t->clipplanes);
 	free (t);
 }
-#endif
-#ifdef HLRAD_GetPhongNormal_VL
 void AddFaceForVertexNormal_printerror (const int edgeabs, const int edgeend, dface_t *const f)
 {
 	if (DEVELOPER_LEVEL_WARNING <= g_developer)
@@ -224,8 +191,6 @@ int AddFaceForVertexNormal (const int edgeabs, int &edgeabsnext, const int edgee
 	}
 	return 0;
 }
-#endif
-#ifdef HLRAD_GROWSAMPLE
 
 static bool TranslateTexToTex (int facenum, int edgenum, int facenum2, matrix_t &m, matrix_t &m_inverse)
 	// This function creates a matrix that can translate texture coords in face1 into texture coords in face2.
@@ -295,7 +260,6 @@ static bool TranslateTexToTex (int facenum, int edgenum, int facenum2, matrix_t 
 	return true;
 }
 
-#endif
 void            PairEdges()
 {
     int             i, j, k;
@@ -307,29 +271,11 @@ void            PairEdges()
     f = g_dfaces;
     for (i = 0; i < g_numfaces; i++, f++)
     {
-#ifndef HLRAD_GROWSAMPLE
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-		{
-			const dplane_t *fp = getPlaneFromFace (f);
-			vec3_t texnormal;
-			const texinfo_t *tex = &g_texinfo[f->texinfo];
-			CrossProduct (tex->vecs[1], tex->vecs[0], texnormal);
-			VectorNormalize (texnormal);
-			if (DotProduct (texnormal, fp->normal) < 0)
-			{
-				VectorSubtract (vec3_origin, texnormal, texnormal);
-			}
-			VectorCopy (texnormal, g_face_texnormals[i]);
-		}
-#endif
-#endif
-#ifdef HLRAD_EDGESHARE_NOSPECIAL
 		if (g_texinfo[f->texinfo].flags & TEX_SPECIAL)
 		{
 			// special textures don't have lightmaps
 			continue;
 		}
-#endif
         for (j = 0; j < f->numedges; j++)
         {
             k = g_dsurfedges[f->firstedge + j];
@@ -351,15 +297,11 @@ void            PairEdges()
             if (e->faces[0] && e->faces[1]) {
 				// determine if coplanar
 				if (e->faces[0]->planenum == e->faces[1]->planenum
-#ifdef HLRAD_PairEdges_FACESIDE_FIX
 					&& e->faces[0]->side == e->faces[1]->side
-#endif
 					) {
 						e->coplanar = true;
-#ifdef HLRAD_GetPhongNormal_VL
 						VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
 						e->cos_normals_angle = 1.0;
-#endif
 				} else {
                     // see if they fall into a "smoothing group" based on angle of the normals
                     vec3_t          normals[2];
@@ -369,7 +311,6 @@ void            PairEdges()
 
                     e->cos_normals_angle = DotProduct(normals[0], normals[1]);
 
-#ifdef HLRAD_CUSTOMSMOOTH
 					vec_t smoothvalue;
 					int m0 = g_texinfo[e->faces[0]->texinfo].miptex;
 					int m1 = g_texinfo[e->faces[1]->texinfo].miptex;
@@ -382,37 +323,25 @@ void            PairEdges()
 					{
 						smoothvalue = 2.0;
 					}
-#endif
                     if (e->cos_normals_angle > (1.0 - NORMAL_EPSILON))
                     {
                         e->coplanar = true;
-#ifdef HLRAD_GetPhongNormal_VL
 						VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
 						e->cos_normals_angle = 1.0;
-#endif
                     }
-#ifdef HLRAD_CUSTOMSMOOTH
                     else if (e->cos_normals_angle >= qmax (smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON))
 					{
-#else
-                    else if (g_smoothing_threshold > 0.0)
-                    {
-                        if (e->cos_normals_angle >= g_smoothing_threshold)
-#endif
                         {
                             VectorAdd(normals[0], normals[1], e->interface_normal);
                             VectorNormalize(e->interface_normal);
                         }
                     }
                 }
-#ifdef HLRAD_TRANSLUCENT
 				if (!VectorCompare (g_translucenttextures[g_texinfo[e->faces[0]->texinfo].miptex], g_translucenttextures[g_texinfo[e->faces[1]->texinfo].miptex]))
 				{
 					e->coplanar = false;
 					VectorClear (e->interface_normal);
 				}
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
 				{
 					int miptex0, miptex1;
 					miptex0 = g_texinfo[e->faces[0]->texinfo].miptex;
@@ -424,23 +353,10 @@ void            PairEdges()
 						VectorClear (e->interface_normal);
 					}
 				}
-#endif
-#ifdef HLRAD_GetPhongNormal_VL
 				if (!VectorCompare(e->interface_normal, vec3_origin))
 				{
 					e->smooth = true;
 				}
-#ifndef HLRAD_GROWSAMPLE
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-				if (!GetIntertexnormal (e->faces[0] - g_dfaces, e->faces[1] - g_dfaces))
-				{
-					e->coplanar = false;
-					VectorClear (e->interface_normal);
-					e->smooth = false;
-				}
-#endif
-#endif
-#ifdef HLRAD_GROWSAMPLE
 				if (e->smooth)
 				{
 					// compute the matrix in advance
@@ -454,12 +370,9 @@ void            PairEdges()
 						Developer (DEVELOPER_LEVEL_MEGASPAM, "TranslateTexToTex failed on face %d and %d @(%f,%f,%f)", (int)(e->faces[0] - g_dfaces), (int)(e->faces[1] - g_dfaces), dv->point[0], dv->point[1], dv->point[2]);
 					}
 				}
-#endif
-#endif
             }
         }
     }
-#ifdef HLRAD_GetPhongNormal_VL
 	{
 		int edgeabs, edgeabsnext;
 		int edgeend, edgeendnext;
@@ -488,10 +401,8 @@ void            PairEdges()
 			{
 				const dplane_t *p0 = getPlaneFromFace (e->faces[0]);
 				const dplane_t *p1 = getPlaneFromFace (e->faces[1]);
-#ifdef HLRAD_SMOOTH_FACELIST
 				intersecttest_t *test0 = CreateIntersectTest (p0, e->faces[0] - g_dfaces);
 				intersecttest_t *test1 = CreateIntersectTest (p1, e->faces[1] - g_dfaces);
-#endif
 				for (edgeend = 0; edgeend < 2; edgeend++)
 				{
 					vec3_t errorpos;
@@ -521,7 +432,6 @@ void            PairEdges()
 							}
 							if (DotProduct (normal, p0->normal) <= NORMAL_EPSILON || DotProduct(normal, p1->normal) <= NORMAL_EPSILON)
 								break;
-	#ifdef HLRAD_CUSTOMSMOOTH
 							vec_t smoothvalue;
 							int m0 = g_texinfo[f->texinfo].miptex;
 							int m1 = g_texinfo[fcurrent->texinfo].miptex;
@@ -535,27 +445,15 @@ void            PairEdges()
 								smoothvalue = 2.0;
 							}
 							if (DotProduct (edgenormal, normal) < qmax (smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON))
-	#else
-							if (DotProduct (edgenormal, normal) + NORMAL_EPSILON < g_smoothing_threshold)
-	#endif
 								break;
-#ifndef HLRAD_GROWSAMPLE
-	#ifdef HLRAD_SMOOTH_TEXNORMAL
-							if (!GetIntertexnormal (fcurrent - g_dfaces, e->faces[0] - g_dfaces) || !GetIntertexnormal (fcurrent - g_dfaces, e->faces[1] - g_dfaces))
-								break;
-	#endif
-#endif
-	#ifdef HLRAD_SMOOTH_FACELIST
 							if (fcurrent != e->faces[0] && fcurrent != e->faces[1] &&
 								(TestFaceIntersect (test0, fcurrent - g_dfaces) || TestFaceIntersect (test1, fcurrent - g_dfaces)))
 							{
 								Developer (DEVELOPER_LEVEL_WARNING, "Overlapping faces around corner (%f,%f,%f)\n", errorpos[0], errorpos[1], errorpos[2]);
 								break;
 							}
-	#endif
 							angles += angle;
 							VectorMA(normals, angle, normal, normals);
-	#ifdef HLRAD_SMOOTH_FACELIST
 							{
 								bool in = false;
 								if (fcurrent == e->faces[0] || fcurrent == e->faces[1])
@@ -578,7 +476,6 @@ void            PairEdges()
 									e->vertex_facelist[edgeend] = l;
 								}
 							}
-	#endif
 							if (r != 0 || fnext == f)
 								break;
 						}
@@ -595,10 +492,8 @@ void            PairEdges()
 						VectorCopy(normals, e->vertex_normal[edgeend]);
 					}
 				}
-#ifdef HLRAD_SMOOTH_FACELIST
 				FreeIntersectTest (test0);
 				FreeIntersectTest (test1);
-#endif
 			}
 			if (e->coplanar)
 			{
@@ -609,12 +504,10 @@ void            PairEdges()
 			}
 		}
 	}
-#endif
 }
 
 #define MAX_SINGLEMAP ((MAX_SURFACE_EXTENT+1)*(MAX_SURFACE_EXTENT+1)) //#define	MAX_SINGLEMAP	(18*18*4) //--vluzacn
 
-#ifdef HLRAD_AVOIDWALLBLEED
 typedef enum
 {
 	WALLFLAG_NONE = 0,
@@ -624,36 +517,25 @@ typedef enum
 }
 wallflag_t;
 
-#endif
 typedef struct
 {
     vec_t*          light;
     vec_t           facedist;
     vec3_t          facenormal;
-#ifdef HLRAD_TRANSLUCENT
 	bool			translucent_b;
 	vec3_t			translucent_v;
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
 	int				miptex;
-#endif
 
     int             numsurfpt;
     vec3_t          surfpt[MAX_SINGLEMAP];
-#ifdef HLRAD_GROWSAMPLE
 	vec3_t*			surfpt_position; //[MAX_SINGLEMAP] // surfpt_position[] are valid positions for light tracing, while surfpt[] are positions for getting phong normal and doing patch interpolation
 	int*			surfpt_surface; //[MAX_SINGLEMAP] // the face that owns this position
-#endif
-#ifdef HLRAD_CalcPoints_NEW
 	bool			surfpt_lightoutside[MAX_SINGLEMAP];
-#endif
 
     vec3_t          texorg;
     vec3_t          worldtotex[2];                         // s = (world - texorg) . worldtotex[0]
     vec3_t          textoworld[2];                         // world = texorg + s * textoworld[0]
-#ifdef HLRAD_CalcPoints_NEW
 	vec3_t			texnormal;
-#endif
 
     vec_t           exactmins[2], exactmaxs[2];
 
@@ -661,43 +543,16 @@ typedef struct
     int             lightstyles[256];
     int             surfnum;
     dface_t*        face;
-#ifdef HLRAD_BLUR
 	int				lmcache_density; // shared by both s and t direction
 	int				lmcache_offset; // shared by both s and t direction
 	int				lmcache_side;
-#ifdef HLRAD_AUTOCORING
 	vec3_t			(*lmcache)[ALLSTYLES]; // lm: short for lightmap // don't forget to free!
-#ifdef ZHLT_XASH
-	vec3_t			(*lmcache_direction)[ALLSTYLES];
-#endif
-#else
-	vec3_t			(*lmcache)[MAXLIGHTMAPS];
-#endif
-#ifdef HLRAD_AVOIDNORMALFLIP
 	vec3_t			*lmcache_normal; // record the phong normals
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 	int				*lmcache_wallflags; // wallflag_t
-#endif
 	int				lmcachewidth;
 	int				lmcacheheight;
-#endif
 }
 lightinfo_t;
-#ifdef HLRAD_MDL_LIGHT_HACK
-#ifndef HLRAD_MDL_LIGHT_HACK_NEW
-typedef struct
-{
-	vec3_t			texorg;
-	vec3_t			offset;
-	vec3_t			textoworld[2];
-	vec3_t			worldtotex[2];
-	int				texmins[2], texsize[2];
-}
-facesampleinfo_t;
-static facesampleinfo_t facesampleinfo[MAX_MAP_FACES];
-#endif
-#endif
 
 // =====================================================================================
 //  TextureNameFromFace
@@ -735,13 +590,8 @@ static void     CalcFaceExtents(lightinfo_t* l)
 
     s = l->face;
 
-#ifdef ZHLT_64BIT_FIX
 	mins[0] = mins[1] = 99999999;
 	maxs[0] = maxs[1] = -99999999;
-#else
-    mins[0] = mins[1] = 999999;
-    maxs[0] = maxs[1] = -99999; // a little small, but same with Goldsrc. --vluzacn
-#endif
 
     tex = &g_texinfo[s->texinfo];
 
@@ -777,15 +627,7 @@ static void     CalcFaceExtents(lightinfo_t* l)
         l->exactmins[i] = mins[i];
         l->exactmaxs[i] = maxs[i];
 
-#ifndef ZHLT_64BIT_FIX
-        mins[i] = floor(mins[i] / TEXTURE_STEP); //mins[i] = floor(mins[i] / 16.0); //--vluzacn
-        maxs[i] = ceil(maxs[i] / TEXTURE_STEP); //maxs[i] = ceil(maxs[i] / 16.0); //--vluzacn
-
-		l->texmins[i] = mins[i];
-        l->texsize[i] = maxs[i] - mins[i];
-#endif
 	}
-#ifdef ZHLT_64BIT_FIX
 	int bmins[2];
 	int bmaxs[2];
 	GetFaceExtents (l->surfnum, bmins, bmaxs);
@@ -796,7 +638,6 @@ static void     CalcFaceExtents(lightinfo_t* l)
 		l->texmins[i] = bmins[i];
 		l->texsize[i] = bmaxs[i] - bmins[i];
 	}
-#endif
 
 	if (!(tex->flags & TEX_SPECIAL))
 	{
@@ -818,27 +659,19 @@ static void     CalcFaceExtents(lightinfo_t* l)
                 {
 					v = g_dvertexes + g_dedges[-e].v[1];
                 }
-#ifdef HLRAD_OVERWRITEVERTEX_FIX
 				vec3_t pos;
 				VectorAdd (v->point, g_face_offset[facenum], pos);
 				Log ("(%4.3f %4.3f %4.3f) ", pos[0], pos[1], pos[2]);
-#else
-                VectorAdd(v->point, g_face_offset[facenum], v->point);
-				Log("(%4.3f %4.3f %4.3f) ", v->point[0], v->point[1], v->point[2]);
-#endif
 			}
 			Log("\n");
 
 			Error( "Bad surface extents (%d x %d)\nCheck the file ZHLTProblems.html for a detailed explanation of this problem", l->texsize[0], l->texsize[1]);
 		}
 	}
-#ifdef HLRAD_BLUR
 	// allocate sample light cache
 	{
 		if (g_extra
-	#ifdef HLRAD_FASTMODE
 			&& !g_fastmode
-	#endif
 			)
 		{
 			l->lmcache_density = 3;
@@ -851,33 +684,16 @@ static void     CalcFaceExtents(lightinfo_t* l)
 		l->lmcache_offset = l->lmcache_side;
 		l->lmcachewidth = l->texsize[0] * l->lmcache_density + 1 + 2 * l->lmcache_side;
 		l->lmcacheheight = l->texsize[1] * l->lmcache_density + 1 + 2 * l->lmcache_side;
-	#ifdef HLRAD_AUTOCORING
 		l->lmcache = (vec3_t (*)[ALLSTYLES])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
-#ifdef ZHLT_XASH
-		l->lmcache_direction = (vec3_t (*)[ALLSTYLES])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
-#endif
-	#else
-		l->lmcache = (vec3_t (*)[MAXLIGHTMAPS])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [MAXLIGHTMAPS]));
-	#endif
 		hlassume (l->lmcache != NULL, assume_NoMemory);
-#ifdef ZHLT_XASH
-		hlassume (l->lmcache_direction != NULL, assume_NoMemory);
-#endif
-#ifdef HLRAD_AVOIDNORMALFLIP
 		l->lmcache_normal = (vec3_t *)malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t));
 		hlassume (l->lmcache_normal != NULL, assume_NoMemory);
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 		l->lmcache_wallflags = (int *)malloc (l->lmcachewidth * l->lmcacheheight * sizeof (int));
 		hlassume (l->lmcache_wallflags != NULL, assume_NoMemory);
-#endif
-#ifdef HLRAD_GROWSAMPLE
 		l->surfpt_position = (vec3_t *)malloc (MAX_SINGLEMAP * sizeof (vec3_t));
 		l->surfpt_surface = (int *)malloc (MAX_SINGLEMAP * sizeof (int));
 		hlassume (l->surfpt_position != NULL && l->surfpt_surface != NULL, assume_NoMemory);
-#endif
 	}
-#endif
 }
 
 // =====================================================================================
@@ -942,23 +758,12 @@ static void     CalcFaceVectors(lightinfo_t* l)
     // the distance along the plane normal
     distscale = 1.0 / distscale;
 
-#ifdef ZHLT_FREETEXTUREAXIS
 	for (i = 0; i < 2; i++)
 	{
 		CrossProduct (l->worldtotex[!i], l->facenormal, l->textoworld[i]);
 		len = DotProduct (l->textoworld[i], l->worldtotex[i]);
 		VectorScale (l->textoworld[i], 1 / len, l->textoworld[i]);
 	}
-#else
-    for (i = 0; i < 2; i++)
-    {
-        len = (float)VectorLength(l->worldtotex[i]);
-        dist = DotProduct(l->worldtotex[i], l->facenormal);
-        dist *= distscale;
-        VectorMA(l->worldtotex[i], -dist, texnormal, l->textoworld[i]);
-        VectorScale(l->textoworld[i], (1 / len) * (1 / len), l->textoworld[i]);
-    }
-#endif
 
     // calculate texorg on the texture plane
     for (i = 0; i < 3; i++)
@@ -967,16 +772,10 @@ static void     CalcFaceVectors(lightinfo_t* l)
     }
 
     // project back to the face plane
-#ifdef HLRAD_GROWSAMPLE
     dist = DotProduct(l->texorg, l->facenormal) - l->facedist;
-#else
-    dist = DotProduct(l->texorg, l->facenormal) - l->facedist - DEFAULT_HUNT_OFFSET;
-#endif
     dist *= distscale;
     VectorMA(l->texorg, -dist, texnormal, l->texorg);
-#ifdef HLRAD_CalcPoints_NEW
 	VectorCopy (texnormal, l->texnormal);
-#endif
 
 }
 
@@ -997,211 +796,6 @@ static void     SetSurfFromST(const lightinfo_t* const l, vec_t* surf, const vec
     VectorAdd(surf, g_face_offset[facenum], surf);
 }
 
-#ifndef HLRAD_CalcPoints_NEW
-// =====================================================================================
-//  FindSurfaceMidpoint
-// =====================================================================================
-static dleaf_t* FindSurfaceMidpoint(const lightinfo_t* const l, vec_t* midpoint)
-{
-    int             s, t;
-    int             w, h;
-    vec_t           starts, startt;
-    vec_t           us, ut;
-
-    vec3_t          broken_midpoint;
-    vec3_t          surface_midpoint;
-    int             inside_point_count;
-
-    dleaf_t*        last_valid_leaf = NULL;
-    dleaf_t*        leaf_mid;
-
-    const int       facenum = l->surfnum;
-    const dface_t*  f = g_dfaces + facenum;
-    const dplane_t* p = getPlaneFromFace(f);
-
-    const vec_t*    face_delta = g_face_offset[facenum];
-
-    h = l->texsize[1] + 1;
-    w = l->texsize[0] + 1;
-    starts = (float)l->texmins[0] * TEXTURE_STEP; //starts = (float)l->texmins[0] * 16; //--vluzacn
-    startt = (float)l->texmins[1] * TEXTURE_STEP; //startt = (float)l->texmins[1] * 16; //--vluzacn
-
-    // General case
-    inside_point_count = 0;
-    VectorClear(surface_midpoint);
-    for (t = 0; t < h; t++)
-    {
-        for (s = 0; s < w; s++)
-        {
-            us = starts + s * TEXTURE_STEP;
-            ut = startt + t * TEXTURE_STEP;
-
-            SetSurfFromST(l, midpoint, us, ut);
-            if ((leaf_mid = PointInLeaf(midpoint)) != g_dleafs)
-            {
-                if ((leaf_mid->contents != CONTENTS_SKY) && (leaf_mid->contents != CONTENTS_SOLID))
-                {
-                    last_valid_leaf = leaf_mid;
-                    inside_point_count++;
-                    VectorAdd(surface_midpoint, midpoint, surface_midpoint);
-                }
-            }
-        }
-    }
-
-    if (inside_point_count > 1)
-    {
-        vec_t           tmp = 1.0 / inside_point_count;
-
-        VectorScale(surface_midpoint, tmp, midpoint);
-
-        //Verbose("Trying general at (%4.3f %4.3f %4.3f) %d\n", surface_midpoint[0], surface_midpoint[1], surface_midpoint[2], inside_point_count);
-        if (
-            (leaf_mid =
-             HuntForWorld(midpoint, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET)))
-        {
-            //Verbose("general method succeeded at (%4.3f %4.3f %4.3f)\n", midpoint[0], midpoint[1], midpoint[2]);
-            return leaf_mid;
-        }
-        //Verbose("Tried general , failed at (%4.3f %4.3f %4.3f)\n", midpoint[0], midpoint[1], midpoint[2]);
-    }
-    else if (inside_point_count == 1)
-    {
-        //Verbose("Returning single point from general\n");
-        VectorCopy(surface_midpoint, midpoint);
-        return last_valid_leaf;
-    }
-    else
-    {
-        //Verbose("general failed (no points)\n");
-    }
-
-    // Try harder
-    inside_point_count = 0;
-    VectorClear(surface_midpoint);
-    for (t = 0; t < h; t++)
-    {
-        for (s = 0; s < w; s++)
-        {
-            us = starts + s * TEXTURE_STEP;
-            ut = startt + t * TEXTURE_STEP;
-
-            SetSurfFromST(l, midpoint, us, ut);
-            leaf_mid =
-                HuntForWorld(midpoint, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET);
-            if (leaf_mid != g_dleafs)
-            {
-                last_valid_leaf = leaf_mid;
-                inside_point_count++;
-                VectorAdd(surface_midpoint, midpoint, surface_midpoint);
-            }
-        }
-    }
-
-    if (inside_point_count > 1)
-    {
-        vec_t           tmp = 1.0 / inside_point_count;
-
-        VectorScale(surface_midpoint, tmp, midpoint);
-
-        if (
-            (leaf_mid =
-             HuntForWorld(midpoint, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET)))
-        {
-            //Verbose("best method succeeded at (%4.3f %4.3f %4.3f)\n", midpoint[0], midpoint[1], midpoint[2]);
-            return leaf_mid;
-        }
-        //Verbose("Tried best, failed at (%4.3f %4.3f %4.3f)\n", midpoint[0], midpoint[1], midpoint[2]);
-    }
-    else if (inside_point_count == 1)
-    {
-        //Verbose("Returning single point from best\n");
-        VectorCopy(surface_midpoint, midpoint);
-        return last_valid_leaf;
-    }
-    else
-    {
-        //Verbose("best failed (no points)\n");
-    }
-
-    // Original broken code
-    {
-        vec_t           mids = (l->exactmaxs[0] + l->exactmins[0]) / 2;
-        vec_t           midt = (l->exactmaxs[1] + l->exactmins[1]) / 2;
-
-        SetSurfFromST(l, midpoint, mids, midt);
-
-        if ((leaf_mid = PointInLeaf(midpoint)) != g_dleafs)
-        {
-            if ((leaf_mid->contents != CONTENTS_SKY) && (leaf_mid->contents != CONTENTS_SOLID))
-            {
-                return leaf_mid;
-            }
-        }
-
-        VectorCopy(midpoint, broken_midpoint);
-        //Verbose("Tried original method, failed at (%4.3f %4.3f %4.3f)\n", midpoint[0], midpoint[1], midpoint[2]);
-    }
-
-    VectorCopy(broken_midpoint, midpoint);
-    return HuntForWorld(midpoint, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET);
-}
-
-// =====================================================================================
-//  SimpleNudge
-//      Return vec_t in point only valid when function returns true
-//      Use negative scales to push away from center instead
-// =====================================================================================
-static bool     SimpleNudge(vec_t* const point, const lightinfo_t* const l, vec_t* const s, vec_t* const t, const vec_t delta)
-{
-    const int       facenum = l->surfnum;
-    const dface_t*  f = g_dfaces + facenum;
-    const dplane_t* p = getPlaneFromFace(f);
-    const vec_t*    face_delta = g_face_offset[facenum];
-    const int       h = l->texsize[1] + 1;
-    const int       w = l->texsize[0] + 1;
-    const vec_t     half_w = (vec_t)(w - 1) / 2.0;
-    const vec_t     half_h = (vec_t)(h - 1) / 2.0;
-    const vec_t     s_vec = *s;
-    const vec_t     t_vec = *t;
-    vec_t           s1;
-    vec_t           t1;
-
-    if (s_vec > half_w)
-    {
-        s1 = s_vec - delta;
-    }
-    else
-    {
-        s1 = s_vec + delta;
-    }
-
-    SetSurfFromST(l, point, s1, t_vec);
-    if (HuntForWorld(point, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET))
-    {
-        *s = s1;
-        return true;
-    }
-
-    if (t_vec > half_h)
-    {
-        t1 = t_vec - delta;
-    }
-    else
-    {
-        t1 = t_vec + delta;
-    }
-
-    SetSurfFromST(l, point, s_vec, t1);
-    if (HuntForWorld(point, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET))
-    {
-        *t = t1;
-        return true;
-    }
-
-    return false;
-}
-#endif
 
 typedef enum
 {
@@ -1211,9 +805,6 @@ typedef enum
     LightNormal,                                           // Normally lit with no movement
     LightPulledInside,                                     // Pulled inside by bleed code adjustments
     LightSimpleNudge,                                      // A simple nudge 1/3 or 2/3 towards center along S or T axist
-#ifndef HLRAD_NUDGE_VL
-    LightSimpleNudgeEmbedded                               // A nudge either 1 full unit in each of S and T axis, or 1/3 or 2/3 AWAY from center
-#endif
 }
 light_flag_t;
 
@@ -1222,80 +813,6 @@ light_flag_t;
 //      For each texture aligned grid point, back project onto the plane
 //      to get the world xyz value of the sample point
 // =====================================================================================
-#ifdef HLRAD_CalcPoints_NEW
-#ifndef HLRAD_GROWSAMPLE
-static int		PointInFace(const lightinfo_t *l, const vec_t* point)
-{
-	int facenum = l->surfnum;
-	const dface_t* f = &g_dfaces[facenum];
-	Winding *w;
-	dplane_t plane;
-	VectorCopy (l->texnormal, plane.normal);
-	const dplane_t *p = &plane;
-	vec3_t new_point;
-	VectorSubtract (point, g_face_offset[facenum], new_point);
-	w = new Winding (*f);
-	if (point_in_winding (*w, *p, new_point))
-	{
-		delete w;
-		return facenum;
-	}
-	delete w;
-
-	int j;
-	for (j = 0; j < f->numedges; j++)
-	{
-		int e;
-		edgeshare_t *es;
-		dface_t* f2;
-		e = g_dsurfedges[f->firstedge + j];
-		es = &g_edgeshare[abs(e)];
-		if (!es->smooth)
-			continue;
-		f2 = es->faces[!(e<0)];
-		const dplane_t *p2 = getPlaneFromFace (f2);
-		if (DotProduct (p->normal, p2->normal) < NORMAL_EPSILON)
-			continue;
-		w = new Winding (*f2);
-		if (point_in_winding (*w, *p, new_point))
-		{
-			delete w;
-			return f2 - g_dfaces;
-		}
-		delete w;
-	}
-#ifdef HLRAD_SMOOTH_FACELIST
-	for (j = 0; j < f->numedges; j++)
-	{
-		int e;
-		edgeshare_t *es;
-		dface_t* f2;
-		e = g_dsurfedges[f->firstedge + j];
-		es = &g_edgeshare[abs(e)];
-		if (!es->smooth)
-			continue;
-		for (int edgeend = 0; edgeend < 2; edgeend++)
-		{
-			for (facelist_t *l = es->vertex_facelist[edgeend]; l; l = l->next)
-			{
-				f2 = l->face;
-				const dplane_t *p2 = getPlaneFromFace (f2);
-				if (DotProduct (p->normal, p2->normal) < NORMAL_EPSILON)
-					continue;
-				w = new Winding (*f2);
-				if (point_in_winding (*w, *p, new_point))
-				{
-					delete w;
-					return f2 - g_dfaces;
-				}
-				delete w;
-			}
-		}
-	}
-#endif
-	return facenum;
-}
-#endif
 static void		SetSTFromSurf(const lightinfo_t* const l, const vec_t* surf, vec_t& s, vec_t& t)
 {
     const int       facenum = l->surfnum;
@@ -1308,7 +825,6 @@ static void		SetSTFromSurf(const lightinfo_t* const l, const vec_t* surf, vec_t&
 		t += (surf[j] - g_face_offset[facenum][j] - l->texorg[j]) * l->worldtotex[1][j];
 	}
 }
-#ifdef HLRAD_GROWSAMPLE
 
 typedef struct
 {
@@ -1630,9 +1146,7 @@ static samplefrag_t *GrowSingleFrag (const samplefraginfo_t *info, samplefrag_t 
 		for (int x = 0; x < numclipplanes && w->m_NumPoints > 0; x++)
 		{
 			w->Clip (clipplanes[x], false
-#ifdef ZHLT_WINDING_EPSILON
 					, 4 * ON_EPSILON
-#endif
 					);
 		}
 		if (w->m_NumPoints > 0)
@@ -1712,11 +1226,7 @@ static bool FindBestEdge (samplefraginfo_t *info, samplefrag_t *&bestfrag, sampl
 }
 
 static samplefraginfo_t *CreateSampleFrag (int facenum, vec_t s, vec_t t, 
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 	const vec_t square[2][2],
-#else
-	vec_t reach, 
-#endif
 	int maxsize)
 {
 	samplefraginfo_t *info;
@@ -1746,17 +1256,10 @@ static samplefraginfo_t *CreateSampleFrag (int facenum, vec_t s, vec_t t,
 	info->head->origin[2] = 0.0;
 	VectorCopy (info->head->origin, info->head->myorigin);
 
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 	VectorScale (v_s,  1, info->head->rect.planes[0].normal); info->head->rect.planes[0].dist =  square[0][0]; // smin
 	VectorScale (v_s, -1, info->head->rect.planes[1].normal); info->head->rect.planes[1].dist = -square[1][0]; // smax
 	VectorScale (v_t,  1, info->head->rect.planes[2].normal); info->head->rect.planes[2].dist =  square[0][1]; // tmin
 	VectorScale (v_t, -1, info->head->rect.planes[3].normal); info->head->rect.planes[3].dist = -square[1][1]; // tmax
-#else
-	VectorScale (v_s,  1, info->head->rect.planes[0].normal); info->head->rect.planes[0].dist =  (s - reach);
-	VectorScale (v_s, -1, info->head->rect.planes[1].normal); info->head->rect.planes[1].dist = -(s + reach);
-	VectorScale (v_t,  1, info->head->rect.planes[2].normal); info->head->rect.planes[2].dist =  (t - reach);
-	VectorScale (v_t, -1, info->head->rect.planes[3].normal); info->head->rect.planes[3].dist = -(t + reach);
-#endif
 	info->head->myrect = info->head->rect;
 
 	ChopFrag (info->head);
@@ -1850,26 +1353,14 @@ static void DeleteSampleFrag (samplefraginfo_t *fraginfo)
 	free (fraginfo);
 }
 
-#endif
 static light_flag_t SetSampleFromST(vec_t* const point,
-#ifdef HLRAD_GROWSAMPLE
 									vec_t* const position, // a valid world position for light tracing
 									int* const surface, // the face used for phong normal and patch interpolation
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 									bool *nudged,
-#endif
 									const lightinfo_t* const l, const vec_t original_s, const vec_t original_t,
-#ifdef HLRAD_GROWSAMPLE
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 									const vec_t square[2][2], // {smin, tmin}, {smax, tmax}
-#else
-									const vec_t reach, // the size of the square that grows
-#endif
-#endif
 									eModelLightmodes lightmode)
 {
-#ifdef HLRAD_GROWSAMPLE
 	light_flag_t LuxelFlag;
 	int facenum;
 	dface_t *face;
@@ -1882,11 +1373,7 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 	faceplane = getPlaneFromFace (face);
 	
 	fraginfo = CreateSampleFrag (facenum, original_s, original_t, 
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 		square,
-#else
-		reach, 
-#endif
 		100);
 	
 	bool found;
@@ -1894,9 +1381,7 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 	vec3_t bestpos;
 	vec_t bests, bestt;
 	vec_t best_dist;
-#ifdef HLRAD_AVOIDWALLBLEED
 	bool best_nudged;
-#endif
 
 	found = false;
 	for (f = fraginfo->head; f; f = f->next)
@@ -1905,13 +1390,9 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 		vec_t s, t;
 		vec_t dist;
 
-#ifdef HLRAD_AVOIDWALLBLEED
 		bool nudged_one;
-#endif
 		if (!FindNearestPosition (f->facenum, f->mywinding, f->mywindingplane, f->myorigin[0], f->myorigin[1], pos, &s, &t, &dist
-#ifdef HLRAD_AVOIDWALLBLEED
 									, &nudged_one
-#endif
 									))
 		{
 			continue;
@@ -1923,12 +1404,10 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 		{
 			better = true;
 		}
-#ifdef HLRAD_AVOIDWALLBLEED
 		else if (nudged_one != best_nudged)
 		{
 			better = !nudged_one;
 		}
-#endif
 		else if (fabs (dist - best_dist) > 2 * ON_EPSILON)
 		{
 			better = (dist < best_dist);
@@ -1950,9 +1429,7 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 			bests = s;
 			bestt = t;
 			best_dist = dist;
-#ifdef HLRAD_AVOIDWALLBLEED
 			best_nudged = nudged_one;
-#endif
 		}
 	}
 	
@@ -1988,10 +1465,8 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 		VectorCopy (bestpos, position);
 		// surface
 		*surface = bestfrag->facenum;
-#ifdef HLRAD_AVOIDWALLBLEED
 		// whether nudged to fit
 		*nudged = best_nudged;
-#endif
 		// returned value
 		LuxelFlag = LightNormal;
 	}
@@ -2000,9 +1475,7 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 		SetSurfFromST (l, point, original_s, original_t);
 		VectorMA (point, DEFAULT_HUNT_OFFSET, faceplane->normal, position);
 		*surface = facenum;
-#ifdef HLRAD_AVOIDWALLBLEED
 		*nudged = true;
-#endif
 		LuxelFlag = LightOutside;
 	}
 
@@ -2010,215 +1483,6 @@ static light_flag_t SetSampleFromST(vec_t* const point,
 	
 	return LuxelFlag;
 
-#else
-	light_flag_t	LuxelFlag = LightOutside;
-	int				huntsize = 3;
-	vec_t			huntscale = 0.2;
-	vec_t			width = DEFAULT_EDGE_WIDTH;
-
-	int				facenum = l->surfnum;
-	const vec_t*	face_delta = g_face_offset[facenum];
-
-	const dface_t*	f = &g_dfaces[facenum];
-	const dplane_t*	p = getPlaneFromFace (f);
-	Winding			*wd = new Winding (*f);
-	{
-		int				j;
-		for (j = 0; j < wd->m_NumPoints; j++)
-		{
-			VectorAdd (wd->m_Points[j], face_delta, wd->m_Points[j]);
-		}
-	}
-
-	const vec_t*	face_centroid = g_face_centroids[facenum];
-	vec_t			mids, midt;
-	SetSTFromSurf (l, face_centroid, mids, midt);
-
-	vec3_t			surf_original;
-	dleaf_t*		leaf_original;
-	SetSurfFromST (l, surf_original, original_s, original_t);
-	leaf_original = HuntForWorld (surf_original, face_delta, p, 1, 0.0, DEFAULT_HUNT_OFFSET);
-
-	int				facenum_tosnap = PointInFace (l, surf_original);
-	const dface_t*	f_tosnap = &g_dfaces[facenum_tosnap];
-	const dplane_t*	p_tosnap = getPlaneFromFace (f_tosnap);
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-	vec3_t			snapdir;
-	if (!GetIntertexnormal (facenum, facenum_tosnap, snapdir))
-	{
-		facenum_tosnap = facenum;
-		f_tosnap = f;
-		p_tosnap = p;
-	}
-#endif
-
-	vec3_t			surf_direct;
-	dleaf_t*		leaf_direct;
-	VectorCopy (surf_original, surf_direct);
-	{
-		vec_t dist;
-		vec_t scale;
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-		scale = DotProduct (snapdir, p_tosnap->normal);
-#else
-		scale = DotProduct (l->texnormal, p_tosnap->normal);
-#endif
-		dist = DotProduct (surf_direct, p_tosnap->normal) - DotProduct (face_delta, p_tosnap->normal) - p_tosnap->dist - DEFAULT_HUNT_OFFSET;
-#ifdef HLRAD_SMOOTH_TEXNORMAL
-		VectorMA (surf_direct, - dist / scale, snapdir, surf_direct);
-#else
-		VectorMA (surf_direct, - dist / scale, l->texnormal, surf_direct);
-#endif
-	}
-	leaf_direct = HuntForWorld (surf_direct, face_delta, p_tosnap, huntsize, huntscale, DEFAULT_HUNT_OFFSET);
-
-	if (LuxelFlag == LightOutside)
-	{
-		if (leaf_direct && point_in_winding_noedge (*wd, *p, surf_direct, width))
-		{
-			LuxelFlag = LightNormal;
-			VectorCopy (surf_direct, point);
-		}
-	}
-
-	if (LuxelFlag == LightOutside)
-	{
-		bool	blocked_direct;
-		bool	blocked_inwinding;
-		bool	blocked_inwinding_noedge;
-		vec3_t	surf_inwinding;
-		vec3_t	surf_inwinding_noedge;
-		dleaf_t*leaf_inwinding;
-		dleaf_t*leaf_inwinding_noedge;
-#ifdef HLRAD_HULLU
-		vec3_t transparency = { 1.0, 1.0, 1.0 };
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
-		int opaquestyle;
-#endif
-		{
-			blocked_direct = (leaf_direct == NULL);
-			if (!point_in_winding (*wd, *p, surf_original))
-			{
-				VectorCopy (surf_original, surf_inwinding);
-				snap_to_winding (*wd, *p, surf_inwinding);
-				leaf_inwinding = HuntForWorld (surf_inwinding, face_delta, p, huntsize, huntscale, DEFAULT_HUNT_OFFSET);
-				if ( blocked_direct
-					|| !leaf_inwinding
-					|| TestLine (surf_direct, surf_inwinding) != CONTENTS_EMPTY
-					|| TestSegmentAgainstOpaqueList (surf_direct, surf_inwinding
-	#ifdef HLRAD_HULLU
-						, transparency
-	#endif
-	#ifdef HLRAD_OPAQUE_STYLE
-						, opaquestyle
-	#endif
-						) == true
-	#ifdef HLRAD_OPAQUE_STYLE
-					|| opaquestyle != -1
-	#endif
-	#ifdef HLRAD_TRANSLUCENT
-					|| l->translucent_b
-	#endif
-					)
-				{
-					blocked_direct = true;
-				}
-			}
-			else
-			{
-				VectorCopy (surf_original, surf_inwinding);
-				leaf_inwinding = leaf_original;
-			}
-			blocked_inwinding = (leaf_inwinding == NULL);
-			if (!point_in_winding_noedge (*wd, *p, surf_inwinding, width))
-			{
-				VectorCopy (surf_inwinding, surf_inwinding_noedge);
-				snap_to_winding_noedge (*wd, *p, surf_inwinding_noedge, width, 4 * width);
-				leaf_inwinding_noedge = HuntForWorld (surf_inwinding_noedge, face_delta, p, huntsize, huntscale, DEFAULT_HUNT_OFFSET);
-				if ( blocked_inwinding
-					|| !leaf_inwinding_noedge
-					|| TestLine (surf_inwinding, surf_inwinding_noedge) != CONTENTS_EMPTY
-					|| TestSegmentAgainstOpaqueList (surf_inwinding, surf_inwinding_noedge
-	#ifdef HLRAD_HULLU
-						, transparency
-	#endif
-	#ifdef HLRAD_OPAQUE_STYLE
-						, opaquestyle
-	#endif
-						) == true
-	#ifdef HLRAD_OPAQUE_STYLE
-					|| opaquestyle != -1
-	#endif
-					)
-				{
-					blocked_inwinding = true;
-				}
-			}
-			else
-			{
-				VectorCopy (surf_inwinding, surf_inwinding_noedge);
-				leaf_inwinding_noedge = leaf_inwinding;
-			}
-			blocked_inwinding_noedge = (leaf_inwinding_noedge == NULL);
-			if (blocked_inwinding_noedge == true)
-			{
-				blocked_inwinding = true;
-			}
-			if (blocked_inwinding == true)
-			{
-				blocked_direct = true;
-			}
-		}
-		if (!blocked_direct)
-		{
-			LuxelFlag = LightNormal;
-			VectorCopy (surf_direct, point);
-		}
-		else if (!blocked_inwinding)
-		{
-			LuxelFlag = LightPulledInside;
-			VectorCopy (surf_inwinding, point);
-		}
-		else if (!blocked_inwinding_noedge)
-		{
-			LuxelFlag = LightPulledInside;
-			VectorCopy (surf_inwinding_noedge, point);
-		}
-	}
-
-	if (LuxelFlag == LightOutside)
-	{
-		// this part is very slow
-		const int numnudges = 13;
-		vec_t nudgelist[numnudges][2] = {{0,0},{0.6,0},{0,0.6},{-0.6,0},{0,-0.6},{1.1,1.1},{1.1,-1.1},{-1.1,1.1},{-1.1,-1.1},{1.6,0},{0,1.6},{-1.6,0},{0,-1.6}};
-		vec_t nudgescale_s, nudgescale_t;
-		nudgescale_s = original_s <= mids? TEXTURE_STEP: -TEXTURE_STEP;
-		nudgescale_t = original_t <= midt? TEXTURE_STEP: -TEXTURE_STEP;
-		int i;
-		for (i = 0; i < numnudges; i++)
-		{
-			vec_t s1 = original_s + nudgelist[i][0] * nudgescale_s;
-			vec_t t1 = original_t + nudgelist[i][1] * nudgescale_t;
-			vec3_t surf;
-			SetSurfFromST(l, surf, s1, t1);
-			if (point_in_winding (*wd, *p, surf) && HuntForWorld (surf, face_delta, p, 2, 0.5, DEFAULT_HUNT_OFFSET) && point_in_winding (*wd, *p, surf))
-			{
-				LuxelFlag = LightSimpleNudge;
-				VectorCopy (surf, point);
-				break;
-			}
-		}
-	}
-
-	if (LuxelFlag == LightOutside)
-	{
-		VectorCopy (surf_original, point);
-	}
-
-	delete wd;
-	return LuxelFlag;
-#endif
 }
 static void		CalcPoints(lightinfo_t* l)
 {
@@ -2245,31 +1509,17 @@ static void		CalcPoints(lightinfo_t* l)
 			pLuxelFlags = &LuxelFlags[s+w*t];
 			us = starts + s * TEXTURE_STEP;
 			ut = startt + t * TEXTURE_STEP;
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 			vec_t square[2][2];
 			square[0][0] = us - TEXTURE_STEP;
 			square[0][1] = ut - TEXTURE_STEP;
 			square[1][0] = us + TEXTURE_STEP;
 			square[1][1] = ut + TEXTURE_STEP;
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 			bool nudged;
-#endif
 			*pLuxelFlags = SetSampleFromST (surf,
-#ifdef HLRAD_GROWSAMPLE
 											l->surfpt_position[s+w*t], &l->surfpt_surface[s+w*t],
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 											&nudged,
-#endif
 											l, us, ut,
-#ifdef HLRAD_GROWSAMPLE
-#ifdef HLRAD_BLUR_MINIMALSQUARE
 											square,
-#else
-											TEXTURE_STEP,
-#endif
-#endif
 											lightmode);
 		}
 	}
@@ -2307,10 +1557,8 @@ static void		CalcPoints(lightinfo_t* l)
 						{
 							*pLuxelFlags = LightShifted;
 							VectorCopy (surf_other, surf);
-	#ifdef HLRAD_GROWSAMPLE
 							VectorCopy (l->surfpt_position[s_other+w*t_other], l->surfpt_position[s+w*t]);
 							l->surfpt_surface[s+w*t] = l->surfpt_surface[s_other+w*t_other];
-	#endif
 							adjusted = true;
 							break;
 						}
@@ -2337,440 +1585,6 @@ static void		CalcPoints(lightinfo_t* l)
 		l->surfpt_lightoutside[i] = (LuxelFlags[i] == LightOutside);
 	}
 }
-#else /*HLRAD_CalcPoints_NEW*/
-static void     CalcPoints(lightinfo_t* l)
-{
-    const int       facenum = l->surfnum;
-    const dface_t*  f = g_dfaces + facenum;
-    const dplane_t* p = getPlaneFromFace	(f);
-
-    const vec_t*    face_delta = g_face_offset[facenum];
-    const eModelLightmodes lightmode = g_face_lightmode[facenum];
-
-#ifdef HLRAD_NUDGE_VL
-	vec_t mids, midt;
-	{
-		// use winding center instead
-		vec3_t surf;
-		VectorSubtract (g_face_centroids[facenum], g_face_offset[facenum], surf);
-		VectorSubtract (surf, l->texorg, surf);
-		mids = DotProduct (surf, l->worldtotex[0]);
-		midt = DotProduct (surf, l->worldtotex[1]);
-	}
-#else
-    const vec_t     mids = (l->exactmaxs[0] + l->exactmins[0]) / 2;
-    const vec_t     midt = (l->exactmaxs[1] + l->exactmins[1]) / 2;
-#endif
-
-    const int       h = l->texsize[1] + 1;
-    const int       w = l->texsize[0] + 1;
-
-    const vec_t     starts = (l->texmins[0] * TEXTURE_STEP); //const vec_t     starts = (l->texmins[0] * 16); //--vluzacn
-    const vec_t     startt = (l->texmins[1] * TEXTURE_STEP); //const vec_t     startt = (l->texmins[1] * 16); //--vluzacn
-
-    light_flag_t    LuxelFlags[MAX_SINGLEMAP];
-    light_flag_t*   pLuxelFlags;
-    vec_t           us, ut;
-    vec_t*          surf;
-    vec3_t          surface_midpoint;
-    dleaf_t*        leaf_mid;
-    dleaf_t*        leaf_surf;
-    int             s, t;
-    int             i;
-
-    l->numsurfpt = w * h;
-
-    memset(LuxelFlags, 0, sizeof(LuxelFlags));
-
-    leaf_mid = FindSurfaceMidpoint(l, surface_midpoint);
-#if 0
-    if (!leaf_mid)
-    {
-        Developer(DEVELOPER_LEVEL_FLUFF, "CalcPoints [face %d] (%4.3f %4.3f %4.3f) midpoint outside world\n",
-                  facenum, surface_midpoint[0], surface_midpoint[1], surface_midpoint[2]);
-    }
-    else
-    {
-        Developer(DEVELOPER_LEVEL_FLUFF, "FindSurfaceMidpoint [face %d] @ (%4.3f %4.3f %4.3f)\n",
-                  facenum, surface_midpoint[0], surface_midpoint[1], surface_midpoint[2]);
-    }
-#endif
-
-    // First pass, light normally, and pull any faces toward the center for bleed adjustment
-
-    surf = l->surfpt[0];
-    pLuxelFlags = LuxelFlags;
-    for (t = 0; t < h; t++)
-    {
-        for (s = 0; s < w; s++, surf += 3, pLuxelFlags++)
-        {
-            vec_t           original_s = us = starts + s * TEXTURE_STEP;
-            vec_t           original_t = ut = startt + t * TEXTURE_STEP;
-
-            SetSurfFromST(l, surf, us, ut);
-            leaf_surf = HuntForWorld(surf, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET);
-
-            if (!leaf_surf)
-            {
-                // At first try a 1/3 and 2/3 distance to nearest in each S and T axis towards the face midpoint
-                if (SimpleNudge(surf, l, &us, &ut, TEXTURE_STEP * (1.0 / 3.0)))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-                else if (SimpleNudge(surf, l, &us, &ut, -TEXTURE_STEP * (1.0 / 3.0)))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-                else if (SimpleNudge(surf, l, &us, &ut, TEXTURE_STEP * (2.0 / 3.0)))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-                else if (SimpleNudge(surf, l, &us, &ut, -TEXTURE_STEP * (2.0 / 3.0)))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-#ifdef HLRAD_NUDGE_VL
-                else if (SimpleNudge(surf, l, &us, &ut, TEXTURE_STEP))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-                else if (SimpleNudge(surf, l, &us, &ut, -TEXTURE_STEP))
-                {
-                    *pLuxelFlags = LightSimpleNudge;
-                }
-#else
-                // Next, if this is a model flagged with the 'Embedded' mode, try away from the facemid too
-                else if (lightmode & eModelLightmodeEmbedded)
-                {
-                    SetSurfFromST(l, surf, us, ut);
-                    if (SimpleNudge(surf, l, &us, &ut, TEXTURE_STEP))
-                    {
-                        *pLuxelFlags = LightSimpleNudgeEmbedded;
-                        continue;
-                    }
-                    if (SimpleNudge(surf, l, &us, &ut, -TEXTURE_STEP))
-                    {
-                        *pLuxelFlags = LightSimpleNudgeEmbedded;
-                        continue;
-                    }
-
-                    SetSurfFromST(l, surf, original_s, original_t);
-                    *pLuxelFlags = LightOutside;
-                    continue;
-                }
-#endif
-            }
-
-#ifndef HLRAD_NUDGE_VL
-            if (!(lightmode & eModelLightmodeEmbedded))
-#endif
-            {
-#ifdef HLRAD_NUDGE_VL
-				// HLRAD_NUDGE_VL: only pull when light is blocked AND point is outside face.
-				vec3_t			surf_nopull;
-				vec_t			us_nopull = us, ut_nopull = ut;
-				Winding			*wd = new Winding (*f);
-				int				j;
-				for (j = 0; j < wd->m_NumPoints; j++)
-				{
-					VectorAdd (wd->m_Points[j], face_delta, wd->m_Points[j]);
-				}
-#endif
-#ifdef HLRAD_SNAPTOWINDING
-				bool nudge_succeeded = false;
-				SetSurfFromST(l, surf, us, ut);
-				leaf_surf = HuntForWorld(surf, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET);
-				if (leaf_surf && point_in_winding_noedge (*wd, *p, surf, 1.0))
-				{
-					*pLuxelFlags = LightNormal;
-					nudge_succeeded = true;
-				}
-				else
-				{
-					SetSurfFromST(l, surf, us, ut);
-					snap_to_winding (*wd, *p, surf);
-					if (lightmode & eModelLightmodeConcave)
-					{
-						VectorScale (surf, 0.99, surf);
-						VectorMA (surf, 0.01, g_face_centroids[facenum], surf);
-					}
-					leaf_surf = HuntForWorld(surf, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET);
-					if (leaf_surf)
-					{
-						*pLuxelFlags = LightPulledInside;
-						nudge_succeeded = true;
-					}
-				}
-
-#else
-				// Pull the sample points towards the facemid if visibility is blocked
-				// and the facemid is inside the world
-	#ifdef HLRAD_NUDGE_SMALLSTEP
-				int             nudge_divisor = 4 * qmax(qmax(w, h), 4);
-	#else
-				int             nudge_divisor = qmax(qmax(w, h), 4);
-	#endif
-				int             max_nudge = nudge_divisor + 1;
-				bool            nudge_succeeded = false;
-
-				vec_t           nudge_s = (mids - us) / (vec_t)nudge_divisor;
-				vec_t           nudge_t = (midt - ut) / (vec_t)nudge_divisor;
-
-				// if a line can be traced from surf to facemid, the point is good
-				for (i = 0; i < max_nudge; i++)
-				{
-					// Make sure we are "in the world"(Not the zero leaf)
-	#ifndef HLRAD_NUDGE_VL
-					if (leaf_mid)
-					{
-	#endif
-						SetSurfFromST(l, surf, us, ut);
-						leaf_surf =
-							HuntForWorld(surf, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE,
-										 DEFAULT_HUNT_OFFSET);
-
-						if (leaf_surf)
-						{
-	#ifdef HLRAD_NUDGE_VL
-							if (point_in_winding_noedge (*wd, *p, surf, 1.0))
-							{
-	#else
-							if (TestLine(surface_midpoint, surf) == CONTENTS_EMPTY)
-							{
-								if (lightmode & eModelLightmodeConcave)
-								{
-		#ifdef HLRAD_HULLU
-									vec3_t transparency = { 1.0, 1.0, 1.0 };
-		#endif
-		#ifdef HLRAD_OPAQUE_STYLE
-									int opaquestyle;
-		#endif
-									if (TestSegmentAgainstOpaqueList(surface_midpoint, surf
-		#ifdef HLRAD_HULLU
-										, transparency
-		#endif
-		#ifdef HLRAD_OPAQUE_STYLE
-										, opaquestyle
-		#endif
-										)
-		#ifdef HLRAD_OPAQUE_STYLE
-										|| opaquestyle != -1
-		#endif
-										)
-									{
-										Log("SDF::4\n");
-										us += nudge_s;
-										ut += nudge_t;
-										continue;   // Try nudge again, we hit an opaque face
-									}
-								}
-	#endif
-								if (i)
-								{
-									*pLuxelFlags = LightPulledInside;
-								}
-								else
-								{
-									*pLuxelFlags = LightNormal;
-								}
-								nudge_succeeded = true;
-								break;
-							}
-						}
-	#ifndef HLRAD_NUDGE_VL
-					}
-					else
-					{
-						leaf_surf = PointInLeaf(surf);
-						if (leaf_surf != g_dleafs)
-						{
-							if ((leaf_surf->contents != CONTENTS_SKY) && (leaf_surf->contents != CONTENTS_SOLID))
-							{
-								*pLuxelFlags = LightNormal;
-								nudge_succeeded = true;
-								break;
-							}
-						}
-					}
-	#endif
-
-					us += nudge_s;
-					ut += nudge_t;
-				}
-#endif /*HLRAD_SNAPTOWINDING*/
-
-                if (!nudge_succeeded)
-                {
-                    SetSurfFromST(l, surf, original_s, original_t);
-                    *pLuxelFlags = LightOutside;
-                }
-#ifdef HLRAD_NUDGE_VL
-				delete wd;
-				if (*pLuxelFlags == LightPulledInside)
-				{
-					SetSurfFromST(l, surf_nopull, us_nopull, ut_nopull);
-					leaf_surf =
-						HuntForWorld(surf_nopull, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE,
-							DEFAULT_HUNT_OFFSET);
-					if (leaf_surf)
-					{
-						if (TestLine(surf, surf_nopull) == CONTENTS_EMPTY)
-						{
-#ifdef HLRAD_HULLU
-							vec3_t transparency = { 1.0, 1.0, 1.0 };
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
-							int opaquestyle;
-#endif
-							if (!TestSegmentAgainstOpaqueList(surf, surf_nopull
-#ifdef HLRAD_HULLU
-								, transparency
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
-								, opaquestyle
-#endif
-								)
-#ifdef HLRAD_OPAQUE_STYLE
-								&& opaquestyle == -1
-#endif
-								)
-							{
-								*pLuxelFlags = LightNormal;
-								VectorCopy (surf_nopull, surf);
-							}
-						}
-					}
-				}
-#endif
-            }
-        }
-    }
-
-    // 2nd Pass, find units that are not lit and try to move them one half or unit worth 
-    // in each direction and see if that is lit.
-    // This handles 1 x N lightmaps which are all dark everywhere and have no frame of refernece
-    // for a good center or directly lit areas
-    surf = l->surfpt[0];
-    pLuxelFlags = LuxelFlags;
-#if 0
-    Developer(DEVELOPER_LEVEL_SPAM,
-              "w (%d) h (%d) dim (%d) leafmid (%4.3f %4.3f %4.3f) plane normal (%4.3f) (%4.3f) (%4.3f) dist (%f)\n", w,
-              h, w * h, surface_midpoint[0], surface_midpoint[1], surface_midpoint[2], p->normal[0], p->normal[1],
-              p->normal[2], p->dist);
-#endif
-    {
-        int             total_dark = 0;
-        int             total_adjusted = 0;
-
-        for (t = 0; t < h; t++)
-        {
-            for (s = 0; s < w; s++, surf += 3, pLuxelFlags++)
-            {
-                if (!*pLuxelFlags)
-                {
-#if 0
-                    Developer(DEVELOPER_LEVEL_FLUFF, "Dark (%d %d) (%4.3f %4.3f %4.3f)\n",
-                              s, t, surf[0], surf[1], surf[2]);
-#endif
-                    total_dark++;
-                    if (HuntForWorld(surf, face_delta, p, DEFAULT_HUNT_SIZE, DEFAULT_HUNT_SCALE, DEFAULT_HUNT_OFFSET))
-                    {
-#if 0
-                        Developer(DEVELOPER_LEVEL_FLUFF, "Shifted %d %d to (%4.3f %4.3f %4.3f)\n", s, t, surf[0],
-                                  surf[1], surf[2]);
-#endif
-                        *pLuxelFlags = LightShifted;
-                        total_adjusted++;
-                    }
-                    else if (HuntForWorld(surf, face_delta, p, 101, 0.5, DEFAULT_HUNT_OFFSET))
-                    {
-#if 0
-                        Developer(DEVELOPER_LEVEL_FLUFF, "Shifted %d %d to (%4.3f %4.3f %4.3f)\n", s, t, surf[0],
-                                  surf[1], surf[2]);
-#endif
-                        *pLuxelFlags = LightShifted;
-                        total_adjusted++;
-                    }
-                }
-            }
-        }
-#if 0
-        if (total_dark)
-        {
-            Developer(DEVELOPER_LEVEL_FLUFF, "Pass 2 : %d dark, %d corrected\n", total_dark, total_adjusted);
-        }
-#endif
-    }
-
-    // 3rd Pass, find units that are not lit and move them towards neighbhors who are
-    // Currently finds the first lit neighbhor and uses its data
-    surf = l->surfpt[0];
-    pLuxelFlags = LuxelFlags;
-    {
-        int             total_dark = 0;
-        int             total_adjusted = 0;
-
-        for (t = 0; t < h; t++)
-        {
-            for (s = 0; s < w; s++, surf += 3, pLuxelFlags++)
-            {
-                if (!*pLuxelFlags)
-                {
-                    int             x_min = qmax(0, s - 1);
-                    int             x_max = qmin(w, s + 1);
-                    int             y_min = qmax(0, t - 1);
-                    int             y_max = qmin(t, t + 1);
-
-                    int             x, y;
-
-#if 0
-                    Developer(DEVELOPER_LEVEL_FLUFF, "Point outside (%d %d) (%4.3f %4.3f %4.3f)\n",
-                              s, t, surf[0], surf[1], surf[2]);
-#endif
-
-                    total_dark++;
-
-                    for (x = x_min; x < x_max; x++)
-                    {
-                        for (y = y_min; y < y_max; y++)
-                        {
-                            if (*pLuxelFlags >= LightNormal)
-                            {
-                                dleaf_t*        leaf;
-                                vec_t*          other_surf = l->surfpt[0];
-
-                                other_surf += ((y * w) + x) * 3;
-
-                                leaf = PointInLeaf(other_surf);
-                                if ((leaf->contents != CONTENTS_SKY && leaf->contents != CONTENTS_SOLID))
-                                {
-                                    *pLuxelFlags = LightShiftedInside;
-#if 0
-                                    Developer(DEVELOPER_LEVEL_MESSAGE,
-                                              "Nudged (%d %d) (%4.3f %4.3f %4.3f) to (%d %d) (%4.3f %4.3f %4.3f) \n",
-                                              s, t, surf[0], surf[1], surf[2], x, y, other_surf[0], other_surf[1],
-                                              other_surf[2]);
-#endif
-                                    VectorCopy(other_surf, surf);
-                                    total_adjusted++;
-                                    goto found_it;
-                                }
-                            }
-                        }
-                    }
-                }
-              found_it:;
-            }
-        }
-#if 0
-        if (total_dark)
-        {
-            Developer(DEVELOPER_LEVEL_FLUFF, "Pass 2 : %d dark, %d corrected\n", total_dark, total_adjusted);
-        }
-#endif
-    }
-}
-#endif /*HLRAD_CalcPoints_NEW*/
 
 //==============================================================
 
@@ -2778,14 +1592,7 @@ typedef struct
 {
     vec3_t          pos;
     vec3_t          light;
-#ifdef HLRAD_GROWSAMPLE
 	int				surface; // this sample can grow into another face
-#endif
-#ifdef ZHLT_XASH
-	// this increases the maximum (at 100% AllocBlock, 4 light styles) possible usage of memory of all light samples from 100MB to 200MB
-	vec3_t			light_direction; // sum of light direction * light contribution (rgb averaged)
-	vec3_t			normal; // phong normal
-#endif
 }
 sample_t;
 
@@ -2800,11 +1607,9 @@ static directlight_t* directlights[MAX_MAP_LEAFS];
 static facelight_t facelight[MAX_MAP_FACES];
 static int      numdlights;
 
-#ifndef HLRAD_REFLECTIVITY
-#define	DIRECT_SCALE	0.1f
-#endif
 extern bool g_nightmode;
 extern bool g_daylightreturnmode;
+
 // =====================================================================================
 //  CreateDirectLights
 // =====================================================================================
@@ -2822,26 +1627,18 @@ void            CreateDirectLights()
     float           angle;
     vec3_t          dest;
 
-#ifndef HLRAD_CUSTOMTEXLIGHT
-    // AJM: coplaner lighting
-    vec3_t          temp_normal;
-#endif
 
     numdlights = 0;
-#ifdef HLRAD_STYLEREPORT
 	int styleused[ALLSTYLES];
 	memset (styleused, 0, ALLSTYLES * sizeof(styleused[0]));
 	styleused[0] = true;
 	int numstyles = 1;
-#endif
 
     //
     // surfaces
     //
     for (i = 0, p = g_patches; i < g_num_patches; i++, p++)
     {
-#ifdef ZHLT_TEXLIGHT
-#ifdef HLRAD_STYLEREPORT
 		if (p->emitstyle >= 0 && p->emitstyle < ALLSTYLES)
 		{
 			if (styleused[p->emitstyle] == false)
@@ -2850,88 +1647,49 @@ void            CreateDirectLights()
 				numstyles++;
 			}
 		}
-#endif
         if (
-	#ifdef HLRAD_REFLECTIVITY
 			DotProduct (p->baselight, p->texturereflectivity) / 3
-	#else
-			VectorAvg(p->baselight)
-	#endif
-	#ifdef HLRAD_TEXLIGHTTHRESHOLD_FIX
 			> 0.0
-	#else
-			>= g_dlight_threshold
-	#endif
-	#ifdef HLRAD_CUSTOMTEXLIGHT
 			&& !(g_face_texlights[p->faceNumber]
 				&& *ValueForKey (g_face_texlights[p->faceNumber], "_scale")
 				&& FloatForKey (g_face_texlights[p->faceNumber], "_scale") <= 0)
-	#endif
 			) //LRC
-#else
-        if (
-	#ifdef HLRAD_REFLECTIVITY
-			DotProduct (p->totallight, p->texturereflectivity) / 3
-	#else
-			VectorAvg(p->totallight)
-	#endif
-			>= g_dlight_threshold
-			)
-#endif
         {
             numdlights++;
             dl = (directlight_t*)calloc(1, sizeof(directlight_t));
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 			hlassume (dl != NULL, assume_NoMemory);
-#endif
 
             VectorCopy(p->origin, dl->origin);
 
             leaf = PointInLeaf(dl->origin);
             leafnum = leaf - g_dleafs;
 
-			if(g_face_texlights[p->faceNumber])
+			if (g_face_texlights[p->faceNumber])
 				dl->pentity = g_face_texlights[p->faceNumber];
 			else
 				dl->pentity = NULL;
 
             dl->next = directlights[leafnum];
             directlights[leafnum] = dl;
-#ifdef ZHLT_TEXLIGHT
             dl->style = p->emitstyle; //LRC
-#endif
-#ifdef HLRAD_GatherPatchLight
 			dl->topatch = false;
-	#ifdef HLRAD_TEXLIGHTTHRESHOLD_FIX
 			if (!p->emitmode)
 			{
 				dl->topatch = true;
 			}
-	#endif
-#ifdef HLRAD_FASTMODE
 			if (g_fastmode)
 			{
 				dl->topatch = true;
 			}
-#endif
-#endif
-#ifdef HLRAD_TEXLIGHT_SPOTS_FIX
 			dl->patch_area = p->area;
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
 			dl->patch_emitter_range = p->emitter_range;
 			dl->patch = p;
-	#endif
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
 			dl->texlightgap = g_texlightgap;
-#ifdef HLRAD_CUSTOMTEXLIGHT
 			if (g_face_texlights[p->faceNumber] && *ValueForKey (g_face_texlights[p->faceNumber], "_texlightgap"))
 			{
 				dl->texlightgap = FloatForKey (g_face_texlights[p->faceNumber], "_texlightgap");
 			}
-#endif
-#endif
-#ifdef HLRAD_CUSTOMTEXLIGHT
 			dl->stopdot = 0.0;
 			dl->stopdot2 = 0.0;
 			if (g_face_texlights[p->faceNumber])
@@ -2949,16 +1707,10 @@ void            CreateDirectLights()
 				if (dl->stopdot2 > dl->stopdot)
 					dl->stopdot2 = dl->stopdot;
 			}
-#endif
 
             dl->type = emit_surface;
             VectorCopy(getPlaneFromFaceNumber(p->faceNumber)->normal, dl->normal);
-#ifdef ZHLT_TEXLIGHT
             VectorCopy(p->baselight, dl->intensity); //LRC
-#else
-            VectorCopy(p->totallight, dl->intensity);
-#endif
-#ifdef HLRAD_CUSTOMTEXLIGHT
 			if (g_face_texlights[p->faceNumber])
 			{
 				if (*ValueForKey (g_face_texlights[p->faceNumber], "_scale"))
@@ -2967,19 +1719,11 @@ void            CreateDirectLights()
 					VectorScale (dl->intensity, scale, dl->intensity);
 				}
 			}
-#endif
             VectorScale(dl->intensity, p->area, dl->intensity);
-#ifdef HLRAD_ACCURATEBOUNCE_REDUCEAREA
 			VectorScale (dl->intensity, p->exposure, dl->intensity);
-#endif
-#ifdef HLRAD_REFLECTIVITY
 			VectorScale (dl->intensity, 1.0 / Q_PI, dl->intensity);
 			VectorMultiply (dl->intensity, p->texturereflectivity, dl->intensity);
-#else
-            VectorScale(dl->intensity, DIRECT_SCALE, dl->intensity);
-#endif
         
-#ifdef HLRAD_WATERBACKFACE_FIX
 			dface_t *f = &g_dfaces[p->faceNumber];
 			if (g_face_entity[p->faceNumber] - g_entities != 0 && !strncasecmp (GetTextureByNumber (f->texinfo), "!", 1))
 			{
@@ -2995,92 +1739,9 @@ void            CreateDirectLights()
 				dl2->next = directlights[leafnum];
 				directlights[leafnum] = dl2;
 			}
-#endif
-#ifndef HLRAD_CUSTOMTEXLIGHT // no softlight hack
-        	// --------------------------------------------------------------
-	        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-	        // mazemaster's l33t backwards lighting (I still haven't a clue
-	        // what it's supposed to be for) :-)
-#ifdef HLRAD_WHOME
-
-	        if (g_softlight_hack[0] || g_softlight_hack[1] || g_softlight_hack[2]) 
-            {
-		        numdlights++;
-		        dl = (directlight_t *) calloc(1, sizeof(directlight_t));
-#ifdef HLRAD_HLASSUMENOMEMORY
-				hlassume (dl != NULL, assume_NoMemory);
-#endif
-
-		        VectorCopy(p->origin, dl->origin);
-
-		        leaf = PointInLeaf(dl->origin);
-		        leafnum = leaf - g_dleafs;
-
-		        dl->next = directlights[leafnum];
-		        directlights[leafnum] = dl;
-
-#ifdef HLRAD_GatherPatchLight
-				dl->topatch = false;
-	#ifdef HLRAD_TEXLIGHTTHRESHOLD_FIX
-				if (!p->emitmode)
-				{
-					dl->topatch = true;
-				}
-	#endif
-#ifdef HLRAD_FASTMODE
-				if (g_fastmode)
-				{
-					dl->topatch = true;
-				}
-#endif
-#endif
-#ifdef HLRAD_TEXLIGHT_SPOTS_FIX
-				dl->patch_area = p->area;
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-				dl->patch_emitter_range = p->emitter_range;
-				dl->patch = p;
-	#endif
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
-				dl->texlightgap = 0;
-#endif
-		        dl->type = emit_surface;
-		        VectorCopy(getPlaneFromFaceNumber(p->faceNumber)->normal, dl->normal);
-		        VectorScale(dl->normal, g_softlight_hack_distance, temp_normal);
-		        VectorAdd(dl->origin, temp_normal, dl->origin);
-		        VectorScale(dl->normal, -1, dl->normal);
-
-#ifdef ZHLT_TEXLIGHT
-                VectorCopy(p->baselight, dl->intensity); //LRC
-#else
-		        VectorCopy(p->totallight, dl->intensity);
-#endif
-		        VectorScale(dl->intensity, p->area, dl->intensity);
-#ifdef HLRAD_ACCURATEBOUNCE_REDUCEAREA
-				VectorScale (dl->intensity, p->exposure, dl->intensity);
-#endif
-#ifdef HLRAD_REFLECTIVITY
-				VectorScale (dl->intensity, 1.0 / Q_PI, dl->intensity);
-				VectorMultiply (dl->intensity, p->texturereflectivity, dl->intensity);
-#else
-		        VectorScale(dl->intensity, DIRECT_SCALE, dl->intensity);
-#endif
-
-		        dl->intensity[0] *= g_softlight_hack[0];
-		        dl->intensity[1] *= g_softlight_hack[1];
-		        dl->intensity[2] *= g_softlight_hack[2];
-	        }
-
-#endif
-	        // --------------------------------------------------------------
-#endif
         }
 
-#ifdef ZHLT_TEXLIGHT
         //LRC        VectorClear(p->totallight[0]);
-#else
-        VectorClear(p->totallight);
-#endif
     }
 
     //
@@ -3095,15 +1756,17 @@ void            CreateDirectLights()
 
         e = &g_entities[i];
         name = ValueForKey(e, "classname");
-		if(g_nightmode)
+
+		if (g_nightmode)
 		{
-			if (strncmp(name, "light", 5) && strncmp(name, "night_light", 11))
+			if (strncmp(name, "light", 5) 
+				&& strncmp(name, "night_light", 11))
 				continue;
 
 			if (!strcmp(name, "light_environment"))
 			{
 				pLight = ValueForKey(e, "_light");
-				if(pLight)
+				if (pLight)
 				{
 					int ir, ig, ib;
 					argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
@@ -3113,7 +1776,7 @@ void            CreateDirectLights()
 				continue;
 			}
 		}
-		else if(g_daylightreturnmode)
+		else if (g_daylightreturnmode)
 		{
 			if (strncmp(name, "light", 5))
 				continue;
@@ -3121,10 +1784,10 @@ void            CreateDirectLights()
 			if (!strcmp(name, "light_environment"))
 			{
 				int value = IntForKey(e, "daylightreturn");
-				if(value != 1)
+				if (value != 1)
 				{
 					pLight = ValueForKey(e, "_light");
-					if(pLight)
+					if (pLight)
 					{
 						int ir, ig, ib;
 						argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
@@ -3140,11 +1803,11 @@ void            CreateDirectLights()
 			if (strncmp(name, "light", 5))
 				continue;
 
-			if (!strcmp(name, "light_environment") 
+			if (!strcmp(name, "light_environment")
 				&& IntForKey(e, "daylightreturn") == 1)
 			{
 				pLight = ValueForKey(e, "_light");
-				if(pLight)
+				if (pLight)
 				{
 					int ir, ig, ib;
 					argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
@@ -3155,40 +1818,30 @@ void            CreateDirectLights()
 			}
 		}
 
-        if (strncmp(name, "light", 5))
-            continue;
-#ifdef HLRAD_STYLE_CORING
 		{
 			int style = IntForKey (e, "style");
-	#ifdef ZHLT_TEXLIGHT
 			if (style < 0)
 			{
 				style = -style;
 			}
-	#endif
 			style = (unsigned char)style;
 			if (style > 0 && style < ALLSTYLES && *ValueForKey (e, "zhlt_stylecoring"))
 			{
 				g_corings[style] = FloatForKey (e, "zhlt_stylecoring");
 			}
 		}
-#endif
+
 		int style = 0;
-#ifdef HLRAD_OPAQUE_STYLE
+
 		if (!strcmp (name, "light_shadow")
-	#ifdef HLRAD_BOUNCE_STYLE
 			|| !strcmp (name, "light_bounce")
-	#endif
 			)
 		{
-#ifdef HLRAD_STYLEREPORT
-			style = IntForKey (e, "style");
-	#ifdef ZHLT_TEXLIGHT
+			style = IntForKey(e, "style");
 			if (style < 0)
 			{
 				style = -style;
 			}
-	#endif
 			style = (unsigned char)style;
 			if (style >= 0 && style < ALLSTYLES)
 			{
@@ -3198,32 +1851,27 @@ void            CreateDirectLights()
 					numstyles++;
 				}
 			}
-#endif
 			continue;
 		}
-#endif
 
 		if (g_bumpmaps && style)
 		{
 			const char* pstrname = ValueForKey(e, "targetname");
-			if(pstrname)
+			if (pstrname)
 				Log("Warning: light %s with style %d is deleted because of '-bumpmaps'\n", pstrname, style);
 
 			continue;
 		}
 
-#ifdef HLRAD_CUSTOMTEXLIGHT
 		if (!strcmp (name, "light_surface"))
 		{
 			continue;
 		}
-#endif
 
         numdlights++;
         dl = (directlight_t*)calloc(1, sizeof(directlight_t));
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 		hlassume (dl != NULL, assume_NoMemory);
-#endif
 
         GetVectorForKey(e, "origin", dl->origin);
 
@@ -3234,18 +1882,13 @@ void            CreateDirectLights()
         directlights[leafnum] = dl;
 
         dl->style = IntForKey(e, "style");
-#ifdef ZHLT_TEXLIGHT
         if (dl->style < 0) 
             dl->style = -dl->style; //LRC
-#endif
-#ifdef HLRAD_STYLE_CORING
 		dl->style = (unsigned char)dl->style;
 		if (dl->style >= ALLSTYLES)
 		{
 			Error ("invalid light style: style (%d) >= ALLSTYLES (%d)", dl->style, ALLSTYLES);
 		}
-#endif
-#ifdef HLRAD_STYLEREPORT
 		if (dl->style >= 0 && dl->style < ALLSTYLES)
 		{
 			if (styleused[dl->style] == false)
@@ -3254,20 +1897,15 @@ void            CreateDirectLights()
 				numstyles++;
 			}
 		}
-#endif
-#ifdef HLRAD_GatherPatchLight
 		dl->topatch = false;
 		if (IntForKey (e, "_fast") == 1)
 		{
 			dl->topatch = true;
 		}
-#ifdef HLRAD_FASTMODE
 		if (g_fastmode)
 		{
 			dl->topatch = true;
 		}
-#endif
-#endif
         pLight = ValueForKey(e, "_light");
         // scanf into doubles, then assign, so it is vec_t size independent
         r = g = b = scaler = 0;
@@ -3306,23 +1944,13 @@ void            CreateDirectLights()
             dl->fade = g_fade;
         }
 
-#ifndef HLRAD_ARG_MISC
-        dl->falloff = IntForKey(e, "_falloff");
-        if (dl->falloff == 0)
-        {
-            dl->falloff = g_falloff;
-        }
-#endif
 
         target = ValueForKey(e, "target");
 
-        if (!strcmp(name, "light_spot") || !strcmp(name, "night_light_spot") || !strcmp(name, "light_environment") || target[0])
-        {
+		if (!strcmp(name, "light_spot") || !strcmp(name, "night_light_spot") || !strcmp(name, "light_environment") || target[0])
+		{
             if (!VectorAvg(dl->intensity))
             {
-#ifndef HLRAD_ALLOWZEROBRIGHTNESS
-                VectorFill(dl->intensity, 500);
-#endif
             }
             dl->type = emit_spotlight;
             dl->stopdot = FloatForKey(e, "_cone");
@@ -3414,7 +2042,6 @@ void            CreateDirectLights()
 				//
 				// What does _sky do for spotlights, anyway?
 				// -----------------------------------------------------------------------------------
-#ifdef HLRAD_WHOME
 				pLight = ValueForKey(e, "_diffuse_light");
         		r = g = b = scaler = 0;
         		argCnt = sscanf(pLight, "%lf %lf %lf %lf", &r, &g, &b, &scaler);
@@ -3447,9 +2074,7 @@ void            CreateDirectLights()
 					dl->diffuse_intensity[1] = dl->intensity[1];
 					dl->diffuse_intensity[2] = dl->intensity[2];
         		}
-#endif
 				// -----------------------------------------------------------------------------------
-#ifdef HLRAD_SUNDIFFUSE
 				pLight = ValueForKey(e, "_diffuse_light2");
         		r = g = b = scaler = 0;
         		argCnt = sscanf(pLight, "%lf %lf %lf %lf", &r, &g, &b, &scaler);
@@ -3480,11 +2105,9 @@ void            CreateDirectLights()
 					dl->diffuse_intensity2[1] = dl->diffuse_intensity[1];
 					dl->diffuse_intensity2[2] = dl->diffuse_intensity[2];
         		}
-#endif
 
                 dl->type = emit_skylight;
                 dl->stopdot2 = FloatForKey(e, "_sky");     // hack stopdot2 to a sky key number
-#ifdef HLRAD_SUNSPREAD
 				dl->sunspreadangle = FloatForKey (e, "_spread");
 				if (!g_allow_spread)
 				{
@@ -3567,16 +2190,12 @@ void            CreateDirectLights()
 					VectorCopy (dl->normal, dl->sunnormals[0]);
 					dl->sunnormalweights[0] = 1.0;
 				}
-#endif
             }
         }
         else
         {
             if (!VectorAvg(dl->intensity))
 			{
-#ifndef HLRAD_ALLOWZEROBRIGHTNESS
-                VectorFill(dl->intensity, 300);
-#endif
 			}
             dl->type = emit_point;
         }
@@ -3593,18 +2212,10 @@ void            CreateDirectLights()
         }
     }
 
-#ifndef HLRAD_ALLOWZEROBRIGHTNESS
-    hlassume(numdlights, assume_NoLights);
-#endif
-#ifdef HLRAD_GatherPatchLight
 	int countnormallights = 0, countfastlights = 0;
 	{
 		int l;
-	#ifdef HLRAD_VIS_FIX
 		for (l = 0; l < 1 + g_dmodels[0].visleafs; l++)
-	#else
-	    for (l = 0; l < g_numleafs; l++)
-	#endif
 		{
 			for (dl = directlights[l]; dl; dl = dl->next)
 			{
@@ -3631,48 +2242,32 @@ void            CreateDirectLights()
 						if (dl->topatch)
 						{
 							countfastlights++;
-#ifdef HLRAD_SUNSPREAD
 							if (dl->sunspreadangle > 0.0)
 							{
 								countfastlights--;
 								countfastlights += dl->numsunnormals;
 							}
-#endif
 						}
 						else
 						{
 							countnormallights++;
-#ifdef HLRAD_SUNSPREAD
 							if (dl->sunspreadangle > 0.0)
 							{
 								countnormallights--;
 								countnormallights += dl->numsunnormals;
 							}
-#endif
 						}
 					}
-			#ifdef HLRAD_WHOME
 					if (g_indirect_sun > 0 && !VectorCompare (dl->diffuse_intensity, vec3_origin))
-			#else
-					if (g_indirect_sun > 0 && !VectorCompare (dl->intensity, vec3_origin))
-			#endif
 					{
-			#ifdef HLRAD_SOFTSKY
 						if (g_softsky)
 						{
 							countfastlights += g_numskynormals[SKYLEVEL_SOFTSKYON];
 						}
 						else
 						{
-			#ifdef HLRAD_FASTMODE
 							countfastlights += g_numskynormals[SKYLEVEL_SOFTSKYOFF];
-			#else
-							countnormallights += g_numskynormals[SKYLEVEL_SOFTSKYOFF];
-			#endif
 						}
-			#else
-						countnormallights += 162; //NUMVERTEXNORMALS
-			#endif
 					}
 					break;
 				default:
@@ -3683,23 +2278,13 @@ void            CreateDirectLights()
 		}
 	}
     Log("%i direct lights and %i fast direct lights\n", countnormallights, countfastlights);
-#else
-    Log("%i direct lights\n", numdlights);
-#endif
-#ifdef HLRAD_STYLEREPORT
 	Log("%i light styles\n", numstyles);
-#endif
-#ifdef HLRAD_SKYFIX_FIX
 	// move all emit_skylight to leaf 0 (the solid leaf)
 	if (g_sky_lighting_fix)
 	{
 		directlight_t *skylights = NULL;
 		int l;
-	#ifdef HLRAD_VIS_FIX
 		for (l = 0; l < 1 + g_dmodels[0].visleafs; l++)
-	#else
-	    for (l = 0; l < g_numleafs; l++)
-	#endif
 		{
 			directlight_t **pdl;
 			for (dl = directlights[l], pdl = &directlights[l]; dl; dl = *pdl)
@@ -3724,9 +2309,6 @@ void            CreateDirectLights()
         }
 		directlights[0] = skylights;
 	}
-#endif
-#ifdef ZHLT_ENTITY_INFOSUNLIGHT
-#ifdef HLRAD_MULTISKYLIGHT
 	if (g_sky_lighting_fix)
 	{
 		int countlightenvironment = 0;
@@ -3737,9 +2319,9 @@ void            CreateDirectLights()
 			const char *classname = ValueForKey (e, "classname");
 			if (!strcmp (classname, "light_environment"))
 			{
-				if(!g_nightmode)
+				if (!g_nightmode)
 				{
-					if(g_daylightreturnmode && IntForKey(e, "daylightreturn") == 1 || !g_daylightreturnmode && IntForKey(e, "daylightreturn") != 1)
+					if (g_daylightreturnmode && IntForKey(e, "daylightreturn") == 1 || !g_daylightreturnmode && IntForKey(e, "daylightreturn") != 1)
 						countlightenvironment++;
 				}
 			}
@@ -3754,8 +2336,6 @@ void            CreateDirectLights()
 			Warning ("More than one light_environments are in use. Add entity info_sunlight to clarify the sunlight's brightness for in-game model(.mdl) rendering.");
 		}
 	}
-#endif
-#endif
 }
 
 // =====================================================================================
@@ -3766,11 +2346,7 @@ void            DeleteDirectLights()
     int             l;
     directlight_t*  dl;
 
-#ifdef HLRAD_VIS_FIX
 	for (l = 0; l < 1 + g_dmodels[0].visleafs; l++)
-#else
-    for (l = 0; l < g_numleafs; l++)
-#endif
     {
         dl = directlights[l];
         while (dl)
@@ -3792,25 +2368,6 @@ void            DeleteDirectLights()
 //  GatherSampleLight
 // =====================================================================================
 
-enum {
-	BUMP_BASELIGHT_STYLE	= 61,
-	BUMP_ADDLIGHT_STYLE		= 62,
-	BUMP_LIGHTVECS_STYLE	= 63,
-
-	DEFAULT_MAP				= 0,
-	BUMP_BASELIGHT_MAP		= 1,
-	BUMP_ADDLIGHT_MAP		= 3,
-	BUMP_LIGHTVECS_MAP		= 2,
-};
-
-#ifndef HLRAD_SOFTSKY
-#define NUMVERTEXNORMALS	162
-double          r_avertexnormals[NUMVERTEXNORMALS][3] = {
-//#include "../common/anorms.h"
-	#include "anorms.h" //--vluzacn
-};
-#endif
-#ifdef HLRAD_SOFTSKY
 int		g_numskynormals[SKYLEVELMAX+1];
 vec3_t	*g_skynormals[SKYLEVELMAX+1];
 vec_t	*g_skynormalsizes[SKYLEVELMAX+1];
@@ -3972,885 +2529,89 @@ void BuildDiffuseNormals ()
 	free (edges);
 	free (triangles);
 }
-#endif
-static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
-#ifdef ZHLT_XASH
-								  , vec3_t* sample_direction
-#endif
-								  , byte* styles
-#ifdef HLRAD_GatherPatchLight
-								  , int step
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
-								  , int miptex
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
-								  , int texlightgap_surfacenum
-#endif
-								  )
+
+static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, const byte* const pvs, const vec3_t normal, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* ptexlightgap_textoworld, bool bumpinfopass)
 {
-    int             i;
-    directlight_t*  l;
-#ifndef HLRAD_OPAQUE_STYLE
-    vec3_t          add;
-#ifdef ZHLT_XASH
-	vec3_t			add_direction;
-#endif
-#endif // now we always add the light into the total brightness of this sample immediately after each TestLine, because each TestLine may result in different style.
-    vec3_t          delta;
+	vec3_t			add_one_ambient, add_one_diffuse;
+	vec3_t          delta, delta_bump;
+
     float           dot, dot2;
     float           dist;
-    float           ratio;
-#ifdef HLRAD_OPACITY // AJM
-    float           l_opacity;
-#endif
-    int             style_index;
-#ifdef HLRAD_GatherPatchLight
+	float           ratio, ratio_bump;
+
 	int				step_match;
-#endif
-#ifdef HLRAD_MULTISKYLIGHT
 	bool			sky_used = false;
-#else
-    directlight_t*  sky_used = NULL;
-#endif
-#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
 	vec3_t			testline_origin;
-#endif
-#ifdef HLRAD_STYLE_CORING
-	vec3_t			adds[ALLSTYLES];
-#ifdef ZHLT_XASH
-	vec3_t			adds_direction[ALLSTYLES];
-#endif
 	int				style;
-	memset (adds, 0, ALLSTYLES * sizeof(vec3_t));
-#ifdef ZHLT_XASH
-	memset (adds_direction, 0, ALLSTYLES * sizeof (vec3_t));
-#endif
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
 	bool			lighting_diversify;
 	vec_t			lighting_power;
 	vec_t			lighting_scale;
 	lighting_power = g_lightingconeinfo[miptex][0];
 	lighting_scale = g_lightingconeinfo[miptex][1];
 	lighting_diversify = (lighting_power != 1.0 || lighting_scale != 1.0);
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
-	vec3_t			texlightgap_textoworld[2];
-	// calculates textoworld
-	{
-		dface_t *f = &g_dfaces[texlightgap_surfacenum];
-		const dplane_t *dp = getPlaneFromFace (f);
-		texinfo_t *tex = &g_texinfo[f->texinfo];
-		int x;
-		vec_t len;
 
-		for (x = 0; x < 2; x++)
-		{
-			CrossProduct (tex->vecs[1 - x], dp->normal, texlightgap_textoworld[x]);
-			len = DotProduct (texlightgap_textoworld[x], tex->vecs[x]);
-			if (fabs (len) < NORMAL_EPSILON)
-			{
-				VectorClear (texlightgap_textoworld[x]);
-			}
-			else
-			{
-				VectorScale (texlightgap_textoworld[x], 1 / len, texlightgap_textoworld[x]);
-			}
-		}
-	}
-#endif
+	VectorClear(add_one_ambient);
+	VectorClear(add_one_diffuse);
+	VectorClear(delta);
+	VectorClear(delta_bump);
 
-#ifdef HLRAD_SKYFIX_FIX
-#ifdef HLRAD_VIS_FIX
-    for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
-#else
-    for (i = 0; i < g_numleafs; i++)
-#endif
-#else
-#ifdef HLRAD_VIS_FIX
-    for (i = 1; i < 1 + g_dmodels[0].visleafs; i++)
-#else
-    for (i = 1; i < g_numleafs; i++)
-#endif
-#endif
+    // skylights work fundamentally differently than normal lights
+    if (l->type == emit_skylight)
     {
-        l = directlights[i];
-#ifdef HLRAD_SKYFIX_FIX
-        if (l)
+		if (!g_sky_lighting_fix)
 		{
-            if (i == 0? g_sky_lighting_fix: pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
-            {
-                for (; l; l = l->next)
-                {
-#else
-        if (l)
-        {
-            if (((l->type == emit_skylight) && (g_sky_lighting_fix)) || (pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
-            {
-                for (; l; l = l->next)
-                {
-#endif
-                    // skylights work fundamentally differently than normal lights
-                    if (l->type == emit_skylight)
-                    {
-#ifdef HLRAD_MULTISKYLIGHT
-						if (!g_sky_lighting_fix)
-						{
-							if (sky_used)
-							{
-								continue;
-							}
-							sky_used = true;
-						}
-#ifndef HLRAD_OPAQUE_STYLE
-						VectorClear (add);
-#endif
-						do // add sun light
-						{
-#ifdef HLRAD_GatherPatchLight
-							// check step
-							step_match = (int)l->topatch;
-							if (step != step_match)
-								continue;
-#endif
-#ifdef HLRAD_ALLOWZEROBRIGHTNESS
-							// check intensity
-							if (!(l->intensity[0] || l->intensity[1] || l->intensity[2]))
-								continue;
-#endif
-#ifdef HLRAD_SUNSPREAD
-						  // loop over the normals
-						  for (int j = 0; j < l->numsunnormals; j++)
-						  {
-#endif
-							// make sure the angle is okay
-	#ifdef HLRAD_SUNSPREAD
-							dot = -DotProduct (normal, l->sunnormals[j]);
-	#else
-							dot = -DotProduct (normal, l->normal);
-	#endif
-							if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-							{
-								continue;
-							}
+			if (sky_used)
+				return;
 
-							// search back to see if we can hit a sky brush
-	#ifdef HLRAD_SUNSPREAD
-	#ifdef ZHLT_LARGERANGE
-							VectorScale (l->sunnormals[j], -BOGUS_RANGE, delta);
-	#else
-							VectorScale (l->sunnormals[j], -10000, delta);
-	#endif
-	#else
-	#ifdef ZHLT_LARGERANGE
-							VectorScale (l->normal, -BOGUS_RANGE, delta);
-	#else
-							VectorScale (l->normal, -10000, delta);
-	#endif
-	#endif
-							VectorAdd(pos, delta, delta);
-	#ifdef HLRAD_OPAQUEINSKY_FIX
-							vec3_t skyhit;
-							VectorCopy (delta, skyhit);
-	#endif
-							if (TestLine(pos, delta
-	#ifdef HLRAD_OPAQUEINSKY_FIX
-								, skyhit
-	#endif
-								) != CONTENTS_SKY)
-							{
-								continue;                      // occluded
-							}
+			sky_used = true;
+		}
 
-	#ifdef HLRAD_HULLU
-							vec3_t transparency;
-	#endif
-	#ifdef HLRAD_OPAQUE_STYLE
-							int opaquestyle;
-	#endif
-							if (TestSegmentAgainstOpaqueList(pos, 
-	#ifdef HLRAD_OPAQUEINSKY_FIX
-								skyhit
-	#else
-								delta
-	#endif
-	#ifdef HLRAD_HULLU
-								, transparency
-	#endif
-	#ifdef HLRAD_OPAQUE_STYLE
-								, opaquestyle
-	#endif
-								))
-							{
-								continue;
-							}
+		do // add sun light
+		{
+			// check step
+			step_match = (int)l->topatch;
+			if (step != step_match)
+				continue;
 
-		#ifdef ZHLT_XASH
-							vec3_t direction;
-			#ifdef HLRAD_SUNSPREAD
-							VectorCopy (l->sunnormals[j], direction);
-			#else
-							VectorCopy (l->normal, direction);
-			#endif
-		#endif
-							vec3_t add_one;
-	#ifdef HLRAD_DIVERSE_LIGHTING
-							if (lighting_diversify)
-							{
-								dot = lighting_scale * pow (dot, lighting_power);
-							}
-	#endif
-	#ifdef HLRAD_SUNSPREAD
-							VectorScale (l->intensity, dot * l->sunnormalweights[j], add_one);
-	#else
-							VectorScale(l->intensity, dot, add_one);
-	#endif
-	#ifdef HLRAD_HULLU
-							VectorMultiply(add_one, transparency, add_one);
-	#endif
-	#ifdef HLRAD_OPAQUE_STYLE
-							// add to the total brightness of this sample
-							style = l->style;
-							if (opaquestyle != -1)
-							{
-								if (style == 0 || style == opaquestyle)
-									style = opaquestyle;
-								else
-									continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-							}
-							VectorAdd (adds[style], add_one, adds[style]);
-		#ifdef ZHLT_XASH
-							vec_t avg = VectorAvg (add_one);
-							VectorMA (adds_direction[style], avg, direction, adds_direction[style]);
-		#endif
-	#else
-							// add to the contribution of this light
-							VectorAdd (add, add_one, add);
-		#ifdef ZHLT_XASH
-							vec_t avg = VectorAvg (add_one);
-							VectorMA (add_direction, avg, direction, add_direction);
-		#endif
-	#endif
-#ifdef HLRAD_SUNSPREAD
-						  } // (loop over the normals)
-#endif
-						}
-						while (0);
-						do // add sky light
-						{
-#ifdef HLRAD_GatherPatchLight
-							// check step
-							step_match = 0;
-	#ifdef HLRAD_SOFTSKY
-							if (g_softsky)
-								step_match = 1;
-	#endif
-	#ifdef HLRAD_FASTMODE
-							if (g_fastmode)
-								step_match = 1;
-	#endif
-							if (step != step_match)
-								continue;
-#endif
-							// check intensity
-							if (g_indirect_sun <= 0.0 ||
-								VectorCompare (
-	#ifdef HLRAD_WHOME
-									l->diffuse_intensity,
-	#else
-									l->intensity,
-	#endif
-									vec3_origin)
-	#ifdef HLRAD_SUNDIFFUSE
-								&& VectorCompare (l->diffuse_intensity2, vec3_origin)
-	#endif
-								)
-								continue;
+			// check intensity
+			if (!(l->intensity[0] || l->intensity[1] || l->intensity[2]))
+				continue;
 
-							vec3_t sky_intensity;
-	#ifndef HLRAD_SUNDIFFUSE
-	#ifndef HLRAD_SOFTSKY
-	#ifdef HLRAD_WHOME
-							VectorScale (l->diffuse_intensity, g_indirect_sun / (NUMVERTEXNORMALS * 2), sky_intensity);
-	#else
-							VectorScale (l->intensity, g_indirect_sun / (NUMVERTEXNORMALS * 2), sky_intensity);
-	#endif
-	#endif
-	#endif
+			// loop over the normals
+			for (int j = 0; j < l->numsunnormals; j++)
+			{
+				// make sure the angle is okay
+				dot = -DotProduct (normal, l->sunnormals[j]);
+				if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
+					continue;
 
-							// loop over the normals
-	#ifdef HLRAD_SOFTSKY
-							vec3_t *skynormals = g_skynormals[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
-							vec_t *skyweights = g_skynormalsizes[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
-							for (int j = 0; j < g_numskynormals[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF]; j++)
-	#else
-							for (int j = 0; j < NUMVERTEXNORMALS; j++)
-	#endif
-							{
-								// make sure the angle is okay
-					#ifdef HLRAD_SOFTSKY
-								dot = -DotProduct (normal, skynormals[j]);
-					#else
-								dot = -DotProduct (normal, r_avertexnormals[j]);
-					#endif
-								if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-								{
-									continue;
-								}
+				// search back to see if we can hit a sky brush
+				VectorScale (l->sunnormals[j], -BOGUS_RANGE, delta);
+				VectorAdd(pos, delta, delta);
+				vec3_t skyhit;
+				VectorCopy (delta, skyhit);
 
-								// search back to see if we can hit a sky brush
-					#ifdef HLRAD_SOFTSKY
-					#ifdef ZHLT_LARGERANGE
-								VectorScale (skynormals[j], -BOGUS_RANGE, delta);
-					#else
-								VectorScale (skynormals[j], -10000, delta);
-					#endif
-					#else
-					#ifdef ZHLT_LARGERANGE
-								VectorScale (r_avertexnormals[j], -BOGUS_RANGE, delta);
-					#else
-								VectorScale (r_avertexnormals[j], -10000, delta);
-					#endif
-					#endif
-								VectorAdd(pos, delta, delta);
-					#ifdef HLRAD_OPAQUEINSKY_FIX
-								vec3_t skyhit;
-								VectorCopy (delta, skyhit);
-					#endif
-								if (TestLine(pos, delta
-					#ifdef HLRAD_OPAQUEINSKY_FIX
-									, skyhit
-					#endif
-									) != CONTENTS_SKY)
-								{
-									continue;                                  // occluded
-								}
+				if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
+					continue;                      // occluded
 
-					#ifdef HLRAD_OPAQUE_DIFFUSE_FIX
-					#ifdef HLRAD_HULLU
-								vec3_t transparency;
-					#endif
-					#ifdef HLRAD_OPAQUE_STYLE
-								int opaquestyle;
-					#endif
-								if (TestSegmentAgainstOpaqueList(pos, 
-					#ifdef HLRAD_OPAQUEINSKY_FIX
-									skyhit
-					#else
-									delta
-					#endif
-					#ifdef HLRAD_HULLU
-									, transparency
-					#endif
-					#ifdef HLRAD_OPAQUE_STYLE
-									, opaquestyle
-					#endif
-									))
-								{
-									continue;
-								}
-					#endif /*HLRAD_OPAQUE_DIFFUSE_FIX*/
+				vec3_t transparency;
+				int opaquestyle;
+				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle))
+					continue;
 
-						#ifdef ZHLT_XASH
-								vec3_t direction;
-							#ifdef HLRAD_SOFTSKY
-								VectorCopy (skynormals[j], direction);
-							#else
-								VectorCopy (r_avertexnormals[j], direction);
-							#endif
-						#endif
-				#ifdef HLRAD_SUNDIFFUSE
-					#ifdef HLRAD_SOFTSKY
-								vec_t factor = qmin (qmax (0.0, (1 - DotProduct (l->normal, skynormals[j])) / 2), 1.0); // how far this piece of sky has deviated from the sun
-					#else
-								vec_t factor = qmin (qmax (0.0, (1 - DotProduct (l->normal, r_avertexnormals[j])) / 2), 1.0); // how far this piece of sky has deviated from the sun
-					#endif
-								VectorScale (l->diffuse_intensity, 1 - factor, sky_intensity);
-								VectorMA (sky_intensity, factor, l->diffuse_intensity2, sky_intensity);
-					#ifdef HLRAD_SOFTSKY
-								VectorScale (sky_intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity);
-					#else
-								VectorScale (sky_intensity, g_indirect_sun / (NUMVERTEXNORMALS * 2), sky_intensity);
-					#endif
-				#else
-					#ifdef HLRAD_SOFTSKY
-					#ifdef HLRAD_WHOME
-								VectorScale (l->diffuse_intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity);
-					#else
-								VectorScale (l->intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity);
-					#endif
-					#endif
-				#endif
-								vec3_t add_one;
-					#ifdef HLRAD_DIVERSE_LIGHTING
-								if (lighting_diversify)
-								{
-									dot = lighting_scale * pow (dot, lighting_power);
-								}
-					#endif
-								VectorScale(sky_intensity, dot, add_one);
-					#ifdef HLRAD_OPAQUE_DIFFUSE_FIX
-					#ifdef HLRAD_HULLU
-								VectorMultiply(add_one, transparency, add_one);
-					#endif
-					#endif /*HLRAD_OPAQUE_DIFFUSE_FIX*/
-					#ifdef HLRAD_OPAQUE_STYLE
-								// add to the total brightness of this sample
-								style = l->style;
-								if (opaquestyle != -1)
-								{
-									if (style == 0 || style == opaquestyle)
-										style = opaquestyle;
-									else
-										continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-								}
-								VectorAdd (adds[style], add_one, adds[style]);
-						#ifdef ZHLT_XASH
-								vec_t avg = VectorAvg (add_one);
-								VectorMA (adds_direction[style], avg, direction, adds_direction[style]);
-						#endif
-					#else
-								// add to the contribution of this light
-								VectorAdd(add, add_one, add);
-						#ifdef ZHLT_XASH
-								vec_t avg = VectorAvg (add_one);
-								VectorMA (add_direction, avg, direction, add_direction);
-						#endif
-					#endif
-							} // (loop over the normals)
+				vec3_t add_one;
 
-						}
-						while (0);
+				// Only add default light in non- bump pass
+				if (!bumpinfopass)
+				{
+					if (lighting_diversify)
+						dot = lighting_scale * pow(dot, lighting_power);
 
-#else /*HLRAD_MULTISKYLIGHT*/
-                        // only allow one of each sky type to hit any given point
-                        if (sky_used)
-                        {
-                            continue;
-                        }
-                        sky_used = l;
-
-                        // make sure the angle is okay
-                        dot = -DotProduct(normal, l->normal);
-                        if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-                        {
-                            continue;
-                        }
-
-                        // search back to see if we can hit a sky brush
-#ifdef ZHLT_LARGERANGE
-                        VectorScale(l->normal, -BOGUS_RANGE, delta);
-#else
-                        VectorScale(l->normal, -10000, delta);
-#endif
-                        VectorAdd(pos, delta, delta);
-#ifdef HLRAD_OPAQUEINSKY_FIX
-						vec3_t skyhit;
-						VectorCopy (delta, skyhit);
-#endif
-                        if (TestLine(pos, delta
-#ifdef HLRAD_OPAQUEINSKY_FIX
-							, skyhit
-#endif
-							) != CONTENTS_SKY)
-                        {
-                            continue;                      // occluded
-                        }
-
-#ifdef HLRAD_HULLU
-			            vec3_t transparency = {1.0,1.0,1.0};
-#endif
-                        if (TestSegmentAgainstOpaqueList(pos, 
-#ifdef HLRAD_OPAQUEINSKY_FIX
-							skyhit
-#else
-							delta
-#endif
-#ifdef HLRAD_HULLU
-							, transparency
-#endif
-							))
-                        {
-                            continue;
-                        }
-						
-#ifdef HLRAD_DIVERSE_LIGHTING
-						if (lighting_diversify)
-						{
-							dot = lighting_scale * pow (dot, lighting_power);
-						}
-#endif
-                        VectorScale(l->intensity, dot, add);
-#ifdef HLRAD_HULLU
-                        VectorMultiply(add, transparency, add);
-#endif
-
-#endif /*HLRAD_MULTISKYLIGHT*/
-                    }
-                    else // not emit_skylight
-                    {
-#ifdef HLRAD_GatherPatchLight
-						step_match = (int)l->topatch;
-						if (step != step_match)
-							continue;
-#endif
-#ifdef HLRAD_ALLOWZEROBRIGHTNESS
-						if (!(l->intensity[0] || l->intensity[1] || l->intensity[2]))
-							continue;
-#endif
-#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-						VectorCopy (l->origin, testline_origin);
-#endif
-                        float           denominator;
-
-                        VectorSubtract(l->origin, pos, delta);
-#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-						if (l->type == emit_surface)
-						{
-							// move emitter back to its plane
-							VectorMA (delta, -PATCH_HUNT_OFFSET, l->normal, delta);
-						}
-#endif
-                        dist = VectorNormalize(delta);
-                        dot = DotProduct(delta, normal);
-                        //                        if (dot <= 0.0)
-                        //                            continue;
-#ifndef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-                        if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-                        {
-                            continue;                      // behind sample surface
-                        }
-#endif
-
-                        if (dist < 1.0)
-                        {
-                            dist = 1.0;
-                        }
-
-#ifdef HLRAD_ARG_MISC
-						denominator = dist * dist * l->fade;
-#else
-                        // Variable power falloff (1 = inverse linear, 2 = inverse square
-                        denominator = dist * l->fade;
-                        if (l->falloff == 2)
-                        {
-                            denominator *= dist;
-                        }
-#endif
-
-#ifdef HLRAD_OPAQUE_STYLE
-						vec3_t add;
-#endif
-#ifdef ZHLT_XASH
-						vec3_t direction;
-						VectorSubtract (vec3_origin, delta, direction);
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-						if ((-dot) > 0)
-						{
-							// reflect the direction back (this is not ideal!)
-							VectorMA (direction, -(-dot) * 2, normal, direction);
-						}
-	#endif
-#endif
-                        switch (l->type)
-                        {
-                        case emit_point:
-                        {
-#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							if (dot <= NORMAL_EPSILON)
-							{
-								continue;
-							}
-#endif
-#ifdef HLRAD_ARG_MISC
-							vec_t denominator = dist * dist * l->fade;
-#else
-                            // Variable power falloff (1 = inverse linear, 2 = inverse square
-                            vec_t           denominator = dist * l->fade;
-
-                            if (l->falloff == 2)
-                            {
-                                denominator *= dist;
-                            }
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
-							if (lighting_diversify)
-							{
-								dot = lighting_scale * pow (dot, lighting_power);
-							}
-#endif
-                            ratio = dot / denominator;
-                            VectorScale(l->intensity, ratio, add);
-                            break;
-                        }
-
-                        case emit_surface:
-                        {
-#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							bool light_behind_surface = false;
-							if (dot <= NORMAL_EPSILON)
-							{
-								light_behind_surface = true;
-							}
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
-							if (lighting_diversify
-	#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-								&& !light_behind_surface
-	#endif
-								)
-							{
-								dot = lighting_scale * pow (dot, lighting_power);
-							}
-#endif
-                            dot2 = -DotProduct(delta, l->normal);
-#ifdef HLRAD_TEXLIGHTGAP
-							// discard the texlight if the spot is too close to the texlight plane
-							if (l->texlightgap > 0)
-							{
-								vec_t test;
-
-								test = dot2 * dist; // distance from spot to texlight plane;
-								test -= l->texlightgap * fabs (DotProduct (l->normal, texlightgap_textoworld[0])); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along s axis
-								test -= l->texlightgap * fabs (DotProduct (l->normal, texlightgap_textoworld[1])); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along t axis
-								if (test < -ON_EPSILON)
-								{
-									continue;
-								}
-							}
-#endif
-#ifdef HLRAD_CUSTOMTEXLIGHT
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-							if (dot2 * dist <= MINIMUM_PATCH_DISTANCE)
-							{
-								continue;
-							}
-							vec_t range = l->patch_emitter_range;
-							if (l->stopdot > 0.0) // stopdot2 > 0.0 or stopdot > 0.0
-							{
-								vec_t range_scale;
-								range_scale = 1 - l->stopdot2 * l->stopdot2;
-								range_scale = 1 / sqrt (qmax (NORMAL_EPSILON, range_scale));
-								// range_scale = 1 / sin (cone2)
-								range_scale = qmin (range_scale, 2); // restrict this to 2, because skylevel has limit.
-								range *= range_scale; // because smaller cones are more likely to create the ugly grid effect.
-
-								if (dot2 <= l->stopdot2 + NORMAL_EPSILON)
-								{
-									if (dist >= range) // use the old method, which will merely give 0 in this case
-									{
-										continue;
-									}
-									ratio = 0.0;
-								}
-								else if (dot2 <= l->stopdot)
-								{
-									ratio = dot * dot2 * (dot2 - l->stopdot2) / (dist * dist * (l->stopdot - l->stopdot2));
-								}
-								else
-								{
-									ratio = dot * dot2 / (dist * dist);
-								}
-							}
-							else
-							{
-								ratio = dot * dot2 / (dist * dist);
-							}
-	#else
-							if (dot2 <= l->stopdot2 + NORMAL_EPSILON)
-							{
-								continue;
-							}
-							if (dot2 <= l->stopdot)
-							{
-								ratio = dot * dot2 * (dot2 - l->stopdot2) / (dist * dist * (l->stopdot - l->stopdot2));
-							}
-							else
-							{
-								ratio = dot * dot2 / (dist * dist);
-							}
-	#endif
-#else
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-							if (dot2 * dist <= MINIMUM_PATCH_DISTANCE)
-							{
-								continue;
-							}
-							vec_t range = l->patch_emitter_range;
-							ratio = dot * dot2 / (dist * dist * g_fade);
-	#else
-                            if (dot2 <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-                            {
-                                continue;                  // behind light surface
-                            }
-							
-#ifdef HLRAD_ARG_MISC
-							vec_t denominator = dist * dist * g_fade;
-#else
-                            // Variable power falloff (1 = inverse linear, 2 = inverse square
-                            vec_t           denominator = dist * g_fade;
-                            if (g_falloff == 2)
-                            {
-                                denominator *= dist;
-                            }
-#endif
-                            ratio = dot * dot2 / denominator;
-	#endif
-#endif
-							
-#ifdef HLRAD_TEXLIGHT_SPOTS_FIX
-							// analogous to the one in MakeScales
-							// 0.4f is tested to be able to fully eliminate bright spots
-							if (ratio * l->patch_area > 0.4f)
-							{
-								ratio = 0.4f / l->patch_area;
-							}
-	#ifdef HLRAD_ACCURATEBOUNCE_TEXLIGHT
-							if (dist < range - ON_EPSILON)
-							{ // do things slow
-		#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-								if (light_behind_surface)
-								{
-									dot = 0.0;
-									ratio = 0.0;
-								}
-								GetAlternateOrigin (pos, normal, l->patch, testline_origin);
-		#endif
-								vec_t sightarea;
-								int skylevel = l->patch->emitter_skylevel;
-		#ifdef HLRAD_CUSTOMTEXLIGHT
-								if (l->stopdot > 0.0) // stopdot2 > 0.0 or stopdot > 0.0
-								{
-									const vec_t *emitnormal = getPlaneFromFaceNumber (l->patch->faceNumber)->normal;
-									if (l->stopdot2 >= 0.8) // about 37deg
-									{
-										skylevel += 1; // because the range is larger
-									}
-									sightarea = CalcSightArea_SpotLight (pos, normal, l->patch->winding, emitnormal, l->stopdot, l->stopdot2, skylevel
-			#ifdef HLRAD_DIVERSE_LIGHTING
-										, lighting_power, lighting_scale
-			#endif
-										); // because we have doubled the range
-								}
-								else
-								{
-									sightarea = CalcSightArea (pos, normal, l->patch->winding, skylevel
-			#ifdef HLRAD_DIVERSE_LIGHTING
-										, lighting_power, lighting_scale
-			#endif
-										);
-								}
-		#else
-								sightarea = CalcSightArea (pos, normal, l->patch->winding, skylevel
-			#ifdef HLRAD_DIVERSE_LIGHTING
-									, lighting_power, lighting_scale
-			#endif
-									);
-		#endif
-
-								vec_t frac = dist / range;
-								frac = (frac - 0.5) * 2; // make a smooth transition between the two methods
-								frac = qmax (0, qmin (frac, 1));
-
-								vec_t ratio2 = (sightarea / l->patch_area); // because l->patch->area has been multiplied into l->intensity
-		#ifndef HLRAD_CUSTOMTEXLIGHT
-								// Variable power falloff (1 = inverse linear, 2 = inverse square
-								ratio2 /= g_fade;
-		#endif
-								ratio = frac * ratio + (1 - frac) * ratio2;
-							}
-		#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							else
-							{
-								if (light_behind_surface)
-								{
-									continue;
-								}
-							}
-		#endif
-	#endif
-#endif
-                            VectorScale(l->intensity, ratio, add);
-                            break;
-                        }
-
-                        case emit_spotlight:
-                        {
-#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							if (dot <= NORMAL_EPSILON)
-							{
-								continue;
-							}
-#endif
-                            dot2 = -DotProduct(delta, l->normal);
-                            if (dot2 <= l->stopdot2)
-                            {
-                                continue;                  // outside light cone
-                            }
-
-                            // Variable power falloff (1 = inverse linear, 2 = inverse square
-                            vec_t           denominator = dist * l->fade;
-#ifndef HLRAD_ARG_MISC
-                            if (l->falloff == 2)
-#endif
-                            {
-                                denominator *= dist;
-                            }
-#ifdef HLRAD_DIVERSE_LIGHTING
-							if (lighting_diversify)
-							{
-								dot = lighting_scale * pow (dot, lighting_power);
-							}
-#endif
-                            ratio = dot * dot2 / denominator;
-
-                            if (dot2 <= l->stopdot)
-                            {
-                                ratio *= (dot2 - l->stopdot2) / (l->stopdot - l->stopdot2);
-                            }
-                            VectorScale(l->intensity, ratio, add);
-                            break;
-                        }
-
-                        default:
-                        {
-                            hlassume(false, assume_BadLightType);
-                            break;
-                        }
-                        }
-#ifdef HLRAD_OPAQUE_STYLE
-						if (TestLine (pos, 
-	#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							testline_origin
-	#else
-							l->origin
-	#endif
-							) != CONTENTS_EMPTY)
-						{
-							continue;
-						}
-	#ifdef HLRAD_HULLU
-						vec3_t transparency;
-	#endif
-						int opaquestyle;
-						if (TestSegmentAgainstOpaqueList (pos, 
-	#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							testline_origin
-	#else
-							l->origin
-	#endif
-	#ifdef HLRAD_HULLU
-							, transparency
-	#endif
-							, opaquestyle))
-						{
-							continue;
-						}
-	#ifdef HLRAD_HULLU
-						VectorMultiply (add, transparency, add);
-	#endif
-						// add to the total brightness of this sample
+					VectorScale(l->intensity, dot * l->sunnormalweights[j], add_one);
+					VectorMultiply(add_one, transparency, add_one);
+					// add to the total brightness of this sample
+					if (!g_bumpmaps)
+					{
 						style = l->style;
 						if (opaquestyle != -1)
 						{
@@ -4859,322 +2620,545 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 							else
 								continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
 						}
-						VectorAdd (adds[style], add, adds[style]);
-	#ifdef ZHLT_XASH
-						vec_t avg = VectorAvg (add);
-						VectorMA (adds_direction[style], avg, direction, adds_direction[style]);
-	#endif
-#else
-	#ifdef ZHLT_XASH
-						VectorCopy (direcion, add_direction); // we'll scale it later
-	#endif
-#endif
-                    } // end emit_skylight
 
-#ifndef HLRAD_OPAQUE_STYLE
-#ifndef HLRAD_STYLE_CORING
-                    if (VectorMaximum(add) > (l->style ? g_coring : 0))
-#endif
-                    {
-#ifdef HLRAD_HULLU
-                 	    vec3_t transparency = {1.0,1.0,1.0};
-#endif 
-
-                        if (l->type != emit_skylight && TestLine(pos, 
-	#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-							testline_origin
-	#else
-							l->origin
-	#endif
-							) != CONTENTS_EMPTY)
-                        {
-                            continue;                      // occluded
-                        }
-
-                        if (l->type != emit_skylight)
-                        {                                  // Don't test from light_environment entities to face, the special sky code occludes correctly
-                            if (TestSegmentAgainstOpaqueList(pos, 
-	#ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
-								testline_origin
-	#else
-								l->origin
-	#endif
-#ifdef HLRAD_HULLU
-								, transparency
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
-								, opaquestyle
-#endif
-								))
-                            {
-                                continue;
-                            }
-                        }
-
-#ifdef HLRAD_OPACITY
-                        //VectorScale(add, l_opacity, add);
-#endif
-
-#ifdef HLRAD_STYLE_CORING
-#ifdef HLRAD_HULLU
-						if (l->type != emit_skylight)
-						{
-							VectorMultiply (add, transparency, add);
-						}
-#endif
-#ifdef ZHLT_XASH
-						if (l->type != emit_skylight)
-						{
-							vec3_t avg = VectorAvg (add);
-							VectorScale (add_direction, avg, add_direction);
-						}
-#endif
-						VectorAdd (adds[l->style], add, adds[l->style]);
-#ifdef ZHLT_XASH
-						VectorAdd (adds_direction[l->style], add_direction, adds_direction[l->style]);
-#endif
-#else
-                        for (style_index = 0; style_index < MAXLIGHTMAPS; style_index++)
-                        {
-                            if (styles[style_index] == l->style || styles[style_index] == 255)
-                            {
-                                break;
-                            }
-                        }
-
-                        if (style_index == MAXLIGHTMAPS)
-                        {
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
-							if (++stylewarningcount >= stylewarningnext)
-							{
-								stylewarningnext = stylewarningcount * 2;
-								Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
-								Warning(" total %d warnings for too many styles", stylewarningcount);
-							}
-#else
-                            Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
-#endif
-                            continue;
-                        }
-
-                        if (styles[style_index] == 255)
-                        {
-                            styles[style_index] = l->style;
-                        }
-
-#ifdef HLRAD_HULLU
-                        VectorMultiply(add,transparency,add);
-#endif
-                        VectorAdd(sample[style_index], add, sample[style_index]);
-#endif
-                    }
-#endif /*#ifndef HLRAD_OPAQUE_STYLE*/
-                }
-            }
-        }
-    }
-
-#ifndef HLRAD_MULTISKYLIGHT
-    if (sky_used && g_indirect_sun != 0.0)
-    {
-        vec3_t          total;
-        int             j;
-		vec3_t          sky_intensity;
-
-		// -----------------------------------------------------------------------------------
-		// Changes by Adam Foster - afoster@compsoc.man.ac.uk
-		// Instead of using intensity from sky_used->intensity, get it from the new sky_used->diffuse_intensity
-#ifdef HLRAD_WHOME
-		VectorScale(sky_used->diffuse_intensity, g_indirect_sun / (NUMVERTEXNORMALS * 2), sky_intensity);
-#else
-        VectorScale(sky_used->intensity, g_indirect_sun / (NUMVERTEXNORMALS * 2), sky_intensity);
-#endif
-		// That should be it. Who knows - it might actually work!
-        // AJM: It DOES actually work. Havent you ever heard of beta testing....
-		// -----------------------------------------------------------------------------------
-
-        total[0] = total[1] = total[2] = 0.0;
-        for (j = 0; j < NUMVERTEXNORMALS; j++)
-        {
-            // make sure the angle is okay
-            dot = -DotProduct(normal, r_avertexnormals[j]);
-            if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
-            {
-                continue;
-            }
-
-            // search back to see if we can hit a sky brush
-#ifdef ZHLT_LARGERANGE
-            VectorScale(r_avertexnormals[j], -BOGUS_RANGE, delta);
-#else
-            VectorScale(r_avertexnormals[j], -10000, delta);
-#endif
-            VectorAdd(pos, delta, delta);
-#ifdef HLRAD_OPAQUEINSKY_FIX
-			vec3_t skyhit;
-			VectorCopy (delta, skyhit);
-#endif
-            if (TestLine(pos, delta
-#ifdef HLRAD_OPAQUEINSKY_FIX
-				, skyhit
-#endif
-				) != CONTENTS_SKY)
-            {
-                continue;                                  // occluded
-            }
-
-#ifdef HLRAD_OPAQUE_DIFFUSE_FIX
-#ifdef HLRAD_HULLU
-			vec3_t transparency = {1.0,1.0,1.0};
-#endif
-			if (TestSegmentAgainstOpaqueList(pos, 
-#ifdef HLRAD_OPAQUEINSKY_FIX
-				skyhit
-#else
-				delta
-#endif
-#ifdef HLRAD_HULLU
-				, transparency
-#endif
-				))
-			{
-				continue;
-			}
-#endif /*HLRAD_OPAQUE_DIFFUSE_FIX*/
-#ifdef HLRAD_DIVERSE_LIGHTING
-			if (lighting_diversify)
-			{
-				dot = lighting_scale * pow (dot, lighting_power);
-			}
-#endif
-            VectorScale(sky_intensity, dot, add);
-#ifdef HLRAD_OPAQUE_DIFFUSE_FIX
-#ifdef HLRAD_HULLU
-                        VectorMultiply(add, transparency, add);
-#endif
-#endif /*HLRAD_OPAQUE_DIFFUSE_FIX*/
-            VectorAdd(total, add, total);
-        }
-        if (VectorMaximum(total) > 0)
-        {
-#ifdef HLRAD_STYLE_CORING
-			VectorAdd (adds[sky_used->style], total, adds[sky_used->style]);
-#else
-            for (style_index = 0; style_index < MAXLIGHTMAPS; style_index++)
-            {
-                if (styles[style_index] == sky_used->style || styles[style_index] == 255)
-                {
-                    break;
-                }
-            }
-
-            if (style_index == MAXLIGHTMAPS)
-            {
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
-				if (++stylewarningcount >= stylewarningnext)
-				{
-					stylewarningnext = stylewarningcount * 2;
-					Warning("Too many direct light styles on a face(%f,%f,%f)\n", pos[0], pos[1], pos[2]);
-					Warning(" total %d warnings for too many styles", stylewarningcount);
+						VectorAdd(padds[style], add_one, padds[style]);
+					}
+					else
+					{
+						// All lights contribute to default in this case
+						VectorAdd(padds[DEFAULT_STYLE], add_one, padds[DEFAULT_STYLE]);
+					}
 				}
-#else
-                Warning("Too many direct light styles on a face(%f,%f,%f)\n", pos[0], pos[1], pos[2]);
-#endif
-                return;
-            }
 
-            if (styles[style_index] == 255)
-            {
-                styles[style_index] = sky_used->style;
-            }
-
-            VectorAdd(sample[style_index], total, sample[style_index]);
-#endif
-        }
-    }
-#endif /*HLRAD_MULTISKYLIGHT*/
-#ifdef HLRAD_STYLE_CORING
-	for (style = 0; style < ALLSTYLES; ++style)
-	{
-#ifdef HLRAD_AUTOCORING
-		if (VectorMaximum(adds[style]) > g_corings[style] * 0.1)
-#else
-		if (VectorMaximum(adds[style]) > g_corings[style])
-#endif
-		{
-	#ifdef HLRAD_AUTOCORING
-			for (style_index = 0; style_index < ALLSTYLES; style_index++)
-	#else
-			for (style_index = 0; style_index < MAXLIGHTMAPS; style_index++)
-	#endif
-			{
-				if (styles[style_index] == style || styles[style_index] == 255)
+				if (g_bumpmaps)
 				{
-					break;
+					// Inverse the light for the sun and copy it
+					VectorCopy(delta, delta_bump);
+					VectorNormalize(delta_bump);
+
+					if (bumpinfopass)
+					{
+						// Contribution comes from correlation between
+						// the gathered light vector and the light direction
+						float dotn = qmax(0, DotProduct(direction, delta_bump));
+
+						// Calculate the lighting for ambient and diffuse
+						VectorScale(l->intensity, dotn * l->sunnormalweights[j], add_one_diffuse);
+						VectorScale(l->intensity, (1 - dotn) * l->sunnormalweights[j], add_one_ambient);
+
+						// Multiply by the transparency
+						VectorMultiply(add_one_diffuse, transparency, add_one_diffuse);
+						VectorMultiply(add_one_ambient, transparency, add_one_ambient);
+
+						// Add it to the collection
+						VectorAdd(padds[BUMP_ADDLIGHT_STYLE], add_one_diffuse, padds[BUMP_ADDLIGHT_STYLE]);
+						VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one_ambient, padds[BUMP_BASELIGHT_STYLE]);
+					}
+					else
+					{
+						// Add lightdir to the collected direction based on strength
+						float maxlight = VectorAvg(add_one);
+						VectorScale(delta_bump, maxlight, delta_bump);
+						VectorAdd(direction, delta_bump, direction);
+					}
 				}
-			}
-
-	#ifdef HLRAD_AUTOCORING
-			if (style_index == ALLSTYLES) // shouldn't happen
-	#else
-			if (style_index == MAXLIGHTMAPS)
-	#endif
-			{
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
-				if (++stylewarningcount >= stylewarningnext)
-				{
-					stylewarningnext = stylewarningcount * 2;
-					Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
-					Warning(" total %d warnings for too many styles", stylewarningcount);
-				}
-#else
-				Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
-#endif
-				return;
-			}
-
-			if (styles[style_index] == 255)
-			{
-				styles[style_index] = style;
-			}
-
-			VectorAdd(sample[style_index], adds[style], sample[style_index]);
-#ifdef ZHLT_XASH
-			VectorAdd (sample_direction[style_index], adds_direction[style], sample_direction[style_index]);
-#endif
+			} // (loop over the normals)
 		}
-#ifdef HLRAD_AUTOCORING
+		while (0);
+		do // add sky light
+		{
+			// check step
+			step_match = 0;
+			if (g_softsky)
+				step_match = 1;
+
+			if (g_fastmode)
+				step_match = 1;
+
+			if (step != step_match)
+				continue;
+
+			// check intensity
+			if (g_indirect_sun <= 0.0 || VectorCompare (l->diffuse_intensity,vec3_origin)&& VectorCompare (l->diffuse_intensity2, vec3_origin))
+				continue;
+
+			vec3_t sky_intensity;
+
+			// loop over the normals
+			vec3_t *skynormals = g_skynormals[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
+			vec_t *skyweights = g_skynormalsizes[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
+			for (int j = 0; j < g_numskynormals[g_softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF]; j++)
+			{
+				// make sure the angle is okay
+				dot = -DotProduct (normal, skynormals[j]);
+				if (dot <= NORMAL_EPSILON) //ON_EPSILON / 10 //--vluzacn
+					continue;
+
+				// search back to see if we can hit a sky brush
+				VectorScale (skynormals[j], -BOGUS_RANGE, delta);
+				VectorAdd(pos, delta, delta);
+				vec3_t skyhit;
+				VectorCopy (delta, skyhit);
+				if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
+					continue;                                  // occluded
+
+				vec3_t transparency;
+				int opaquestyle;
+				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle))
+					continue;
+
+				vec_t factor = qmin (qmax (0.0, (1 - DotProduct (l->normal, skynormals[j])) / 2), 1.0); // how far this piece of sky has deviated from the sun
+				VectorScale (l->diffuse_intensity, 1 - factor, sky_intensity);
+				VectorMA (sky_intensity, factor, l->diffuse_intensity2, sky_intensity);
+				VectorScale (sky_intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity);
+				vec3_t add_one;
+				if (lighting_diversify)
+					dot = lighting_scale * pow (dot, lighting_power);
+
+				VectorScale(sky_intensity, dot, add_one);
+				VectorMultiply(add_one, transparency, add_one);
+				// add to the total brightness of this sample
+				if (!bumpinfopass)
+				{
+					if (!g_bumpmaps)
+					{
+						style = l->style;
+						if (opaquestyle != -1)
+						{
+							if (style == 0 || style == opaquestyle)
+								style = opaquestyle;
+							else
+								continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+						}
+						VectorAdd(padds[style], add_one, padds[style]);
+					}
+					else
+					{
+						VectorAdd(padds[DEFAULT_STYLE], add_one, padds[DEFAULT_STYLE]);
+					}
+				}
+				else
+				{
+					// Contribute to baselight only
+					VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one, padds[BUMP_BASELIGHT_STYLE]);
+				}
+			} // (loop over the normals)
+		}
+		while (0);
+
+    }
+    else // not emit_skylight
+    {
+		step_match = (int)l->topatch;
+		if (step != step_match)
+			return;
+
+		if (!(l->intensity[0] || l->intensity[1] || l->intensity[2]))
+			return;
+
+		VectorCopy (l->origin, testline_origin);
+        float           denominator;
+
+        VectorSubtract(l->origin, pos, delta);
+		if (l->type == emit_surface)
+		{
+			// move emitter back to its plane
+			VectorMA (delta, -PATCH_HUNT_OFFSET, l->normal, delta);
+		}
+
+        dist = VectorNormalize(delta);
+        dot = DotProduct(delta, normal);
+        //                        if (dot <= 0.0)
+        //                            continue;
+
+        if (dist < 1.0)
+            dist = 1.0;
+
+		denominator = dist * dist * l->fade;
+
+		vec3_t add;
+		VectorClear(add);
+
+        switch (l->type)
+        {
+			case emit_point:
+			{
+				if (dot <= NORMAL_EPSILON)
+					return;
+
+				vec_t denominator = dist * dist * l->fade;
+				if (lighting_diversify)
+					dot = lighting_scale * pow (dot, lighting_power);
+
+				ratio = dot / denominator;
+				ratio_bump = 1.0 / denominator;
+
+				if (!bumpinfopass)
+					VectorScale(l->intensity, ratio, add);
+
+				break;
+			}
+
+			case emit_surface:
+			{
+				bool light_behind_surface = false;
+				if (dot <= NORMAL_EPSILON)
+					light_behind_surface = true;
+
+				if (lighting_diversify && !light_behind_surface)
+					dot = lighting_scale * pow (dot, lighting_power);
+
+				dot2 = -DotProduct(delta, l->normal);
+
+				// discard the texlight if the spot is too close to the texlight plane
+				if (l->texlightgap > 0)
+				{
+					vec_t test;
+
+					test = dot2 * dist; // distance from spot to texlight plane;
+					test -= l->texlightgap * fabs (DotProduct (l->normal, ptexlightgap_textoworld[0])); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along s axis
+					test -= l->texlightgap * fabs (DotProduct (l->normal, ptexlightgap_textoworld[1])); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along t axis
+					if (test < -ON_EPSILON)
+						return;
+				}
+
+				if (dot2 * dist <= MINIMUM_PATCH_DISTANCE)
+					return;
+
+				vec_t range = l->patch_emitter_range;
+				if (l->stopdot > 0.0) // stopdot2 > 0.0 or stopdot > 0.0
+				{
+					vec_t range_scale;
+					range_scale = 1 - l->stopdot2 * l->stopdot2;
+					range_scale = 1 / sqrt (qmax (NORMAL_EPSILON, range_scale));
+					// range_scale = 1 / sin (cone2)
+					range_scale = qmin (range_scale, 2); // restrict this to 2, because skylevel has limit.
+					range *= range_scale; // because smaller cones are more likely to create the ugly grid effect.
+
+					if (dot2 <= l->stopdot2 + NORMAL_EPSILON)
+					{
+						if (dist >= range) // use the old method, which will merely give 0 in this case
+							return;
+
+						ratio = 0.0;
+						ratio_bump = 0.0;
+					}
+					else if (dot2 <= l->stopdot)
+					{
+						ratio = dot * dot2 * (dot2 - l->stopdot2) / (dist * dist * (l->stopdot - l->stopdot2));
+						ratio_bump = dot2 * (dot2 - l->stopdot2) / (dist * dist * (l->stopdot - l->stopdot2));
+					}
+					else
+					{
+						ratio = dot * dot2 / (dist * dist);
+						ratio_bump = dot2 / (dist * dist);
+					}
+				}
+				else
+				{
+					ratio = dot * dot2 / (dist * dist);
+					ratio_bump = dot2 / (dist * dist);
+				}
+							
+				// analogous to the one in MakeScales
+				// 0.4f is tested to be able to fully eliminate bright spots
+				if (ratio * l->patch_area > 0.4f)
+				{
+					ratio = 0.4f / l->patch_area;
+					ratio_bump = ratio;
+				}
+				if (dist < range - ON_EPSILON)
+				{ 
+					// do things slow
+					if (light_behind_surface)
+					{
+						dot = 0.0;
+						ratio = 0.0;
+						ratio_bump = 0.0;
+					}
+
+					GetAlternateOrigin (pos, normal, l->patch, testline_origin);
+					vec_t sightarea;
+					int skylevel = l->patch->emitter_skylevel;
+					if (l->stopdot > 0.0) // stopdot2 > 0.0 or stopdot > 0.0
+					{
+						const vec_t *emitnormal = getPlaneFromFaceNumber (l->patch->faceNumber)->normal;
+						if (l->stopdot2 >= 0.8) // about 37deg
+							skylevel += 1; // because the range is larger
+
+						sightarea = CalcSightArea_SpotLight (pos, normal, l->patch->winding, emitnormal, l->stopdot, l->stopdot2, skylevel, lighting_power, lighting_scale); // because we have doubled the range
+					}
+					else
+					{
+						sightarea = CalcSightArea (pos, normal, l->patch->winding, skylevel, lighting_power, lighting_scale);
+					}
+
+					vec_t frac = dist / range;
+					frac = (frac - 0.5) * 2; // make a smooth transition between the two methods
+					frac = qmax (0, qmin (frac, 1));
+
+					vec_t ratio2 = (sightarea / l->patch_area); // because l->patch->area has been multiplied into l->intensity
+					ratio = frac * ratio + (1 - frac) * ratio2;
+					ratio_bump = frac * ratio_bump + (1 - frac) * ratio2;
+				}
+				else
+				{
+					if (light_behind_surface)
+						return;
+				}
+
+				if (!bumpinfopass)
+					VectorScale(l->intensity, ratio, add);
+				break;
+			}
+
+			case emit_spotlight:
+			{
+				if (dot <= NORMAL_EPSILON)
+					return;
+
+				dot2 = -DotProduct(delta, l->normal);
+				if (dot2 <= l->stopdot2)
+					return;                  // outside light cone
+
+				// Variable power falloff (1 = inverse linear, 2 = inverse square
+				vec_t denominator = dist * l->fade;
+				denominator *= dist;
+
+				if (lighting_diversify)
+					dot = lighting_scale * pow (dot, lighting_power);
+
+				ratio = dot * dot2 / denominator;
+				ratio_bump = dot2 / denominator;
+
+				if (dot2 <= l->stopdot)
+				{
+					float spotdotfactor = (dot2 - l->stopdot2) / (l->stopdot - l->stopdot2);
+					ratio *= spotdotfactor;
+					ratio_bump *= spotdotfactor;
+				}
+
+				if (!bumpinfopass)
+					VectorScale(l->intensity, ratio, add);
+
+				break;
+			}
+
+			default:
+			{
+				hlassume(false, assume_BadLightType);
+				break;
+			}
+        }
+
+		if (TestLine (pos, testline_origin) != CONTENTS_EMPTY)
+			return;
+
+		vec3_t transparency;
+		int opaquestyle;
+		if (TestSegmentAgainstOpaqueList (pos, testline_origin, transparency, opaquestyle))
+			return;
+
+		if (!bumpinfopass)
+		{
+			// Allow contribution from transparency
+			VectorMultiply(add, transparency, add);
+		}
+
+		// Special calculations
+		if (g_bumpmaps)
+		{
+			// Normalize the light direction
+			VectorCopy(delta, delta_bump);
+			VectorNormalize(delta_bump);
+
+			if (bumpinfopass)
+			{
+				// Contribution comes from correlation between
+				// the gathered light vector and the light direction
+				float dotn = pow(qmax(0, DotProduct(direction, delta_bump)), 16);
+				ratio_bump = qmax(0, ratio_bump);
+
+				// Calculate the lighting for ambient and diffuse
+				VectorScale(l->intensity, dotn * ratio_bump, add_one_diffuse);
+				VectorScale(l->intensity, (1 - dotn) * ratio, add_one_ambient);
+
+				// Multiply by the transparency
+				VectorMultiply(add_one_diffuse, transparency, add_one_diffuse);
+				//VectorMultiply(add_one_ambient, transparency, add_one_ambient);
+
+				// Add it to the collection
+				VectorAdd(padds[BUMP_ADDLIGHT_STYLE], add_one_diffuse, padds[BUMP_ADDLIGHT_STYLE]);
+				VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one_ambient, padds[BUMP_BASELIGHT_STYLE]);
+			}
+			else
+			{
+				// Add lightdir to the collected direction based on strength
+				float maxlight = VectorAvg(add);
+				VectorScale(delta_bump, maxlight, delta_bump);
+				VectorAdd(direction, delta_bump, direction);
+
+				// Contribute to default lightmap
+				VectorAdd(padds[DEFAULT_STYLE], add, padds[DEFAULT_STYLE]);
+			}
+		}
 		else
 		{
-			if (VectorMaximum (adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+			// add to the total brightness of this sample
+			style = l->style;
+			if (opaquestyle != -1)
 			{
-				ThreadLock ();
-				if (VectorMaximum (adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
-				{
-					g_maxdiscardedlight = VectorMaximum (adds[style]);
-					VectorCopy (pos, g_maxdiscardedpos);
-				}
-				ThreadUnlock ();
+				if (style == 0 || style == opaquestyle)
+					style = opaquestyle;
+				else
+					return; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+			}
+
+			VectorAdd(padds[style], add, padds[style]);
+		}
+    }
+}
+
+static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample, byte* styles, int step, int miptex, int texlightgap_surfacenum)
+{
+	int             i;
+	int             style_index;
+	int				style;
+	vec3_t			texlightgap_textoworld[2];
+
+	vec3_t			adds[ALLSTYLES];
+	memset(adds, 0, ALLSTYLES * sizeof(vec3_t));
+
+	vec3_t direction;
+	VectorClear(direction);
+
+	// calculates textoworld
+	{
+		dface_t* f = &g_dfaces[texlightgap_surfacenum];
+		const dplane_t* dp = getPlaneFromFace(f);
+		texinfo_t* tex = &g_texinfo[f->texinfo];
+		int x;
+		vec_t len;
+
+		for (x = 0; x < 2; x++)
+		{
+			CrossProduct(tex->vecs[1 - x], dp->normal, texlightgap_textoworld[x]);
+			len = DotProduct(texlightgap_textoworld[x], tex->vecs[x]);
+			if (fabs(len) < NORMAL_EPSILON)
+			{
+				VectorClear(texlightgap_textoworld[x]);
+			}
+			else
+			{
+				VectorScale(texlightgap_textoworld[x], 1 / len, texlightgap_textoworld[x]);
 			}
 		}
-#endif
 	}
-#endif
+
+	//
+	// First step - Calculate regular lighting
+	// For Bump maps - Get combined light vector to all lights hitting this surface
+	//
+	for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
+	{
+		directlight_t* l = directlights[i];
+		if (l)
+		{
+			if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
+			{
+				for (; l; l = l->next)
+				{
+					// Add in this light
+					AddLight(l, direction, pos, pvs, normal, styles, step, miptex, texlightgap_surfacenum, adds, texlightgap_textoworld, false);
+				}
+			}
+		}
+	}
+
+	//
+	// Second step - Calculate bump map lighting using the gathered light directions
+	//
+	if (g_bumpmaps)
+	{
+		// Normalize the lightdir
+		VectorNormalize(direction);
+
+		for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
+		{
+			directlight_t* l = directlights[i];
+			if (l)
+			{
+				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
+				{
+					for (; l; l = l->next)
+						AddLight(l, direction, pos, pvs, normal, styles, step, miptex, texlightgap_surfacenum, adds, texlightgap_textoworld, true);
+				}
+			}
+		}
+
+		// Add the light vector to the sample
+		VectorCopy(direction, sample[BUMP_LIGHTVECS_STYLE]);
+
+		// Add values to final
+		VectorAdd(sample[DEFAULT_STYLE], adds[DEFAULT_STYLE], sample[DEFAULT_STYLE]);
+		VectorAdd(sample[BUMP_ADDLIGHT_STYLE], adds[BUMP_ADDLIGHT_STYLE], sample[BUMP_ADDLIGHT_STYLE]);
+		VectorAdd(sample[BUMP_BASELIGHT_STYLE], adds[BUMP_BASELIGHT_STYLE], sample[BUMP_BASELIGHT_STYLE]);
+	}
+	else
+	{
+		for (style = 0; style < ALLSTYLES; ++style)
+		{
+			if (VectorMaximum(adds[style]) > g_corings[style] * 0.1)
+			{
+				for (style_index = 0; style_index < ALLSTYLES; style_index++)
+				{
+					if (styles[style_index] == style || styles[style_index] == 255)
+					{
+						break;
+					}
+				}
+
+				if (style_index == ALLSTYLES) // shouldn't happen
+				{
+					if (++stylewarningcount >= stylewarningnext)
+					{
+						stylewarningnext = stylewarningcount * 2;
+						Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
+						Warning(" total %d warnings for too many styles", stylewarningcount);
+					}
+					return;
+				}
+
+				if (styles[style_index] == 255)
+				{
+					styles[style_index] = style;
+				}
+
+				VectorAdd(sample[style_index], adds[style], sample[style_index]);
+			}
+			else
+			{
+				if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+				{
+					ThreadLock();
+					if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+					{
+						g_maxdiscardedlight = VectorMaximum(adds[style]);
+						VectorCopy(pos, g_maxdiscardedpos);
+					}
+					ThreadUnlock();
+				}
+			}
+		}
+	}
 }
 
 // =====================================================================================
 //  AddSampleToPatch
 //      Take the sample's collected light and add it back into the apropriate patch for the radiosity pass.
 // =====================================================================================
-#ifdef HLRAD_ACCURATEBOUNCE_SAMPLELIGHT
 static void AddSamplesToPatches (const sample_t **samples, const unsigned char *styles, int facenum, const lightinfo_t *l)
 {
-#ifndef HLRAD_GatherPatchLight
-    if (g_numbounce == 0)
-    {
-        return;
-    }
-#endif
 	patch_t *patch;
 	int i, j, m, k;
 	int numtexwindings;
@@ -5254,16 +3238,12 @@ static void AddSamplesToPatches (const sample_t **samples, const unsigned char *
 					}
 					if (k == ALLSTYLES)
 					{
-			#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
 						if (++stylewarningcount >= stylewarningnext)
 						{
 							stylewarningnext = stylewarningcount * 2;
 							Warning("Too many direct light styles on a face(?,?,?)\n");
 							Warning(" total %d warnings for too many styles", stylewarningcount);
 						}
-			#else
-						Warning("Too many direct light styles on a face(?,?,?)\n");
-			#endif
 					}
 					else
 					{
@@ -5272,9 +3252,6 @@ static void AddSamplesToPatches (const sample_t **samples, const unsigned char *
 							patch->totalstyle_all[k] = style;
 						}
 						VectorMA (patch->samplelight_all[k], area, s->light, patch->samplelight_all[k]);
-			#ifdef ZHLT_XASH
-						VectorMA (patch->samplelight_all_direction[k], area, s->light_direction, patch->samplelight_all_direction[k]);
-			#endif
 					}
 				}
 			}
@@ -5288,110 +3265,6 @@ static void AddSamplesToPatches (const sample_t **samples, const unsigned char *
 	}
 	free (texwindings);
 }
-#else
-#ifdef ZHLT_TEXLIGHT
-static void     AddSampleToPatch(const sample_t* const s, const int facenum, int style) //LRC
-#else
-static void     AddSampleToPatch(const sample_t* const s, const int facenum)
-#endif
-{
-    patch_t*        patch;
-    BoundingBox     bounds;
-    int             i;
-
-#ifndef HLRAD_GatherPatchLight
-    if (g_numbounce == 0)
-    {
-        return;
-    }
-#endif
-
-    for (patch = g_face_patches[facenum]; patch; patch = patch->next)
-    {
-        // see if the point is in this patch (roughly)
-        patch->winding->getBounds(bounds);
-        for (i = 0; i < 3; i++)
-        {
-            if (bounds.m_Mins[i] > s->pos[i] + 16)
-            {
-                goto nextpatch;
-            }
-            if (bounds.m_Maxs[i] < s->pos[i] - 16)
-            {
-                goto nextpatch;
-            }
-        }
-#ifdef HLRAD_AUTOCORING
-		if (style == 0)
-		{
-			patch->samples++;
-		}
-#endif
-
-        // add the sample to the patch
-#ifdef ZHLT_TEXLIGHT
-        //LRC:
-	#ifdef HLRAD_AUTOCORING
-		for (i = 0; i < ALLSTYLES && patch->totalstyle_all[i] != 255; i++)
-		{
-			if (patch->totalstyle_all[i] == style)
-				break;
-		}
-		if (i == ALLSTYLES) // shouldn't happen
-	#else
-		for (i = 0; i < MAXLIGHTMAPS && patch->totalstyle[i] != 255; i++)
-		{
-			if (patch->totalstyle[i] == style)
-				break;
-		}
-		if (i == MAXLIGHTMAPS)
-	#endif
-		{
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
-			if (++stylewarningcount >= stylewarningnext)
-			{
-				stylewarningnext = stylewarningcount * 2;
-				Warning("Too many direct light styles on a face(?,?,?)\n");
-				Warning(" total %d warnings for too many styles", stylewarningcount);
-			}
-#else
-			Warning("Too many direct light styles on a face(?,?,?)\n");
-#endif
-		}
-		else
-		{
-	#ifdef HLRAD_AUTOCORING
-			if (patch->totalstyle_all[i] == 255)
-			{
-				patch->totalstyle_all[i] = style;
-			}
-			VectorAdd(patch->samplelight_all[i], s->light, patch->samplelight_all[i]);
-		#ifdef ZHLT_XASH
-			VectorAdd (patch->samplelight_all_direction[i], s->light_direction, patch->samplelight_all_direction[i]);
-		#endif
-	#else
-			if (patch->totalstyle[i] == 255)
-			{
-				patch->totalstyle[i] = style;
-			}
-
-	        patch->samples[i]++;
-			VectorAdd(patch->samplelight[i], s->light, patch->samplelight[i]);
-	#endif
-		}
-        //LRC (ends)
-#else
-        patch->samples++;
-        VectorAdd(patch->samplelight, s->light, patch->samplelight);
-#endif
-        //return;
-
-      nextpatch:;
-    }
-
-    // don't worry if some samples don't find a patch
-}
-#endif
 
 // =====================================================================================
 //  GetPhongNormal
@@ -5399,9 +3272,7 @@ static void     AddSampleToPatch(const sample_t* const s, const int facenum)
 void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnormal)
 {
     int             j;
-#ifdef HLRAD_GetPhongNormal_VL
 	int				s; // split every edge into two parts
-#endif
     const dface_t*  f = g_dfaces + facenum;
     const dplane_t* p = getPlaneFromFace(f);
     vec3_t          facenormal;
@@ -5409,9 +3280,6 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
     VectorCopy(p->normal, facenormal);
     VectorCopy(facenormal, phongnormal);
 
-#ifndef HLRAD_CUSTOMSMOOTH
-    if (g_smoothing_threshold > 0.0)
-#endif
     {
         // Calculate modified point normal for surface
         // Use the edge normals iff they are defined.  Bend the surface towards the edge normal(s)
@@ -5442,11 +3310,7 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
 
             if (j)
             {
-#ifdef HLRAD_NEGATIVEDIVIDEND_MISCFIX
                 prev_edge = f->firstedge + ((j + f->numedges - 1) % f->numedges);
-#else
-                prev_edge = f->firstedge + ((j - 1) % f->numedges);
-#endif
             }
             else
             {
@@ -5470,16 +3334,7 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
             es1 = &g_edgeshare[abs(e1)];
             es2 = &g_edgeshare[abs(e2)];
 
-#ifdef HLRAD_GetPhongNormal_VL
 			if ((!es->smooth || es->coplanar) && (!es1->smooth || es1->coplanar) && (!es2->smooth || es2->coplanar))
-#else
-            if (
-                (es->coplanar && es1->coplanar && es2->coplanar)
-                ||
-                (VectorCompare(es->interface_normal, vec3_origin) &&
-                 VectorCompare(es1->interface_normal, vec3_origin) &&
-                 VectorCompare(es2->interface_normal, vec3_origin)))
-#endif
             {
                 continue;
             }
@@ -5498,7 +3353,6 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
             // Adjust for origin-based models
             VectorAdd(p1, g_face_offset[facenum], p1);
             VectorAdd(p2, g_face_offset[facenum], p2);
-#ifdef HLRAD_GetPhongNormal_VL
 		for (s = 0; s < 2; s++)
 		{
 			vec3_t s1, s2;
@@ -5516,12 +3370,6 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
 
             VectorSubtract(s1, g_face_centroids[facenum], v1);
             VectorSubtract(s2, g_face_centroids[facenum], v2);
-#else
-
-            // Build vectors from the middle of the face to the edge vertexes and the sample pos.
-            VectorSubtract(p1, g_face_centroids[facenum], v1);
-            VectorSubtract(p2, g_face_centroids[facenum], v2);
-#endif
             VectorSubtract(spot, g_face_centroids[facenum], vspot);
 
             aa = DotProduct(v1, v1);
@@ -5531,17 +3379,12 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
             a2 = (DotProduct(vspot, v2) - a1 * ab) / bb;
 
             // Test center to sample vector for inclusion between center to vertex vectors (Use dot product of vectors)
-#ifdef HLRAD_GetPhongNormal_VL
             if (a1 >= -0.01 && a2 >= -0.01)
-#else
-            if (a1 >= 0.0 && a2 >= 0.0)
-#endif
             {
                 // calculate distance from edge to pos
                 vec3_t          n1, n2;
                 vec3_t          temp;
 
-#ifdef HLRAD_GetPhongNormal_VL
 				if (es->smooth)
 					if (s == 0)
 					{VectorCopy(es->vertex_normal[e>0?0:1], n1);}
@@ -5558,23 +3401,6 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
 				{VectorCopy(es->interface_normal, n2);}
 				else
 				{VectorCopy(facenormal, n2);}
-#else
-                VectorAdd(es->interface_normal, es1->interface_normal, n1)
-
-                if (VectorCompare(n1, vec3_origin))
-                {
-                    VectorCopy(facenormal, n1);
-                }
-                VectorNormalize(n1);
-
-                VectorAdd(es->interface_normal, es2->interface_normal, n2);
-
-                if (VectorCompare(n2, vec3_origin))
-                {
-                    VectorCopy(facenormal, n2);
-                }
-                VectorNormalize(n2);
-#endif
 
                 // Interpolate between the center and edge normals based on sample position
                 VectorScale(facenormal, 1.0 - a1 - a2, phongnormal);
@@ -5585,9 +3411,7 @@ void            GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnorma
                 VectorNormalize(phongnormal);
                 break;
             }
-#ifdef HLRAD_GetPhongNormal_VL
 		} // s=0,1
-#endif
         }
     }
 }
@@ -5605,27 +3429,17 @@ const vec3_t    s_circuscolors[] = {
 // =====================================================================================
 //  BuildFacelights
 // =====================================================================================
-#ifdef HLRAD_BLUR
 void CalcLightmap (lightinfo_t *l, byte *styles)
 {
 	int facenum;
 	int i, j;
 	byte pvs[(MAX_MAP_LEAFS + 7) / 8];
 	int lastoffset;
-#ifdef HLRAD_TRANSLUCENT
 	byte pvs2[(MAX_MAP_LEAFS + 7) / 8];
 	int lastoffset2;
-#endif
 
 	facenum = l->surfnum;
-#ifdef HLRAD_AUTOCORING
 	memset (l->lmcache, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
-#ifdef ZHLT_XASH
-	memset (l->lmcache_direction, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
-#endif
-#else
-	memset (l->lmcache, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [MAXLIGHTMAPS]));
-#endif
 
 	// for each sample whose light we need to calculate
 	for (i = 0; i < l->lmcachewidth * l->lmcacheheight; i++)
@@ -5634,32 +3448,17 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		vec_t s_vec, t_vec;
 		int nearest_s, nearest_t;
 		vec3_t spot;
-	#ifdef HLRAD_GROWSAMPLE
-	#ifdef HLRAD_BLUR_MINIMALSQUARE
 		vec_t square[2][2];  // the max possible range in which this sample point affects the lighting on a face
-	#else
-		vec_t reach; // the max possible range in which a sample point affects the lighting on a face
-	#endif
 		vec3_t surfpt; // the point on the surface (with no HUNT_OFFSET applied), used for getting phong normal and doing patch interpolation
 		int surface;
-	#endif
 		vec3_t pointnormal;
 		bool blocked;
-	#ifdef HLRAD_TRANSLUCENT
 		vec3_t spot2;
 		vec3_t pointnormal2;
-	#endif
 		vec3_t *sampled;
-	#ifdef ZHLT_XASH
-		vec3_t *sampled_direction;
-	#endif
-	#ifdef HLRAD_AVOIDNORMALFLIP
 		vec3_t *normal_out;
-	#endif
-	#ifdef HLRAD_AVOIDWALLBLEED
 		bool nudged;
 		int *wallflags_out;
-	#endif
 
 		// prepare input parameter and output parameter
 		{
@@ -5670,17 +3469,8 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			nearest_s = qmax (0, qmin ((int)floor (s + 0.5), l->texsize[0]));
 			nearest_t = qmax (0, qmin ((int)floor (t + 0.5), l->texsize[1]));
 			sampled = l->lmcache[i];
-	#ifdef ZHLT_XASH
-			sampled_direction = l->lmcache_direction[i];
-	#endif
-	#ifdef HLRAD_AVOIDNORMALFLIP
 			normal_out = &l->lmcache_normal[i];
-	#endif
-	#ifdef HLRAD_AVOIDWALLBLEED
 			wallflags_out = &l->lmcache_wallflags[i];
-	#endif
-	#ifdef HLRAD_GROWSAMPLE
-	#ifdef HLRAD_BLUR_MINIMALSQUARE
 //
 // The following graph illustrates the range in which a sample point can affect the lighting of a face when g_blur = 1.5 and g_extra = on
 //              X : the sample point. They are placed on every TEXTURE_STEP/lmcache_density (=16.0/3) texture pixels. We calculate light for each sample point, which is the main time sink.
@@ -5722,42 +3512,16 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			square[0][1] = l->texmins[1] * TEXTURE_STEP + ceil (t - (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP - TEXTURE_STEP;
 			square[1][0] = l->texmins[0] * TEXTURE_STEP + floor (s + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
 			square[1][1] = l->texmins[1] * TEXTURE_STEP + floor (t + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
-	#else
-			reach = (0.5 / (vec_t)l->lmcache_density) * TEXTURE_STEP + 0.5 * g_blur * TEXTURE_STEP + TEXTURE_STEP;
-	#endif
-	#endif
 		}
 		// find world's position for the sample
 		{
-#ifndef HLRAD_GROWSAMPLE
-			if (i == (nearest_s * l->lmcache_density + l->lmcache_offset)
-				+ l->lmcachewidth * (nearest_t * l->lmcache_density + l->lmcache_offset)) // almost always true when compiled with no '-extra'
-			{
-				j = nearest_s + (l->texsize[0] + 1) * nearest_t;
-				VectorCopy (l->surfpt[j], spot);
-				blocked = l->surfpt_lightoutside[j];
-			}
-			else
-#endif
 			{
 				blocked = false;
 				if (SetSampleFromST (
-	#ifdef HLRAD_GROWSAMPLE
 									surfpt, spot, &surface,
-	#else
-									spot,
-	#endif
-	#ifdef HLRAD_AVOIDWALLBLEED
 									&nudged,
-	#endif
 									l, s_vec, t_vec,
-	#ifdef HLRAD_GROWSAMPLE
-	#ifdef HLRAD_BLUR_MINIMALSQUARE
 									square,
-	#else
-									reach,
-	#endif
-	#endif
 									g_face_lightmode[facenum]) == LightOutside)
 				{
 					j = nearest_s + (l->texsize[0] + 1) * nearest_t;
@@ -5767,21 +3531,15 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 					}
 					else
 					{
-	#ifdef HLRAD_GROWSAMPLE
 						// the area this light sample has effect on is completely covered by solid, so take whatever valid position.
 						VectorCopy (l->surfpt[j], surfpt);
 						VectorCopy (l->surfpt_position[j], spot);
 						surface = l->surfpt_surface[j];
-	#else
-						VectorCopy(l->surfpt[j], spot);
-	#endif
 					}
 				}
 			}
-	#ifdef HLRAD_TRANSLUCENT
 			if (l->translucent_b)
 			{
-#ifdef HLRAD_GROWSAMPLE
 				const dplane_t *surfaceplane = getPlaneFromFaceNumber (surface);
 				Winding *surfacewinding = new Winding (g_dfaces[surface]);
 				
@@ -5797,16 +3555,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 				VectorMA (spot2, -(g_translucentdepth + 2 * DEFAULT_HUNT_OFFSET), surfaceplane->normal, spot2);
 
 				delete surfacewinding;
-#else
-				vec3_t delta;
-				VectorSubtract (g_face_centroids[facenum], spot, delta);
-				VectorNormalize (delta);
-				VectorMA (spot, 0.2, delta, spot2);
-				VectorMA (spot2, -(g_translucentdepth + 2*DEFAULT_HUNT_OFFSET), l->facenormal, spot2);
-#endif
 			}
-	#endif
-	#ifdef HLRAD_AVOIDWALLBLEED
 			*wallflags_out = WALLFLAG_NONE;
 			if (blocked)
 			{
@@ -5816,36 +3565,15 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			{
 				*wallflags_out |= WALLFLAG_NUDGED;
 			}
-	#endif
 		}
 		// calculate normal for the sample
 		{
-#ifdef HLRAD_GROWSAMPLE
 			GetPhongNormal (surface, surfpt, pointnormal);
-#else
-	#ifdef HLRAD_PHONG_FROMORIGINAL
-			vec3_t pos_original;
-			SetSurfFromST (l, pos_original, s_vec, t_vec);
-			{
-				// adjust sample's offset to 0
-				vec_t scale;
-				scale = DotProduct (l->texnormal, l->facenormal);
-				VectorMA (pos_original, - DEFAULT_HUNT_OFFSET / scale, l->texnormal, pos_original);
-			}
-			GetPhongNormal(facenum, pos_original, pointnormal);
-	#else
-			GetPhongNormal(facenum, spot, pointnormal);
-	#endif
-#endif
-	#ifdef HLRAD_TRANSLUCENT
 			if (l->translucent_b)
 			{
 				VectorSubtract (vec3_origin, pointnormal, pointnormal2);
 			}
-	#endif
-#ifdef HLRAD_AVOIDNORMALFLIP
 			VectorCopy (pointnormal, *normal_out);
-#endif
 		}
 		// calculate visibility for the sample
 		{
@@ -5853,11 +3581,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			{
 				if (i == 0)
 				{
-	#ifdef ZHLT_DecompressVis_FIX
 					memset (pvs, 255, (g_dmodels[0].visleafs + 7) / 8);
-	#else
-					memset(pvs, 255, (g_numleafs + 7) / 8);
-	#endif
 				}
 			}
 			else
@@ -5866,38 +3590,24 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 				int thisoffset = leaf->visofs;
 				if (i == 0 || thisoffset != lastoffset)
 				{
-		#ifdef HLRAD_VIS_FIX
 					if (thisoffset == -1)
 					{
-			#ifdef ZHLT_DecompressVis_FIX
 						memset (pvs, 0, (g_dmodels[0].visleafs + 7) / 8);
-			#else
-						memset (pvs, 0, (g_numleafs + 7) / 8);
-			#endif
 					}
 					else
 					{
 						DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
 					}
-		#else
-					hlassert(thisoffset != -1);
-					DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
-		#endif
 				}
 				lastoffset = thisoffset;
 			}
-	#ifdef HLRAD_TRANSLUCENT
 			if (l->translucent_b)
 			{
 				if (!g_visdatasize)
 				{
 					if (i == 0)
 					{
-		#ifdef ZHLT_DecompressVis_FIX
 						memset (pvs2, 255, (g_dmodels[0].visleafs + 7) / 8);
-		#else
-						memset(pvs2, 255, (g_numleafs + 7) / 8);
-		#endif
 					}
 				}
 				else
@@ -5906,129 +3616,54 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 					int thisoffset2 = leaf2->visofs;
 					if (i == 0 || thisoffset2 != lastoffset2)
 					{
-		#ifdef HLRAD_VIS_FIX
 						if (thisoffset2 == -1)
 						{
-			#ifdef ZHLT_DecompressVis_FIX
 							memset (pvs2, 0, (g_dmodels[0].visleafs + 7) / 8);
-			#else
-							memset(pvs2, 0, (g_numleafs + 7) / 8);
-			#endif
 						}
 						else
 						{
 							DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
 						}
-		#else
-						hlassert(thisoffset2 != -1);
-						DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
-		#endif
 					}
 					lastoffset2 = thisoffset2;
 				}
 			}
-	#endif
-
 		}
 		// gather light
 		{
 			if (!blocked)
 			{
 				GatherSampleLight(spot, pvs, pointnormal, sampled
-	#ifdef ZHLT_XASH
-					, sampled_direction
-	#endif
 					, styles
-	#ifdef HLRAD_GatherPatchLight
 					, 0
-	#endif
-	#ifdef HLRAD_DIVERSE_LIGHTING
 					, l->miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
-		#ifdef HLRAD_GROWSAMPLE
 					, surface
-		#else
-					, facenum
-		#endif
-	#endif
 					);
 			}
-	#ifdef HLRAD_TRANSLUCENT
 			if (l->translucent_b)
 			{
-	#ifdef HLRAD_AUTOCORING
 				vec3_t sampled2[ALLSTYLES];
 				memset (sampled2, 0, ALLSTYLES * sizeof (vec3_t));
-	#ifdef ZHLT_XASH
-				vec3_t sampled2_direction[ALLSTYLES];
-				memset (sampled2_direction, 0, ALLSTYLES * sizeof (vec3_t));
-	#endif
-	#else
-				vec3_t sampled2[MAXLIGHTMAPS];
-				memset (sampled2, 0, MAXLIGHTMAPS * sizeof (vec3_t));
-	#endif
 				if (!blocked)
 				{
 					GatherSampleLight(spot2, pvs2, pointnormal2, sampled2
-	#ifdef ZHLT_XASH
-						, sampled2_direction
-	#endif
 						, styles
-	#ifdef HLRAD_GatherPatchLight
 						, 0
-	#endif
-	#ifdef HLRAD_DIVERSE_LIGHTING
 						, l->miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
-		#ifdef HLRAD_GROWSAMPLE
 						, surface
-		#else
-						, facenum
-		#endif
-	#endif
 						);
 				}
-	#ifdef HLRAD_AUTOCORING
 				for (j = 0; j < ALLSTYLES && styles[j] != 255; j++)
-	#else
-				for (j = 0; j < MAXLIGHTMAPS && styles[j] != 255; j++)
-	#endif
 				{
-		#ifdef ZHLT_XASH
-					// reflect the direction back
-					vec_t dot = DotProduct (sampled2_direction[j], pointnormal);
-					VectorMA (sampled2_direction[j], -dot * 2, pointnormal, sampled2_direction[j]);
-					vec_t front = 0, back = 0;
-					// calculate the change of brightness and adjust the direction. This is not totally right when the translucent value is not grayscale,
-					// but at least it still preserves the condition that VectorLength(light_direction) <= VectorAvg(light).
-					for (int x = 0; x < 3; x++)
-					{
-						front += ((1.0 - l->translucent_v[x]) * sampled[j][x]) / 3;
-						back += (l->translucent_v[x] * sampled2[j][x]) / 3;
-					}
-					front = fabs (VectorAvg (sampled[j])) > NORMAL_EPSILON? front / VectorAvg (sampled[j]): 0;
-					back = fabs (VectorAvg (sampled2[j])) > NORMAL_EPSILON? back / VectorAvg (sampled2[j]): 0;
-		#endif
 					for (int x = 0; x < 3; x++)
 					{
 						sampled[j][x] = (1.0 - l->translucent_v[x]) * sampled[j][x] + l->translucent_v[x] * sampled2[j][x];
-		#ifdef ZHLT_XASH
-						sampled_direction[j][x] = front * sampled_direction[j][x] + back * sampled2_direction[j][x];
-		#endif
 					}
 				}
 			}
-	#endif
-	#ifdef HLRAD_AVOIDWALLBLEED
 			if (g_drawnudge)
 			{
-		#ifdef HLRAD_AUTOCORING
 				for (j = 0; j < ALLSTYLES && styles[j] != 255; j++)
-		#else
-				for (j = 0; j < MAXLIGHTMAPS && styles[j] != 255; j++)
-		#endif
 				{
 					if (blocked && styles[j] == 0)
 					{
@@ -6046,29 +3681,14 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 					}
 				}
 			}
-	#endif
 		}
 	}
 }
-#endif
 void            BuildFacelights(const int facenum)
 {
     dface_t*        f;
-#ifdef HLRAD_AUTOCORING
 	unsigned char	f_styles[ALLSTYLES];
 	sample_t		*fl_samples[ALLSTYLES];
-#ifndef HLRAD_BLUR
-	vec3_t			sampled[ALLSTYLES];
-#ifdef ZHLT_XASH
-	vec3_t			sampled_direction[ALLSTYLES];
-	vec3_t			sampled_normal;
-#endif
-#endif
-#else
-#ifndef HLRAD_BLUR
-    vec3_t          sampled[MAXLIGHTMAPS];
-#endif
-#endif
     lightinfo_t     l;
     int             i;
     int             j;
@@ -6082,22 +3702,13 @@ void            BuildFacelights(const int facenum)
     int             lightmapwidth;
     int             lightmapheight;
     int             size;
-#ifdef HLRAD_TRANSLUCENT
 	vec3_t			spot2, normal2;
 	vec3_t			delta;
 	byte			pvs2[(MAX_MAP_LEAFS + 7) / 8];
 	int				thisoffset2 = -1, lastoffset2 = -1;
-#endif
+	float			tbnmatrix[3][3];
 
-#ifndef HLRAD_TRANCPARENCYLOSS_FIX
-#ifdef HLRAD_HULLU
-    bool            b_transparency_loss = false;
-    vec_t           light_left_for_facelight = 1.0;
-#endif
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 	int				*sample_wallflags;
-#endif
 
     f = &g_dfaces[facenum];
 
@@ -6105,84 +3716,48 @@ void            BuildFacelights(const int facenum)
     // some surfaces don't need lightmaps
     //
     f->lightofs = -1;
-#ifdef HLRAD_AUTOCORING
-    for (j = 0; j < ALLSTYLES; j++)
-    {
-        f_styles[j] = 255;
-    }
-#else
-    for (j = 0; j < MAXLIGHTMAPS; j++)
-    {
-        f->styles[j] = 255;
-    }
-#endif
+	if (!g_bumpmaps)
+	{
+		for (j = 0; j < ALLSTYLES; j++)
+		{
+			f_styles[j] = 255;
+		}
+	}
 
     if (g_texinfo[f->texinfo].flags & TEX_SPECIAL)
     {
-#ifdef HLRAD_AUTOCORING
 		for (j = 0; j < MAXLIGHTMAPS; j++)
 		{
 			f->styles[j] = 255;
 		}
-#endif
         return;                                            // non-lit texture
     }
 
-#ifdef HLRAD_AUTOCORING
-	f_styles[0] = 0;
-#else
-    f->styles[0] = 0;                                      // Everyone gets the style zero map.
-#endif
-#ifdef HLRAD_STYLE_CORING
-#ifdef ZHLT_TEXLIGHT
-	if (g_face_patches[facenum] && g_face_patches[facenum]->emitstyle)
+	f->styles[DEFAULT_MAP] = 0;
+
+	if (!g_bumpmaps)
 	{
-#ifdef HLRAD_AUTOCORING
-		f_styles[1] = g_face_patches[facenum]->emitstyle;
-#else
-		f->styles[1] = g_face_patches[facenum]->emitstyle;
-#endif
+		if (g_face_patches[facenum] && g_face_patches[facenum]->emitstyle)
+		{
+			f_styles[1] = g_face_patches[facenum]->emitstyle;
+		}
 	}
-#endif
-#endif
+	else
+	{
+		// These are fixed
+		f_styles[BUMP_LIGHTVECS_STYLE] = BUMP_LIGHTVECS_STYLE;
+		f_styles[BUMP_BASELIGHT_STYLE] = BUMP_BASELIGHT_STYLE;
+		f_styles[BUMP_ADDLIGHT_STYLE] = BUMP_ADDLIGHT_STYLE;
+	}
 
     memset(&l, 0, sizeof(l));
 
     l.surfnum = facenum;
     l.face = f;
 
-#ifdef HLRAD_TRANSLUCENT
 	VectorCopy (g_translucenttextures[g_texinfo[f->texinfo].miptex], l.translucent_v);
 	l.translucent_b = !VectorCompare (l.translucent_v, vec3_origin);
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
 	l.miptex = g_texinfo[f->texinfo].miptex;
-#endif
-#ifndef HLRAD_TRANCPARENCYLOSS_FIX
-    //
-    // get transparency loss (part of light go through transparency faces.. reduce facelight on these)
-    //
-#ifndef HLRAD_OPAQUE_NODE
-#ifdef HLRAD_HULLU
-    for(unsigned int m = 0; m < g_opaque_face_count; m++)
-    {
-        opaqueList_t* opaque = &g_opaque_face_list[m];
-        if(opaque->facenum == facenum && opaque->transparency)
-        {
-            vec_t transparency = VectorAvg (opaque->transparency_scale); //vec_t transparency = opaque->transparency; //--vluzacn
-            
-            b_transparency_loss = true;
-            
-            light_left_for_facelight = 1.0 - transparency;
-            if( light_left_for_facelight < 0.0 ) light_left_for_facelight = 0.0;
-            if( light_left_for_facelight > 1.0 ) light_left_for_facelight = 1.0;
-            
-            break;
-        }
-    }
-#endif
-#endif
-#endif
 
     //
     // rotate plane
@@ -6194,28 +3769,9 @@ void            BuildFacelights(const int facenum)
     CalcFaceVectors(&l);
     CalcFaceExtents(&l);
     CalcPoints(&l);
-#ifdef HLRAD_BLUR
 	CalcLightmap (&l
-#ifdef HLRAD_AUTOCORING
 		, f_styles
-#else
-		, f->styles
-#endif
 		);
-#endif
-#ifdef HLRAD_MDL_LIGHT_HACK
-#ifndef HLRAD_MDL_LIGHT_HACK_NEW
-	VectorCopy (g_face_offset[facenum], facesampleinfo[facenum].offset);
-	for (i=0; i<2; ++i)
-	{
-		facesampleinfo[facenum].texmins[i] = l.texmins[i];
-		facesampleinfo[facenum].texsize[i] = l.texsize[i];
-		VectorCopy (l.textoworld[i], facesampleinfo[facenum].textoworld[i]);
-		VectorCopy (l.worldtotex[i], facesampleinfo[facenum].worldtotex[i]);
-	}
-	VectorCopy (l.texorg, facesampleinfo[facenum].texorg);
-#endif
-#endif
 
     lightmapwidth = l.texsize[0] + 1;
     lightmapheight = l.texsize[1] + 1;
@@ -6225,125 +3781,50 @@ void            BuildFacelights(const int facenum)
 
     facelight[facenum].numsamples = l.numsurfpt;
 
-#ifdef HLRAD_AUTOCORING
 	for (k = 0; k < ALLSTYLES; k++)
 	{
 		fl_samples[k] = (sample_t *)calloc (l.numsurfpt, sizeof(sample_t));
 		hlassume (fl_samples[k] != NULL, assume_NoMemory);
 	}
-#else
-    for (k = 0; k < MAXLIGHTMAPS; k++)
-    {
-        facelight[facenum].samples[k] = (sample_t*)calloc(l.numsurfpt, sizeof(sample_t));
-#ifdef HLRAD_HLASSUMENOMEMORY
-		hlassume (facelight[facenum].samples[k] != NULL, assume_NoMemory);
-#endif
-    }
-#endif
-#ifdef HLRAD_AUTOCORING
 	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
 	{
 		hlassume (patch->totalstyle_all = (unsigned char *)malloc (ALLSTYLES * sizeof (unsigned char)), assume_NoMemory);
 		hlassume (patch->samplelight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
 		hlassume (patch->totallight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
 		hlassume (patch->directlight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
-#ifdef ZHLT_XASH
-		hlassume (patch->samplelight_all_direction = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
-		hlassume (patch->totallight_all_direction = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
-		hlassume (patch->directlight_all_direction = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
-#endif
 		for (j = 0; j < ALLSTYLES; j++)
 		{
 			patch->totalstyle_all[j] = 255;
 			VectorClear (patch->samplelight_all[j]);
 			VectorClear (patch->totallight_all[j]);
 			VectorClear (patch->directlight_all[j]);
-#ifdef ZHLT_XASH
-			VectorClear (patch->samplelight_all_direction[j]);
-			VectorClear (patch->totallight_all_direction[j]);
-			VectorClear (patch->directlight_all_direction[j]);
-#endif
 		}
 		patch->totalstyle_all[0] = 0;
 	}
-#endif
 
-#ifdef HLRAD_AVOIDWALLBLEED
 	sample_wallflags = (int *)malloc ((2 * l.lmcache_side + 1) * (2 * l.lmcache_side + 1) * sizeof (int));
-#endif
     spot = l.surfpt[0];
     for (i = 0; i < l.numsurfpt; i++, spot += 3)
     {
-#ifndef HLRAD_BLUR
-        vec3_t          pointnormal = { 0, 0, 0 };
-#endif
 
-#ifndef HLRAD_GROWSAMPLE
-#ifdef HLRAD_LERP_TEXNORMAL
-		vec3_t spot_original;
-		{
-			vec_t s_vec = l.texmins[0] * TEXTURE_STEP + (i % lightmapwidth) * TEXTURE_STEP;
-			vec_t t_vec = l.texmins[1] * TEXTURE_STEP + (i / lightmapwidth) * TEXTURE_STEP;
-			SetSurfFromST (&l, spot_original, s_vec, t_vec);
-			{
-				// adjust sample's offset to 0
-				vec_t scale;
-				scale = DotProduct (l.texnormal, l.facenormal);
-				VectorMA (spot_original, - DEFAULT_HUNT_OFFSET / scale, l.texnormal, spot_original);
-			}
-		}
-#endif
-#endif
-#ifdef HLRAD_AUTOCORING
         for (k = 0; k < ALLSTYLES; k++)
         {
-#ifdef HLRAD_GROWSAMPLE
             VectorCopy(spot, fl_samples[k][i].pos);
 			fl_samples[k][i].surface = l.surfpt_surface[i];
-#else
-#ifdef HLRAD_LERP_TEXNORMAL
-            VectorCopy(spot_original, fl_samples[k][i].pos);
-#else
-            VectorCopy(spot, fl_samples[k][i].pos);
-#endif
-#endif
         }
-#else
-        for (k = 0; k < MAXLIGHTMAPS; k++)
-        {
-#ifdef HLRAD_GROWSAMPLE
-            VectorCopy(spot, facelight[facenum].samples[k][i].pos);
-			facelight[facenum].samples[k][i].surface = l.surfpt_surface[i];
-#else
-#ifdef HLRAD_LERP_TEXNORMAL
-            VectorCopy(spot_original, facelight[facenum].samples[k][i].pos);
-#else
-            VectorCopy(spot, facelight[facenum].samples[k][i].pos);
-#endif
-#endif
-        }
-#endif
 
-#ifdef HLRAD_BLUR
 		int s, t, pos;
 		int s_center, t_center;
 		vec_t sizehalf;
 		vec_t weighting, subsamples;
-#ifdef HLRAD_AVOIDNORMALFLIP
 		vec3_t centernormal;
 		vec_t weighting_correction;
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 		int pass;
-#endif
 		s_center = (i % lightmapwidth) * l.lmcache_density + l.lmcache_offset;
 		t_center = (i / lightmapwidth) * l.lmcache_density + l.lmcache_offset;
 		sizehalf = 0.5 * g_blur * l.lmcache_density;
 		subsamples = 0.0;
-#ifdef HLRAD_AVOIDNORMALFLIP
 		VectorCopy (l.lmcache_normal[s_center + l.lmcachewidth * t_center], centernormal);
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 		if (g_bleedfix && !g_drawnudge)
 		{
 			int s_origin = s_center;
@@ -6399,18 +3880,14 @@ void            BuildFacelights(const int facenum)
 				}
 			}
 		}
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 	  for (pass = 0; pass < 2; pass++)
 	  {
-#endif
 		for (s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++)
 		{
 			for (t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++)
 			{
 				weighting = (qmin (0.5, sizehalf - (s - s_center)) - qmax (-0.5, -sizehalf - (s - s_center)))
 					* (qmin (0.5, sizehalf - (t - t_center)) - qmax (-0.5, -sizehalf - (t - t_center)));
-#ifdef HLRAD_AVOIDWALLBLEED
 				if (g_bleedfix && !g_drawnudge)
 				{
 					int wallflags = sample_wallflags[(s - s_center + l.lmcache_side) + (2 * l.lmcache_side + 1) * (t - t_center + l.lmcache_side)];
@@ -6426,9 +3903,7 @@ void            BuildFacelights(const int facenum)
 						}
 					}
 				}
-#endif
 				pos = s + l.lmcachewidth * t;
-	#ifdef HLRAD_AVOIDNORMALFLIP
 				// when blur distance (g_blur) is large, the subsample can be very far from the original lightmap sample (aligned with interval TEXTURE_STEP (16.0))
 				// in some cases such as a thin cylinder, the subsample can even grow into the opposite side
 				// as a result, when exposed to a directional light, the light on the cylinder may "leak" into the opposite dark side
@@ -6437,25 +3912,13 @@ void            BuildFacelights(const int facenum)
 				weighting_correction = DotProduct (l.lmcache_normal[pos], centernormal);
 				weighting_correction = (weighting_correction > 0)? weighting_correction * weighting_correction: 0;
 				weighting = weighting * weighting_correction;
-	#endif
-	#ifdef HLRAD_AUTOCORING
 				for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 				{
 					VectorMA (fl_samples[j][i].light, weighting, l.lmcache[pos][j], fl_samples[j][i].light);
-		#ifdef ZHLT_XASH
-					VectorMA (fl_samples[j][i].light_direction, weighting, l.lmcache_direction[pos][j], fl_samples[j][i].light_direction);
-		#endif
 				}
-	#else
-				for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-				{
-					VectorAdd (facelight[facenum].samples[j][i].light, weighting, l.lmcache[pos][j], facelight[facenum].samples[j][i].light);
-				}
-	#endif
 				subsamples += weighting;
 			}
 		}
-#ifdef HLRAD_AVOIDWALLBLEED
 		if (subsamples > NORMAL_EPSILON)
 		{
 			break;
@@ -6463,418 +3926,35 @@ void            BuildFacelights(const int facenum)
 		else
 		{
 			subsamples = 0.0;
-	#ifdef HLRAD_AUTOCORING
 			for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 			{
 				VectorClear (fl_samples[j][i].light);
-		#ifdef ZHLT_XASH
-				VectorClear (fl_samples[j][i].light_direction);
-		#endif
 			}
-	#else
-			for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-			{
-				VectorClear (facelight[facenum].samples[j][i].light);
-			}
-	#endif
 		}
 	  }
-#endif
-#ifdef ZHLT_XASH
-		for (int k = 0; k < ALLSTYLES; k++)
-		{
-			VectorClear (fl_samples[k][i].normal);
-		}
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 		if (subsamples > 0)
-#else
-		if (subsamples > NORMAL_EPSILON)
-#endif
 		{
-#ifdef ZHLT_XASH
-			for (int k = 0; k < ALLSTYLES; k++) // fill 'sample.normal' for all 64 styles, just like what we did on 'sample.pos'
-			{
-				VectorCopy (centernormal, fl_samples[k][i].normal);
-			}
-#endif
-	#ifdef HLRAD_AUTOCORING
 			for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 			{
+				if (g_bumpmaps && f_styles[j] == BUMP_LIGHTVECS_STYLE)
+					continue;
+
 				VectorScale (fl_samples[j][i].light, 1.0 / subsamples, fl_samples[j][i].light);
-		#ifdef ZHLT_XASH
-				VectorScale (fl_samples[j][i].light_direction, 1.0 / subsamples, fl_samples[j][i].light_direction);
-		#endif
-	#else
-			for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-			{
-				VectorScale (facelight[facenum].samples[j][i].light, 1.0 / subsamples, facelight[facenum].samples[j][i].light);
-	#endif
-	#ifndef HLRAD_ACCURATEBOUNCE_SAMPLELIGHT
-	#ifdef ZHLT_TEXLIGHT
-		#ifdef HLRAD_AUTOCORING
-				AddSampleToPatch (&fl_samples[j][i], facenum, f_styles[j]); //LRC
-		#else
-				AddSampleToPatch(&facelight[facenum].samples[j][i], facenum, f->styles[j]); //LRC
-		#endif
-	#else
-				if (f->styles[j] == 0)
-				{
-					AddSampleToPatch(&facelight[facenum].samples[j][i], facenum);
-				}
-	#endif
-	#endif
 			}
 		}
-#else
-        // get the PVS for the pos to limit the number of checks
-        if (!g_visdatasize)
-        {
-	#ifdef ZHLT_DecompressVis_FIX
-			memset (pvs, 255, (g_dmodels[0].visleafs + 7) / 8);
-	#else
-            memset(pvs, 255, (g_numleafs + 7) / 8);
-	#endif
-            lastoffset = -1;
-        }
-        else
-        {
-            dleaf_t*        leaf = PointInLeaf(spot);
-
-            thisoffset = leaf->visofs;
-            if (i == 0 || thisoffset != lastoffset)
-            {
-	#ifdef HLRAD_VIS_FIX
-				if (thisoffset == -1)
-				{
-		#ifdef ZHLT_DecompressVis_FIX
-					memset (pvs, 0, (g_dmodels[0].visleafs + 7) / 8);
-		#else
-					memset (pvs, 0, (g_numleafs + 7) / 8);
-		#endif
-				}
-				else
-				{
-					DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
-				}
-	#else
-                hlassert(thisoffset != -1);
-                DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
-	#endif
-            }
-            lastoffset = thisoffset;
-        }
-#ifdef HLRAD_TRANSLUCENT
-		if (l.translucent_b)
-		{
-			VectorSubtract (g_face_centroids[facenum], spot, delta);
-			VectorNormalize (delta);
-			VectorMA (spot, 0.2, delta, spot2);
-			VectorMA (spot2, -(g_translucentdepth + 2*DEFAULT_HUNT_OFFSET), l.facenormal, spot2);
-			if (!g_visdatasize)
-			{
-	#ifdef ZHLT_DecompressVis_FIX
-				memset (pvs2, 255, (g_dmodels[0].visleafs + 7) / 8);
-	#else
-				memset(pvs2, 255, (g_numleafs + 7) / 8);
-	#endif
-				lastoffset2 = -1;
-			}
-			else
-			{
-				dleaf_t*        leaf2 = PointInLeaf(spot2);
-
-				thisoffset2 = leaf2->visofs;
-				if (i == 0 || thisoffset2 != lastoffset2)
-				{
-	#ifdef HLRAD_VIS_FIX
-					if (thisoffset2 == -1)
-					{
-		#ifdef ZHLT_DecompressVis_FIX
-						memset (pvs2, 0, (g_dmodels[0].visleafs + 7) / 8);
-		#else
-						memset(pvs2, 0, (g_numleafs + 7) / 8);
-		#endif
-					}
-					else
-					{
-						DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
-					}
-	#else
-					hlassert(thisoffset2 != -1);
-					DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
-	#endif
-				}
-				lastoffset2 = thisoffset2;
-			}
-		}
-#endif
-
-        memset(sampled, 0, sizeof(sampled));
-#ifdef ZHLT_XASH
-		memset (sampled_direction, 0, sizeof (sampled_direction));
-		VectorClear (sampled_normal);
-#endif
-
-        // If we are doing "extra" samples, oversample the direct light around the point.
-        if (g_extra
-#ifdef HLRAD_FASTMODE
-			&& !g_fastmode
-#endif
-			)
-        {
-#ifdef HLRAD_WEIGHT_FIX
-            int             weighting[3][3] = { {1, 1, 1}, {1, 1, 1}, {1, 1, 1} }; // because we are using 1/3 dist not 1/2
-#else
-            int             weighting[3][3] = { {5, 9, 5}, {9, 16, 9}, {5, 9, 5} };
-#endif
-            vec3_t          pos;
-            int             s, t, subsamples = 0;
-
-            for (t = -1; t <= 1; t++)
-            {
-                for (s = -1; s <= 1; s++)
-                {
-#ifndef HLRAD_CalcPoints_NEW
-                    int             subsample = i + t * lightmapwidth + s;
-                    int             sample_s = i % lightmapwidth;
-                    int sample_t = i / lightmapwidth;
-
-                    if ((0 <= s + sample_s) && (s + sample_s < lightmapwidth)
-                        && (0 <= t + sample_t)&&(t + sample_t <lightmapheight))
-#endif
-                    {
-#ifdef HLRAD_AUTOCORING
-                        vec3_t          subsampled[ALLSTYLES];
-#ifdef ZHLT_XASH
-						vec3_t			subsampled_direction[ALLSTYLES];
-#endif
-
-                        for (j = 0; j < ALLSTYLES; j++)
-#else
-                        vec3_t          subsampled[MAXLIGHTMAPS];
-
-                        for (j = 0; j < MAXLIGHTMAPS; j++)
-#endif
-                        {
-                            VectorClear(subsampled[j]);
-#ifdef ZHLT_XASH
-							VectorClear (subsampled_direction[j]);
-#endif
-                        }
-
-#ifdef HLRAD_CalcPoints_NEW
-						vec_t s_vec = l.texmins[0] * TEXTURE_STEP + (i % lightmapwidth + s * 1.0/3.0) * TEXTURE_STEP;
-						vec_t t_vec = l.texmins[1] * TEXTURE_STEP + (i / lightmapwidth + t * 1.0/3.0) * TEXTURE_STEP;
-						bool blocked = false;
-						if (SetSampleFromST (pos, &l, s_vec, t_vec, g_face_lightmode[facenum]) == LightOutside)
-						{
-							if (l.surfpt_lightoutside[i])
-							{
-								blocked = true;
-							}
-							else
-							{
-								VectorCopy(l.surfpt[i], pos);
-							}
-						}
-#else
-                        // Calculate the point one third of the way toward the "subsample point"
-                        VectorCopy(l.surfpt[i], pos);
-                        VectorAdd(pos, l.surfpt[i], pos);
-                        VectorAdd(pos, l.surfpt[subsample], pos);
-                        VectorScale(pos, 1.0 / 3.0, pos);
-#endif
-
-#ifdef HLRAD_PHONG_FROMORIGINAL
-						// this will generate smoother light for cylinders partially embedded in solid,
-						vec3_t pos_original;
-						SetSurfFromST (&l, pos_original, s_vec, t_vec);
-						{
-							// adjust sample's offset to 0
-							vec_t scale;
-							scale = DotProduct (l.texnormal, l.facenormal);
-							VectorMA (pos_original, - DEFAULT_HUNT_OFFSET / scale, l.texnormal, pos_original);
-						}
-                        GetPhongNormal(facenum, pos_original, pointnormal);
-#else
-                        GetPhongNormal(facenum, pos, pointnormal);
-#endif
-#ifdef HLRAD_CalcPoints_NEW
-			bool blocked = l.surfpt_lightoutside[i];
-			if (!blocked)
-			{
-#endif
-            GatherSampleLight(spot, pvs, pointnormal, sampled, 
-#ifdef ZHLT_XASH
-				sampled_direction, 
-#endif
-#ifdef HLRAD_AUTOCORING
-				f_styles
-#else
-				f->styles
-#endif
-#ifdef HLRAD_GatherPatchLight
-				, 0
-#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
-				, l.miptex
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
-				, facenum
-#endif
-				);
-#ifdef HLRAD_CalcPoints_NEW
-			}
-#endif
-#ifdef HLRAD_TRANSLUCENT
-			if (l.translucent_b)
-			{
-#ifdef HLRAD_AUTOCORING
-				vec3_t sampled2[ALLSTYLES];
-#ifdef ZHLT_XASH
-				vec3_t sampled2_direction[ALLSTYLES];
-#endif
-				for (j = 0; j < ALLSTYLES; j++)
-#else
-				vec3_t sampled2[MAXLIGHTMAPS];
-				for (j = 0; j < MAXLIGHTMAPS; j++)
-#endif
-				{
-					VectorFill(sampled2[j], 0);
-#ifdef ZHLT_XASH
-					VectorFill (sampled2_direction[j], 0);
-#endif
-				}
-				VectorSubtract (vec3_origin, pointnormal, normal2);
-				GatherSampleLight(spot2, pvs2, normal2, sampled2, 
-#ifdef ZHLT_XASH
-					sampled2_direction, 
-#endif
-#ifdef HLRAD_AUTOCORING
-					f_styles
-#else
-					f->styles
-#endif
-	#ifdef HLRAD_GatherPatchLight
-					, 0
-	#endif
-#ifdef HLRAD_DIVERSE_LIGHTING
-					, l.miptex
-#endif
-#ifdef HLRAD_TEXLIGHTGAP
-					, facenum
-#endif
-					);
-#ifdef HLRAD_AUTOCORING
-				for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
-#else
-				for (j = 0; j < MAXLIGHTMAPS && (f->styles[j] != 255); j++)
-#endif
-				{
-	#ifdef ZHLT_XASH
-					vec_t dot = DotProduct (sampled2_direction[j], pointnormal);
-					VectorMA (sampled2_direction[j], -dot * 2, pointnormal, sampled2_direction[j]);
-					vec_t front = 0, back = 0;
-					for (int x = 0; x < 3; x++)
-					{
-						front += ((1.0 - l.translucent_v[x]) * sampled[j][x]) / 3;
-						back += (l.translucent_v[x] * sampled2[j][x]) / 3;
-					}
-					front = fabs (VectorAvg (sampled[j])) > NORMAL_EPSILON? front / VectorAvg (sampled[j]): 0;
-					back = fabs (VectorAvg (sampled2[j])) > NORMAL_EPSILON? back / VectorAvg (sampled2[j]): 0;
-	#endif
-					for (int x = 0; x < 3; x++)
-					{
-						sampled[j][x] = (1.0 - l.translucent_v[x]) * sampled[j][x] + l.translucent_v[x] * sampled2[j][x];
-	#ifdef ZHLT_XASH
-						sampled_direction[j][x] = front * sampled_direction[j][x] + back * sampled2_direction[j][x];
-	#endif
-					}
-				}
-			}
-#endif
-#ifdef ZHLT_XASH
-			VectorCopy (pointnormal, sampled_normal);
-#endif
-        }
-		
-#ifdef HLRAD_AUTOCORING
-		for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
-#else
-        for (j = 0; j < MAXLIGHTMAPS && (f->styles[j] != 255); j++)
-#endif
-        {
-#ifdef HLRAD_AUTOCORING
-			VectorCopy (sampled[j], fl_samples[j][i].light);
-#ifdef ZHLT_XASH
-			VectorCopy (sampled_direction[j], fl_samples[j][i].light_direction);
-#endif
-#else
-            VectorCopy(sampled[j], facelight[facenum].samples[j][i].light);
-#endif
-
-#ifndef HLRAD_TRANCPARENCYLOSS_FIX
-#ifdef HLRAD_HULLU            
-            if(b_transparency_loss)
-            {
-#ifdef HLRAD_AUTOCORING
-				VectorScale (fl_samples[j][i].light, light_left_for_facelight, fl_samples[j][i].light);
-#ifdef ZHLT_XASH
-				VectorScale (fl_samples[j][i].light_direction, light_left_for_facelight, fl_samples[j][i].light_direction);
-#endif
-#else
-            	 VectorScale(facelight[facenum].samples[j][i].light, light_left_for_facelight, facelight[facenum].samples[j][i].light);
-#endif
-            }
-#endif
-#endif
-
-#ifndef HLRAD_ACCURATEBOUNCE_SAMPLELIGHT
-#ifdef ZHLT_TEXLIGHT
-	#ifdef HLRAD_AUTOCORING
-			AddSampleToPatch (&fl_samples[j][i], facenum, f_styles[j]); //LRC
-	#else
-            AddSampleToPatch(&facelight[facenum].samples[j][i], facenum, f->styles[j]); //LRC
-	#endif
-#else
-            if (f->styles[j] == 0)
-            {
-                AddSampleToPatch(&facelight[facenum].samples[j][i], facenum);
-            }
-#endif
-#endif
-        }
-#ifdef ZHLT_XASH
-		for (k = 0; k < ALLSTYLES; k++) // fill 'sample.normal' for all 64 styles, just like what we did on 'sample.pos'
-		{
-			VectorCopy (sampled_normal, fl_samples[k][i].normal);
-		}
-#endif
-#endif // ifndef HLRAD_BLUR
     } // end of i loop
-#ifdef HLRAD_AVOIDWALLBLEED
 	free (sample_wallflags);
-#endif
 
     // average up the direct light on each patch for radiosity
-#ifdef HLRAD_ACCURATEBOUNCE_SAMPLELIGHT
 	AddSamplesToPatches ((const sample_t **)fl_samples, f_styles, facenum, &l);
-#endif
-#ifndef HLRAD_GatherPatchLight
-    if (g_numbounce > 0)
-#endif
     {
         for (patch = g_face_patches[facenum]; patch; patch = patch->next)
         {
-#ifdef ZHLT_TEXLIGHT
             //LRC:
 			unsigned istyle;
-	#ifdef HLRAD_AUTOCORING
-		#ifdef HLRAD_ACCURATEBOUNCE_SAMPLELIGHT
 			if (patch->samples <= ON_EPSILON * ON_EPSILON)
 				patch->samples = 0.0;
-		#endif
+
 			if (patch->samples)
 			{
 				for (istyle = 0; istyle < ALLSTYLES && patch->totalstyle_all[istyle] != 255; istyle++)
@@ -6882,49 +3962,18 @@ void            BuildFacelights(const int facenum)
 					vec3_t v;
 					VectorScale (patch->samplelight_all[istyle], 1.0f / patch->samples, v);
 					VectorAdd (patch->directlight_all[istyle], v, patch->directlight_all[istyle]);
-		#ifdef ZHLT_XASH
-					VectorScale (patch->samplelight_all_direction[istyle], 1.0f / patch->samples, v);
-					VectorAdd (patch->directlight_all_direction[istyle], v, patch->directlight_all_direction[istyle]);
-		#endif
 				}
 			}
-	#else
-			for (istyle = 0; istyle < MAXLIGHTMAPS && patch->totalstyle[istyle] != 255; istyle++)
-			{
-				if (patch->samples[istyle])
-		        {
-		            vec3_t          v;                         // BUGBUG: Use a weighted average instead?
-
-					VectorScale(patch->samplelight[istyle], (1.0f / patch->samples[istyle]), v);
-					VectorAdd(patch->totallight[istyle], v, patch->totallight[istyle]);
-	                VectorAdd(patch->directlight[istyle], v, patch->directlight[istyle]);
-				}
-			}
-	#endif
             //LRC (ends)
-#else
-            if (patch->samples)
-            {
-                vec3_t          v;                         // BUGBUG: Use a weighted average instead?
-
-                VectorScale(patch->samplelight, (1.0f / patch->samples), v);
-                VectorAdd(patch->totallight, v, patch->totallight);
-                VectorAdd(patch->directlight, v, patch->directlight);
-            }
-#endif
         }
     }
-#ifdef HLRAD_GatherPatchLight
+
 	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
 	{
 		// get the PVS for the pos to limit the number of checks
 		if (!g_visdatasize)
 		{
-	#ifdef ZHLT_DecompressVis_FIX
 			memset (pvs, 255, (g_dmodels[0].visleafs + 7) / 8);
-	#else
-			memset(pvs, 255, (g_numleafs + 7) / 8);
-	#endif
 			lastoffset = -1;
 		}
 		else
@@ -6932,42 +3981,24 @@ void            BuildFacelights(const int facenum)
 			dleaf_t*        leaf = PointInLeaf(patch->origin);
 
 			thisoffset = leaf->visofs;
-#ifdef HLRAD_BLUR
 			if (patch == g_face_patches[facenum] || thisoffset != lastoffset)
-#else
-			if (l.numsurfpt == 0 || thisoffset != lastoffset)
-#endif
 			{
-	#ifdef HLRAD_VIS_FIX
 				if (thisoffset == -1)
 				{
-		#ifdef ZHLT_DecompressVis_FIX
 					memset (pvs, 0, (g_dmodels[0].visleafs + 7) / 8);
-		#else
-					memset(pvs, 0, (g_numleafs + 7) / 8);
-		#endif
 				}
 				else
 				{
 					DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
 				}
-	#else
-				hlassert(thisoffset != -1);
-				DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
-	#endif
 			}
 			lastoffset = thisoffset;
 		}
-#ifdef HLRAD_TRANSLUCENT
 		if (l.translucent_b)
 		{
 			if (!g_visdatasize)
 			{
-	#ifdef ZHLT_DecompressVis_FIX
 				memset (pvs2, 255, (g_dmodels[0].visleafs + 7) / 8);
-	#else
-				memset(pvs2, 255, (g_numleafs + 7) / 8);
-	#endif
 				lastoffset2 = -1;
 			}
 			else
@@ -6978,205 +4009,96 @@ void            BuildFacelights(const int facenum)
 				thisoffset2 = leaf2->visofs;
 				if (l.numsurfpt == 0 || thisoffset2 != lastoffset2)
 				{
-	#ifdef HLRAD_VIS_FIX
 					if (thisoffset2 == -1)
 					{
-		#ifdef ZHLT_DecompressVis_FIX
 						memset (pvs2, 0, (g_dmodels[0].visleafs + 7) / 8);
-		#else
-						memset(pvs2, 0, (g_numleafs + 7) / 8);
-		#endif
 					}
 					else
 					{
 						DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
 					}
-	#else
-					hlassert(thisoffset2 != -1);
-					DecompressVis(&g_dvisdata[leaf2->visofs], pvs2, sizeof(pvs2));
-	#endif
 				}
 				lastoffset2 = thisoffset2;
 			}
-	#ifdef HLRAD_AUTOCORING
 			vec3_t frontsampled[ALLSTYLES], backsampled[ALLSTYLES];
-		#ifdef ZHLT_XASH
-			vec3_t frontsampled_direction[ALLSTYLES], backsampled_direction[ALLSTYLES];
-		#endif
 			for (j = 0; j < ALLSTYLES; j++)
-	#else
-			vec3_t frontsampled[MAXLIGHTMAPS], backsampled[MAXLIGHTMAPS];
-			for (j = 0; j < MAXLIGHTMAPS; j++)
-	#endif
 			{
 				VectorClear (frontsampled[j]);
 				VectorClear (backsampled[j]);
-		#ifdef ZHLT_XASH
-				VectorClear (frontsampled_direction[j]);
-				VectorClear (backsampled_direction[j]);
-		#endif
 			}
 			VectorSubtract (vec3_origin, l.facenormal, normal2);
 			GatherSampleLight (patch->origin, pvs, l.facenormal, frontsampled, 
-		#ifdef ZHLT_XASH
-				frontsampled_direction, 
-		#endif
-	#ifdef HLRAD_AUTOCORING
 				patch->totalstyle_all
-	#else
-				patch->totalstyle
-	#endif
 				, 1
-	#ifdef HLRAD_DIVERSE_LIGHTING
 				, l.miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
 				, facenum
-	#endif
 				);
 			GatherSampleLight (spot2, pvs2, normal2, backsampled, 
-		#ifdef ZHLT_XASH
-				backsampled_direction, 
-		#endif
-	#ifdef HLRAD_AUTOCORING
 				patch->totalstyle_all
-	#else
-				patch->totalstyle
-	#endif
 				, 1
-	#ifdef HLRAD_DIVERSE_LIGHTING
 				, l.miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
 				, facenum
-	#endif
 				);
-	#ifdef HLRAD_AUTOCORING
 			for (j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++)
-	#else
-			for (j = 0; j < MAXLIGHTMAPS && (patch->totalstyle[j] != 255); j++)
-	#endif
 			{
-	#ifdef ZHLT_XASH
-				vec_t dot = DotProduct (backsampled_direction[j], l.facenormal);
-				VectorMA (backsampled_direction[j], -dot * 2, l.facenormal, backsampled_direction[j]);
-				vec_t front = 0, back = 0;
+				if (g_bumpmaps && j > 0)
+					break;
+
 				for (int x = 0; x < 3; x++)
 				{
-					front += ((1.0 - l.translucent_v[x]) * frontsampled[j][x]) / 3;
-					back += (l.translucent_v[x] * backsampled[j][x]) / 3;
-				}
-				front = fabs (VectorAvg (frontsampled[j])) > NORMAL_EPSILON? front / VectorAvg (frontsampled[j]): 0;
-				back = fabs (VectorAvg (backsampled[j])) > NORMAL_EPSILON? back / VectorAvg (backsampled[j]): 0;
-	#endif
-				for (int x = 0; x < 3; x++)
-				{
-	#ifdef HLRAD_AUTOCORING
 					patch->totallight_all[j][x] += (1.0 - l.translucent_v[x]) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
-		#ifdef ZHLT_XASH
-					patch->totallight_all_direction[j][x] += front * frontsampled_direction[j][x] + back * backsampled_direction[j][x];
-		#endif
-	#else
-					patch->totallight[j][x] += (1.0 - l.translucent_v[x]) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
-	#endif
 				}
 			}
 		}
 		else
 		{
 			GatherSampleLight (patch->origin, pvs, l.facenormal, 
-	#ifdef HLRAD_AUTOCORING
 				patch->totallight_all, 
-	#ifdef ZHLT_XASH
-				patch->totallight_all_direction, 
-	#endif
 				patch->totalstyle_all
-	#else
-				patch->totallight, patch->totalstyle
-	#endif
 				, 1
-	#ifdef HLRAD_DIVERSE_LIGHTING
 				, l.miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
 				, facenum
-	#endif
 				);
 		}
-#else
-		GatherSampleLight (patch->origin, pvs, l.facenormal, 
-	#ifdef HLRAD_AUTOCORING
-			patch->totallight_all, 
-	#ifdef ZHLT_XASH
-				patch->totallight_all_direction, 
-	#endif
-				patch->totalstyle_all
-	#else
-			patch->totallight, patch->totalstyle
-	#endif
-			, 1
-	#ifdef HLRAD_DIVERSE_LIGHTING
-			, l.miptex
-	#endif
-	#ifdef HLRAD_TEXLIGHTGAP
-			, facenum
-	#endif
-			);
-#endif
 	}
-#endif
 
     // add an ambient term if desired
     if (g_ambient[0] || g_ambient[1] || g_ambient[2])
     {
-#ifdef HLRAD_AUTOCORING
 		for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 		{
-			if (f_styles[j] == 0)
+			if (f->styles[j] == 0)
 			{
 				s = fl_samples[j];
-#else
-        for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-        {
-            if (f->styles[j] == 0)
-            {
-                s = facelight[facenum].samples[j];
-#endif
                 for (i = 0; i < l.numsurfpt; i++, s++)
                 {
                     VectorAdd(s->light, g_ambient, s->light);
-#ifdef ZHLT_XASH
-					vec_t avg = VectorAvg (g_ambient);
-					VectorMA (s->light_direction, -DIFFUSE_DIRECTION_SCALE * avg, s->normal, s->light_direction);
-#endif
                 }
                 break;
             }
-        }
 
+			if (g_bumpmaps && f->styles[j] == BUMP_BASELIGHT_STYLE)
+			{
+				s = fl_samples[j];
+				for (i = 0; i < l.numsurfpt; i++, s++)
+				{
+					VectorAdd(s->light, g_ambient, s->light);
+				}
+				break;
+			}
+        }
     }
 
     // add circus lighting for finding black lightmaps
     if (g_circus)
     {
-#ifdef HLRAD_AUTOCORING
 		for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 		{
 			if (f_styles[j] == 0)
 			{
-#else
-        for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-        {
-            if (f->styles[j] == 0)
-            {
-#endif
                 int             amt = 7;
 
-#ifdef HLRAD_AUTOCORING
 				s = fl_samples[j];
-#else
-                s = facelight[facenum].samples[j];
-#endif
 
                 while ((l.numsurfpt % amt) == 0)
                 {
@@ -7204,11 +4126,9 @@ void            BuildFacelights(const int facenum)
 
     // if( VectorAvg( face_patches[facenum]->baselight ) >= dlight_threshold)       // Now all lighted surfaces glow
     {
-#ifdef ZHLT_TEXLIGHT
         //LRC:
 		if (g_face_patches[facenum])
 		{
-	#ifdef HLRAD_AUTOCORING
 			for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 			{
 				if (f_styles[j] == g_face_patches[facenum]->emitstyle)
@@ -7217,103 +4137,122 @@ void            BuildFacelights(const int facenum)
 				}
 			}
 			if (j == ALLSTYLES)
-	#else
-			for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
 			{
-                if (f->styles[j] == g_face_patches[facenum]->emitstyle) //LRC
-				{
-					break;
-				}
-			}
-
-			if (j == MAXLIGHTMAPS)
-	#endif
-			{
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
 				if (++stylewarningcount >= stylewarningnext)
 				{
 					stylewarningnext = stylewarningcount * 2;
 					Warning("Too many direct light styles on a face(?,?,?)");
 					Warning(" total %d warnings for too many styles", stylewarningcount);
 				}
-#else
-				Warning("Too many direct light styles on a face(?,?,?)");
-#endif
 			}
 			else
 			{
-	#ifdef HLRAD_AUTOCORING
 				if (f_styles[j] == 255)
 				{
 					f_styles[j] = g_face_patches[facenum]->emitstyle;
 				}
 
 				s = fl_samples[j];
-	#else
-				if (f->styles[j] == 255)
-				{
-					f->styles[j] = g_face_patches[facenum]->emitstyle;
-				}
-
-				s = facelight[facenum].samples[j];
-	#endif
 				for (i = 0; i < l.numsurfpt; i++, s++)
 				{
 					VectorAdd(s->light, g_face_patches[facenum]->baselight, s->light);
-#ifdef ZHLT_XASH
-					vec_t avg = VectorAvg (g_face_patches[facenum]->baselight);
-					VectorMA (s->light_direction, -DIFFUSE_DIRECTION_SCALE * avg, s->normal, s->light_direction);
-#endif
 				}
 			}
 		}
         //LRC (ends)
-#else
-        for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
-        {
-            if (f->styles[j] == 0)
-            {
-                if (g_face_patches[facenum])
-                {
-                    s = facelight[facenum].samples[j];
-                    for (i = 0; i < l.numsurfpt; i++, s++)
-                    {
-                        VectorAdd(s->light, g_face_patches[facenum]->baselight, s->light);
-                    }
-                    break;
-                }
-            }
-        }
-#endif
     }
-#ifdef HLRAD_AUTOCORING
-	// samples
+
+	if (g_bumpmaps)
 	{
-		facelight_t *fl = &facelight[facenum];
+		// Get the pointer to the bumpvecs style
+		s = fl_samples[BUMP_LIGHTVECS_STYLE];
+		texinfo_t* tx = &g_texinfo[f->texinfo];
+
+		// Build tbn matrix
+		VectorCopy(tx->vecs[0], tbnmatrix[0]);
+		VectorNormalize(tbnmatrix[0]);
+
+		VectorCopy(tx->vecs[1], tbnmatrix[1]);
+		VectorNormalize(tbnmatrix[1]);
+
+		VectorCopy(plane->normal, tbnmatrix[2]);
+		VectorNormalize(tbnmatrix[2]);
+
+		// Transform by TBN matrix
+		for (i = 0; i < l.numsurfpt; i++, s++)
+		{
+			if (s->light[0] || s->light[1] || s->light[2])
+			{
+				vec3_t tmp;
+				tmp[0] = DotProduct(tbnmatrix[0], s->light);
+				tmp[1] = DotProduct(tbnmatrix[1], s->light);
+				tmp[2] = DotProduct(tbnmatrix[2], s->light);
+				VectorCopy(tmp, s->light);
+			}
+			else
+			{
+				s->light[0] = 0;
+				s->light[1] = 0;
+				s->light[2] = 0.5;
+			}
+
+			s->light[0] = (s->light[0] + 1) * 127;
+			s->light[1] = (s->light[1] + 1) * 127;
+			s->light[2] = (s->light[2] + 1) * 127;
+		}
+
+		// Copy to final position
+		facelight_t* fl = &facelight[facenum];
+
+		// Copy default map
+		f->styles[DEFAULT_MAP] = f_styles[DEFAULT_STYLE];
+		fl->samples[DEFAULT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+		memcpy(fl->samples[DEFAULT_MAP], fl_samples[DEFAULT_STYLE], fl->numsamples * sizeof(sample_t));
+
+		// Copy addlight
+		f->styles[BUMP_ADDLIGHT_MAP] = f_styles[BUMP_ADDLIGHT_STYLE];
+		fl->samples[BUMP_ADDLIGHT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+		memcpy(fl->samples[BUMP_ADDLIGHT_MAP], fl_samples[BUMP_ADDLIGHT_STYLE], fl->numsamples * sizeof(sample_t));
+
+		// Copy to baselight
+		f->styles[BUMP_BASELIGHT_MAP] = f_styles[BUMP_BASELIGHT_STYLE];
+		fl->samples[BUMP_BASELIGHT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+		memcpy(fl->samples[BUMP_BASELIGHT_MAP], fl_samples[BUMP_BASELIGHT_STYLE], fl->numsamples * sizeof(sample_t));
+
+		// Copy to lightvecs
+		f->styles[BUMP_LIGHTVECS_MAP] = f_styles[BUMP_LIGHTVECS_STYLE];
+		fl->samples[BUMP_LIGHTVECS_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+		memcpy(fl->samples[BUMP_LIGHTVECS_MAP], fl_samples[BUMP_LIGHTVECS_STYLE], fl->numsamples * sizeof(sample_t));
+	}
+	else
+	{
+		facelight_t* fl = &facelight[facenum];
 		vec_t maxlights[ALLSTYLES];
 		for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 		{
 			maxlights[j] = 0;
 			for (i = 0; i < fl->numsamples; i++)
 			{
-				vec_t b = VectorMaximum (fl_samples[j][i].light);
-				maxlights[j] = qmax (maxlights[j], b);
+				vec_t b = VectorMaximum(fl_samples[j][i].light);
+				maxlights[j] = qmax(maxlights[j], b);
 			}
+
 			if (maxlights[j] <= g_corings[f_styles[j]] * 0.1) // light is too dim, discard this style to reduce RAM usage
 			{
 				if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 				{
-					ThreadLock ();
+					ThreadLock();
 					if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 					{
 						g_maxdiscardedlight = maxlights[j];
-						VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
+						VectorCopy(g_face_centroids[facenum], g_maxdiscardedpos);
 					}
-					ThreadUnlock ();
+					ThreadUnlock();
 				}
 				maxlights[j] = 0;
 			}
 		}
+
 		for (k = 0; k < MAXLIGHTMAPS; k++)
 		{
 			int bestindex = -1;
@@ -7333,13 +4272,14 @@ void            BuildFacelights(const int facenum)
 					}
 				}
 			}
+
 			if (bestindex != -1)
 			{
 				maxlights[bestindex] = 0;
 				f->styles[k] = f_styles[bestindex];
-				fl->samples[k] = (sample_t *)malloc (fl->numsamples * sizeof (sample_t));
-				hlassume (fl->samples[k] != NULL, assume_NoMemory);
-				memcpy (fl->samples[k], fl_samples[bestindex], fl->numsamples * sizeof (sample_t));
+				fl->samples[k] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+				hlassume(fl->samples[k] != NULL, assume_NoMemory);
+				memcpy(fl->samples[k], fl_samples[bestindex], fl->numsamples * sizeof(sample_t));
 			}
 			else
 			{
@@ -7347,24 +4287,27 @@ void            BuildFacelights(const int facenum)
 				fl->samples[k] = NULL;
 			}
 		}
+
 		for (j = 1; j < ALLSTYLES && f_styles[j] != 255; j++)
 		{
 			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 			{
-				ThreadLock ();
+				ThreadLock();
 				if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 				{
 					g_maxdiscardedlight = maxlights[j];
-					VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
+					VectorCopy(g_face_centroids[facenum], g_maxdiscardedpos);
 				}
-				ThreadUnlock ();
+				ThreadUnlock();
 			}
 		}
-		for (j = 0; j < ALLSTYLES; j++)
-		{
-			free (fl_samples[j]);
-		}
 	}
+
+	for (j = 0; j < ALLSTYLES; j++)
+	{
+		free (fl_samples[j]);
+	}
+
 	// patches
 	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
 	{
@@ -7373,6 +4316,7 @@ void            BuildFacelights(const int facenum)
 		{
 			maxlights[j] = VectorMaximum (patch->totallight_all[j]);
 		}
+
 		for (k = 0; k < MAXLIGHTMAPS; k++)
 		{
 			int bestindex = -1;
@@ -7392,20 +4336,19 @@ void            BuildFacelights(const int facenum)
 					}
 				}
 			}
+
 			if (bestindex != -1)
 			{
 				maxlights[bestindex] = 0;
 				patch->totalstyle[k] = patch->totalstyle_all[bestindex];
 				VectorCopy (patch->totallight_all[bestindex], patch->totallight[k]);
-		#ifdef ZHLT_XASH
-				VectorCopy (patch->totallight_all_direction[bestindex], patch->totallight_direction[k]);
-		#endif
 			}
 			else
 			{
 				patch->totalstyle[k] = 255;
 			}
 		}
+
 		for (j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++)
 		{
 			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
@@ -7419,10 +4362,12 @@ void            BuildFacelights(const int facenum)
 				ThreadUnlock ();
 			}
 		}
+
 		for (j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++)
 		{
 			maxlights[j] = VectorMaximum (patch->directlight_all[j]);
 		}
+
 		for (k = 0; k < MAXLIGHTMAPS; k++)
 		{
 			int bestindex = -1;
@@ -7442,20 +4387,19 @@ void            BuildFacelights(const int facenum)
 					}
 				}
 			}
+
 			if (bestindex != -1)
 			{
 				maxlights[bestindex] = 0;
 				patch->directstyle[k] = patch->totalstyle_all[bestindex];
 				VectorCopy (patch->directlight_all[bestindex], patch->directlight[k]);
-		#ifdef ZHLT_XASH
-				VectorCopy (patch->directlight_all_direction[bestindex], patch->directlight_direction[k]);
-		#endif
 			}
 			else
 			{
 				patch->directstyle[k] = 255;
 			}
 		}
+
 		for (j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++)
 		{
 			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
@@ -7469,6 +4413,7 @@ void            BuildFacelights(const int facenum)
 				ThreadUnlock ();
 			}
 		}
+
 		free (patch->totalstyle_all);
 		patch->totalstyle_all = NULL;
 		free (patch->samplelight_all);
@@ -7478,23 +4423,12 @@ void            BuildFacelights(const int facenum)
 		free (patch->directlight_all);
 		patch->directlight_all = NULL;
 	}
-#endif
-#ifdef HLRAD_BLUR
+
 	free (l.lmcache);
-#ifdef ZHLT_XASH
-	free (l.lmcache_direction);
-#endif
-#ifdef HLRAD_AVOIDNORMALFLIP
 	free (l.lmcache_normal);
-#endif
-#ifdef HLRAD_AVOIDWALLBLEED
 	free (l.lmcache_wallflags);
-#endif
-#ifdef HLRAD_GROWSAMPLE
 	free (l.surfpt_position);
 	free (l.surfpt_surface);
-#endif
-#endif
 }
 
 // =====================================================================================
@@ -7507,15 +4441,10 @@ void            PrecompLightmapOffsets()
     facelight_t*    fl;
     int             lightstyles;
 
-#ifdef ZHLT_TEXLIGHT
     int             i; //LRC
 	patch_t*        patch; //LRC
-#endif
 
     g_lightdatasize = 0;
-#ifdef ZHLT_XASH
-	g_dlitdatasize = 0;
-#endif
 
     for (facenum = 0; facenum < g_numfaces; facenum++)
     {
@@ -7527,16 +4456,7 @@ void            PrecompLightmapOffsets()
             continue;                                      // non-lit texture
         }
 
-#ifdef HLRAD_ENTSTRIPRAD
-#ifndef HLRAD_REDUCELIGHTMAP
-		if (IntForKey (g_face_entity[facenum], "zhlt_striprad"))
-		{
-			continue;
-		}
-#endif
-#endif
-
-#ifdef HLRAD_AUTOCORING
+		if(!g_bumpmaps)
 		{
 			int i, j, k;
 			vec_t maxlights[ALLSTYLES];
@@ -7555,7 +4475,6 @@ void            PrecompLightmapOffsets()
 						VectorCompareMaximum (maxlights1[f->styles[k]], fl->samples[k][i].light, maxlights1[f->styles[k]]);
 					}
 				}
-#ifdef HLRAD_LOCALTRIANGULATION
 				int numpatches;
 				const int *patches;
 				GetTriangulationPatches (facenum, &numpatches, &patches); // collect patches and their neighbors
@@ -7563,10 +4482,6 @@ void            PrecompLightmapOffsets()
 				for (i = 0; i < numpatches; i++)
 				{
 					patch = &g_patches[patches[i]];
-#else
-				for (patch = g_face_patches[facenum]; patch; patch = patch->next)
-				{
-#endif
 					for (k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++)
 					{
 						VectorCompareMaximum (maxlights2[patch->totalstyle[k]], patch->totallight[k], maxlights2[patch->totalstyle[k]]);
@@ -7637,9 +4552,6 @@ void            PrecompLightmapOffsets()
 						for (j = 0; j < fl->numsamples; j++)
 						{
 							VectorClear (fl->samples[k][j].light);
-		#ifdef ZHLT_XASH
-							VectorClear (fl->samples[k][j].light_direction);
-		#endif
 						}
 					}
 				}
@@ -7662,46 +4574,6 @@ void            PrecompLightmapOffsets()
 				free (oldsamples[k]);
 			}
 		}
-#else
-#ifdef ZHLT_TEXLIGHT
-        		//LRC - find all the patch lightstyles, and add them to the ones used by this face
-#ifdef HLRAD_STYLE_CORING
-		for (patch = g_face_patches[facenum]; patch; patch = patch->next)
-#else
-		patch = g_face_patches[facenum];
-		if (patch)
-#endif
-		{
-			for (i = 0; i < MAXLIGHTMAPS && patch->totalstyle[i] != 255; i++)
-			{
-				for (lightstyles = 0; lightstyles < MAXLIGHTMAPS && f->styles[lightstyles] != 255; lightstyles++)
-				{
-					if (f->styles[lightstyles] == patch->totalstyle[i])
-						break;
-				}
-				if (lightstyles == MAXLIGHTMAPS)
-				{
-#ifdef HLRAD_READABLE_EXCEEDSTYLEWARNING
-					if (++stylewarningcount >= stylewarningnext)
-					{
-						stylewarningnext = stylewarningcount * 2;
-						Warning("Too many direct light styles on a face(?,?,?)\n");
-						Warning(" total %d warnings for too many styles", stylewarningcount);
-					}
-#else
-					Warning("Too many direct light styles on a face(?,?,?)\n");
-#endif
-				}
-				else if (f->styles[lightstyles] == 255)
-				{
-					f->styles[lightstyles] = patch->totalstyle[i];
-//					Log("Face acquires new lightstyle %d at offset %d\n", f->styles[lightstyles], lightstyles);
-				}
-			}
-		}
-		//LRC (ends)
-#endif
-#endif
 
         for (lightstyles = 0; lightstyles < MAXLIGHTMAPS; lightstyles++)
         {
@@ -7719,29 +4591,15 @@ void            PrecompLightmapOffsets()
         f->lightofs = g_lightdatasize;
         g_lightdatasize += fl->numsamples * 3 * lightstyles;
 		hlassume (g_lightdatasize <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING); //lightdata
-#ifdef ZHLT_XASH
-		g_dlitdatasize += fl->numsamples * 3 * lightstyles;
-		hlassume (g_dlitdatasize < g_max_map_dlitdata, assume_MAX_MAP_LIGHTING);
-#endif
 
     }
 }
-#ifdef HLRAD_REDUCELIGHTMAP
 void ReduceLightmap ()
 {
 	byte *oldlightdata = (byte *)malloc (g_lightdatasize);
 	hlassume (oldlightdata != NULL, assume_NoMemory);
 	memcpy (oldlightdata, g_dlightdata, g_lightdatasize);
-#ifdef ZHLT_XASH
-	if (g_dlitdatasize != g_lightdatasize)
-	{
-		Error ("g_dlitdatasize != g_lightdatasize");
-	}
-	byte *olddlitdata = (byte *)malloc (g_dlitdatasize);
-	hlassume (olddlitdata != NULL, assume_NoMemory);
-	memcpy (olddlitdata, g_ddlitdata, g_dlitdatasize);
-	g_dlitdatasize = 0;
-#endif
+
 	g_lightdatasize = 0;
 
 	int facenum;
@@ -7753,7 +4611,6 @@ void ReduceLightmap ()
 		{
 			continue;                                      // non-lit texture
 		}
-#ifdef HLRAD_ENTSTRIPRAD
 		// just need to zero the lightmap so that it won't contribute to lightdata size
 		if (IntForKey (g_face_entity[facenum], "zhlt_striprad"))
 		{
@@ -7764,50 +4621,7 @@ void ReduceLightmap ()
 			}
 			continue;
 		}
-#endif
-#if 0 //debug. --vluzacn
-		const char *lightmapcolor = ValueForKey (g_face_entity[facenum], "zhlt_rad");
-		if (*lightmapcolor)
-		{
-			hlassume (MAXLIGHTMAPS == 4, assume_first);
-			int styles[4], values[4][3];
-			if (sscanf (lightmapcolor, "%d=%d,%d,%d %d=%d,%d,%d %d=%d,%d,%d %d=%d,%d,%d"
-					, &styles[0], &values[0][0], &values[0][1], &values[0][2]
-					, &styles[1], &values[1][0], &values[1][1], &values[1][2]
-					, &styles[2], &values[2][0], &values[2][1], &values[2][2]
-					, &styles[3], &values[3][0], &values[3][1], &values[3][2]
-				) != 16)
-			{
-				Error ("Bad value for 'zhlt_rad'.");
-			}
-			f->lightofs = g_lightdatasize;
-			int i, k;
-			for (k = 0; k < 4; k++)
-			{
-				f->styles[k] = 255;
-			}
-			for (k = 0; k < 4 && styles[k] != 255; k++)
-			{
-				f->styles[k] = styles[k];
-				hlassume (g_lightdatasize + fl->numsamples * 3 <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING);
-		#ifdef ZHLT_XASH
-				hlassume (g_dlitdatasize + fl->numsamples * 3 <= g_max_map_dlitdata, assume_MAX_MAP_LIGHTING);
-		#endif
-				for (i = 0; i < fl->numsamples; i++)
-				{
-					VectorCopy (values[k], (byte *)&g_dlightdata[g_lightdatasize + i * 3]);
-		#ifdef ZHLT_XASH
-					VectorFill ((byte *)&g_ddlitdata[g_lightdatasize + i * 3], 128);
-		#endif
-				}
-				g_lightdatasize += fl->numsamples * 3;
-		#ifdef ZHLT_XASH
-				g_dlitdatasize += fl->numsamples * 3;
-		#endif
-			}
-			continue;
-		}
-#endif
+
 		if (f->lightofs == -1)
 		{
 			continue;
@@ -7839,25 +4653,13 @@ void ReduceLightmap ()
 			f->styles[numstyles] = oldstyles[k];
 			hlassume (g_lightdatasize + fl->numsamples * 3 * (numstyles + 1) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING);
 			memcpy (&g_dlightdata[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
-#ifdef ZHLT_XASH
-			hlassume (g_dlitdatasize + fl->numsamples * 3 * (numstyles + 1) <= g_max_map_dlitdata, assume_MAX_MAP_LIGHTING);
-			memcpy (&g_ddlitdata[f->lightofs + fl->numsamples * 3 * numstyles], &olddlitdata[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
-#endif
 			numstyles++;
 		}
 		g_lightdatasize += fl->numsamples * 3 * numstyles;
-#ifdef ZHLT_XASH
-		g_dlitdatasize += fl->numsamples * 3 * numstyles;
-#endif
 	}
 	free (oldlightdata);
-#ifdef ZHLT_XASH
-	free (olddlitdata);
-#endif
 }
-#endif
 
-#ifdef HLRAD_MDL_LIGHT_HACK
 
 // Change the sample light right under a mdl file entity's origin.
 // Use this when "mdl" in shadow has incorrect brightness.
@@ -7893,7 +4695,6 @@ typedef struct
 	int facecount;
 } mdllight_t;
 
-#ifdef HLRAD_MDL_LIGHT_HACK_NEW
 int MLH_AddFace (mdllight_t *ml, int facenum)
 {
 	dface_t *f = &g_dfaces[facenum];
@@ -7960,7 +4761,6 @@ void MLH_AddSample (mdllight_t *ml, int facenum, int w, int h, int s, int t, con
 }
 void MLH_CalcExtents (const dface_t *f, int *texturemins, int *extents)
 {
-#ifdef ZHLT_64BIT_FIX
 	int bmins[2];
 	int bmaxs[2];
 	int i;
@@ -7971,50 +4771,6 @@ void MLH_CalcExtents (const dface_t *f, int *texturemins, int *extents)
 		texturemins[i] = bmins[i] * TEXTURE_STEP;
 		extents[i] = (bmaxs[i] - bmins[i]) * TEXTURE_STEP;
 	}
-#else
-	float mins[2], maxs[2];
-	int bmins[2], bmaxs[2];
-	texinfo_t *tex;
-	tex = &g_texinfo[f->texinfo];
-	mins[0] = mins[1] = 999999;
-	maxs[0] = maxs[1] = -99999;
-	int i;
-	for (i = 0; i < f->numedges; i++)
-	{
-		int e;
-		dvertex_t *v;
-		int j;
-		e = g_dsurfedges[f->firstedge + i];
-		if (e >= 0)
-		{
-			v = &g_dvertexes[g_dedges[e].v[0]];
-		}
-		else
-		{
-			v = &g_dvertexes[g_dedges[-e].v[1]];
-		}
-		for (j = 0; j < 2; j++)
-		{
-			float val = v->point[0] * tex->vecs[j][0] + v->point[1] * tex->vecs[j][1]
-				+ v->point[2] * tex->vecs[j][2] + tex->vecs[j][3];
-			if (val < mins[j])
-			{
-				mins[j] = val;
-			}
-			if (val > maxs[j])
-			{
-				maxs[j] = val;
-			}
-		}
-	}
-	for (i = 0; i < 2; i++)
-	{
-		bmins[i] = floor (mins[i] / TEXTURE_STEP);
-		bmaxs[i] = ceil (maxs[i] / TEXTURE_STEP);
-		texturemins[i] = bmins[i] * TEXTURE_STEP;
-		extents[i] = (bmaxs[i] - bmins[i]) * TEXTURE_STEP;
-	}
-#endif
 }
 void MLH_GetSamples_r (mdllight_t *ml, int nodenum, const float *start, const float *end)
 {
@@ -8097,145 +4853,6 @@ void MLH_mdllightCreate (mdllight_t *ml)
 	end[2] -= 2048;
 	MLH_GetSamples_r (ml, 0, p, end);
 }
-#else
-void MLH_mdllightCreate (mdllight_t *ml)
-{
-	int i, j, k;
-	vec_t height, minheight = BOGUS_RANGE;
-	ml->facecount = 0;
-	for (i = 0; i < g_numfaces; ++i)
-	{
-		if (strcasecmp (ValueForKey (g_face_entity[i], "classname"), "worldspawn"))
-			continue;
-		const dface_t *f = &g_dfaces[i];
-		const dplane_t *p = getPlaneFromFace(f);
-		Winding *w=new Winding (*f);
-		for (j = 0;j < w->m_NumPoints; j++)
-		{
-			VectorAdd(w->m_Points[j], g_face_offset[i], w->m_Points[j]);
-		}
-		vec3_t delta , sect;
-		VectorCopy (ml->origin, delta);
-		delta[2] -= BOGUS_RANGE;
-		if (intersect_linesegment_plane(p, ml->origin, delta, sect) && point_in_winding (*w, *p, sect))
-		{
-			height = ml->origin[2] - sect[2];
-			if (height >= 0 && height <= minheight)
-				minheight = height;
-		}
-		delete w;
-	}
-	VectorCopy (ml->origin, ml->floor);
-	ml->floor[2] -= minheight;
-	for (i = 0; i < g_numfaces; ++i)
-	{
-		if (strcasecmp (ValueForKey (g_face_entity[i], "classname"), "worldspawn"))
-			continue;
-		const dface_t *f = &g_dfaces[i];
-		const dplane_t *p = getPlaneFromFace(f);
-		Winding *w=new Winding (*f);
-		if (g_texinfo[f->texinfo].flags & TEX_SPECIAL)
-		{
-			continue;                                            // non-lit texture
-		}
-		for (j = 0;j < w->m_NumPoints; j++)
-		{
-			VectorAdd(w->m_Points[j], g_face_offset[i], w->m_Points[j]);
-		}
-		vec3_t delta , sect;
-		VectorCopy (ml->origin, delta);
-		delta[2] -= BOGUS_RANGE;
-		if (intersect_linesegment_plane(p, ml->origin, delta, sect) && VectorCompare (sect, ml->floor))
-		{
-			bool inlightmap = false;
-			{
-				vec3_t v;
-				facesampleinfo_t *info = &facesampleinfo[i];
-				int w = info->texsize[0] + 1;
-				int h = info->texsize[1] + 1;
-				vec_t vs, vt;
-				int s1, s2, t1, t2, s, t;
-				VectorCopy (ml->floor, v);
-				VectorSubtract (v, info->offset, v);
-				VectorSubtract (v, info->texorg, v);
-				vs = DotProduct (v, info->worldtotex[0]);
-				vt = DotProduct (v, info->worldtotex[1]);
-				s1 = (int)floor((vs-MLH_LEFT)/TEXTURE_STEP) - info->texmins[0];
-				s2 = (int)floor((vs+MLH_RIGHT)/TEXTURE_STEP) - info->texmins[0];
-				t1 = (int)floor((vt-MLH_LEFT)/TEXTURE_STEP) - info->texmins[1];
-				t2 = (int)floor((vt+MLH_RIGHT)/TEXTURE_STEP) - info->texmins[1];
-				for (s=s1; s<=s2; ++s)
-					for (t=t1; t<=t2; ++t)
-						if (s>=0 && s<w && t>=0 && t<h)
-							inlightmap = true;
-			}
-			if (inlightmap && ml->facecount < MLH_MAXFACECOUNT)
-			{
-				ml->face[ml->facecount].num = i;
-				ml->facecount++;
-			}
-		}
-		delete w;
-	}
-	for (i = 0; i < ml->facecount; ++i)
-	{
-		const dface_t *f = &g_dfaces[ml->face[i].num];
-		for (j = 0; j < ALLSTYLES; ++j)
-			ml->face[i].style[j].exist = false;
-		for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; ++j)
-		{
-			ml->face[i].style[f->styles[j]].exist = true;
-			ml->face[i].style[f->styles[j]].seq = j;
-		}
-		ml->face[i].samplecount = 0;
-		if (j == 0)
-			continue;
-
-	    const facelight_t *fl=&facelight[ml->face[i].num];
-		{
-			vec3_t v;
-			facesampleinfo_t *info = &facesampleinfo[ml->face[i].num];
-			int w = info->texsize[0] + 1;
-			int h = info->texsize[1] + 1;
-			vec_t vs, vt;
-			int s1, s2, t1, t2, s, t;
-			VectorCopy (ml->floor, v);
-			VectorSubtract (v, info->offset, v);
-			VectorSubtract (v, info->texorg, v);
-			vs = DotProduct (v, info->worldtotex[0]);
-			vt = DotProduct (v, info->worldtotex[1]);
-			s1 = (int)floor((vs-MLH_LEFT)/TEXTURE_STEP) - info->texmins[0];
-			s2 = (int)floor((vs+MLH_RIGHT)/TEXTURE_STEP) - info->texmins[0];
-			t1 = (int)floor((vt-MLH_LEFT)/TEXTURE_STEP) - info->texmins[1];
-			t2 = (int)floor((vt+MLH_RIGHT)/TEXTURE_STEP) - info->texmins[1];
-			for (s=s1; s<=s2; ++s)
-				for (t=t1; t<=t2; ++t)
-					if (s>=0 && s<w && t>=0 && t<h)
-						if (ml->face[i].samplecount < MLH_MAXSAMPLECOUNT)
-						{
-							ml->face[i].sample[ml->face[i].samplecount].num = s + t * w;
-							VectorAdd (info->offset, info->texorg, v);
-							vs = TEXTURE_STEP * (s + info->texmins[0]);
-							vt = TEXTURE_STEP * (t + info->texmins[1]);
-							VectorMA (v, vs, info->textoworld[0], v);
-							VectorMA (v, vt, info->textoworld[1], v);
-							VectorCopy (v, ml->face[i].sample[ml->face[i].samplecount].pos);
-							ml->face[i].samplecount++;
-						}
-		}
-
-		for (j = 0; j < ml->face[i].samplecount; ++j)
-		{
-			for (k = 0; k < ALLSTYLES; ++k)
-				if (ml->face[i].style[k].exist)
-				{
-					ml->face[i].sample[j].style[k] = 
-						&g_dlightdata[f->lightofs + ml->face[i].style[k].seq * fl->numsamples * 3 + ml->face[i].sample[j].num * 3];
-				}
-		}
-	}
-}
-#endif
 
 int MLH_CopyLight (const vec3_t from, const vec3_t to)
 {
@@ -8268,13 +4885,7 @@ void MdlLightHack ()
 	entity_t *ent1, *ent2;
 	vec3_t origin1, origin2;
 	const char *target;
-#ifndef HLRAD_MDL_LIGHT_HACK_NEW
-    double start, end;
-#endif
 	int used = 0, countent = 0, countsample = 0, r;
-#ifndef HLRAD_MDL_LIGHT_HACK_NEW
-    start = I_FloatTime();
-#endif
 	for (ient = 0; ient < g_numentities; ++ient)
 	{
 		ent1 = &g_entities[ient];
@@ -8299,19 +4910,10 @@ void MdlLightHack ()
 			countsample += r;
 		}
 	}
-#ifndef HLRAD_MDL_LIGHT_HACK_NEW
-    end = I_FloatTime();
-#endif
 	if (used)
-#ifdef HLRAD_MDL_LIGHT_HACK_NEW
 		Log ("Adjust mdl light: modified %d samples for %d entities\n", countsample, countent);
-#else
-		Log("Mdl Light Hack: %d entities %d samples (%.2f seconds)\n", countent, countsample, end - start);
-#endif
 }
-#endif /*HLRAD_MDL_LIGHT_HACK*/
 
-#ifdef HLRAD_GROWSAMPLE
 
 typedef struct facelightlist_s
 {
@@ -8427,9 +5029,6 @@ void ScaleDirectLights ()
 			{
 				samp = &fl->samples[k][i];
 				VectorScale (samp->light, g_direct_scale, samp->light);
-	#ifdef ZHLT_XASH
-				VectorScale (samp->light_direction, g_direct_scale, samp->light_direction);
-	#endif
 			}
 		}
 	}
@@ -8442,9 +5041,6 @@ void ScaleDirectLights ()
 void AddPatchLights (int facenum)
 {
 	dface_t *f;
-#ifndef HLRAD_LOCALTRIANGULATION
-	lerpTriangulation_t *trian;
-#endif
 	facelightlist_t *item;
 	dface_t *f_other;
 	facelight_t *fl_other;
@@ -8459,60 +5055,40 @@ void AddPatchLights (int facenum)
 		return;
 	}
 
-#ifndef HLRAD_LOCALTRIANGULATION
-	trian = CreateTriangulation (facenum);
-#endif
 	
 	for (item = g_dependentfacelights[facenum]; item != NULL; item = item->next)
 	{
 		f_other = &g_dfaces[item->facenum];
 		fl_other = &facelight[item->facenum];
+
 		for (k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++)
 		{
 			for (i = 0; i < fl_other->numsamples; i++)
 			{
+				// Do not contribute to anything but default and baselight
+				if (g_bumpmaps && f_other->styles[k] != BUMP_BASELIGHT_STYLE && f_other->styles[k] != DEFAULT_STYLE)
+					continue;
+
 				samp = &fl_other->samples[k][i];
 				if (samp->surface != facenum)
-				{ // the sample is not in this surface
+				{ 
+					// the sample is not in this surface
 					continue;
 				}
 
 				{
 					vec3_t v;
-		#ifdef ZHLT_XASH
-					vec3_t v_direction;
-		#endif
 
-#ifdef HLRAD_LOCALTRIANGULATION
 					int style = f_other->styles[k];
-					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &v
-		#ifdef ZHLT_XASH
-											, &v_direction
-		#endif
-											);
-#else
-					SampleTriangulation (trian, samp->pos, v, 
-		#ifdef ZHLT_XASH
-										v_direction, 
-		#endif
-										f_other->styles[k]); //LRC
-#endif
+					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &v);
 
-	#ifdef HLRAD_STYLE_CORING
 					VectorAdd (samp->light, v, v);
-		#ifdef ZHLT_XASH
-					VectorAdd (samp->light_direction, v_direction, v_direction);
-		#endif
 					if (VectorMaximum (v) >= g_corings[f_other->styles[k]])
 					{
 						VectorCopy (v, samp->light);
-		#ifdef ZHLT_XASH
-						VectorCopy (v_direction, samp->light_direction);
-		#endif
 					}
 					else
 					{
-		#ifdef HLRAD_AUTOCORING
 						if (VectorMaximum (v) > g_maxdiscardedlight + NORMAL_EPSILON)
 						{
 							ThreadLock ();
@@ -8523,29 +5099,19 @@ void AddPatchLights (int facenum)
 							}
 							ThreadUnlock ();
 						}
-		#endif
 					}
-	#else
-					VectorAdd (samp->light, v, samp->light);
-	#endif
 				}
 			} // loop samples
 		}
 	}
-
-#ifndef HLRAD_LOCALTRIANGULATION
-	FreeTriangulation (trian);
-#endif
 }
 
-#endif /*HLRAD_GROWSAMPLE*/
 // =====================================================================================
 //  FinalLightFace
 //      Add the indirect lighting on top of the direct lighting and save into final map format
 // =====================================================================================
 void            FinalLightFace(const int facenum)
 {
-#ifdef HLRAD_DEBUG_DRAWPOINTS
 	if (facenum == 0 && g_drawsample)
 	{
 		char name[_MAX_PATH+20];
@@ -8579,7 +5145,6 @@ void            FinalLightFace(const int facenum)
 		else
 			Log ("Error.\n");
 	}
-#endif
     int             i, j, k;
     vec3_t          lb, v;
     facelight_t*    fl;
@@ -8587,30 +5152,13 @@ void            FinalLightFace(const int facenum)
     float           minlight;
     int             lightstyles;
     dface_t*        f;
-#ifndef HLRAD_GROWSAMPLE
-    lerpTriangulation_t* trian = NULL;
-#endif
-#ifdef HLRAD_FinalLightFace_VL
 	vec3_t			*original_basiclight;
 	int				(*final_basiclight)[3];
 	int				lbi[3];
-#ifdef ZHLT_XASH
-	vec3_t			*original_basicdirection;
-	vec3_t			*final_basicdirection;
-	vec3_t			direction;
-	vec3_t			directionnormals[3];
-	vec3_t			debug_original_light;
-	vec3_t			debug_final_light;
-	vec3_t			debug_original_direction;
-	vec3_t			debug_final_direction;
-#endif
-#endif
 
     // ------------------------------------------------------------------------
     // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-#ifdef HLRAD_WHOME
     float           temp_rand;
-#endif
     // ------------------------------------------------------------------------
 
     f = &g_dfaces[facenum];
@@ -8621,14 +5169,6 @@ void            FinalLightFace(const int facenum)
         return;                                            // non-lit texture
     }
 
-#ifdef HLRAD_ENTSTRIPRAD
-#ifndef HLRAD_REDUCELIGHTMAP
-	if (IntForKey (g_face_entity[facenum], "zhlt_striprad"))
-	{
-		return;
-	}
-#endif
-#endif
 
     for (lightstyles = 0; lightstyles < MAXLIGHTMAPS; lightstyles++)
     {
@@ -8646,370 +5186,140 @@ void            FinalLightFace(const int facenum)
     //
     // set up the triangulation
     //
-#ifndef HLRAD_GROWSAMPLE
-#ifndef HLRAD_GatherPatchLight
-    if (g_numbounce)
-#endif
-    {
-        trian = CreateTriangulation(facenum);
-    }
-#endif
     //
     // sample the triangulation
     //
-	
-	if(!g_nightmode || IntForKey(g_face_entity[facenum], "_ignorenight") != 0)
+
+	if (!g_nightmode || IntForKey(g_face_entity[facenum], "_ignorenight") != 0)
 		minlight = FloatForKey(g_face_entity[facenum], "_minlight") * 128;
 	else
 		minlight = 0;
 
-#ifdef HLRAD_FinalLightFace_VL
 	original_basiclight = (vec3_t *)calloc (fl->numsamples, sizeof(vec3_t));
 	final_basiclight = (int (*)[3])calloc (fl->numsamples, sizeof(int [3]));
 	hlassume (original_basiclight != NULL, assume_NoMemory);
 	hlassume (final_basiclight != NULL, assume_NoMemory);
-#ifdef ZHLT_XASH
-	original_basicdirection = (vec3_t *)calloc (fl->numsamples, sizeof(vec3_t));
-	final_basicdirection = (vec3_t *)calloc (fl->numsamples, sizeof (vec3_t));
-	hlassume (original_basicdirection != NULL, assume_NoMemory);
-	hlassume (final_basicdirection != NULL, assume_NoMemory);
-#endif
-#endif
+
     for (k = 0; k < lightstyles; k++)
     {
         samp = fl->samples[k];
         for (j = 0; j < fl->numsamples; j++, samp++)
         {
-#ifdef ZHLT_XASH
+			if (g_bumpmaps && f->styles[k] == BUMP_LIGHTVECS_STYLE)
 			{
-
-				VectorCopy (samp->normal, directionnormals[2]);
-
-				vec3_t texdirections[2];
-				const vec3_t &facenormal = getPlaneFromFace (f)->normal;
-				texinfo_t *tx = &g_texinfo[f->texinfo];
-				for (int side = 0; side < 2; side++)
-				{
-					CrossProduct (facenormal, tx->vecs[!side], texdirections[side]);
-					VectorNormalize (texdirections[side]);
-					if (DotProduct (texdirections[side], tx->vecs[side]) < 0)
-					{
-						VectorSubtract (vec3_origin, texdirections[side], texdirections[side]);
-					}
-				}
-
-				for (int side = 0; side < 2; side++)
-				{
-					vec_t dot;
-					dot = DotProduct (texdirections[side], samp->normal);
-					VectorMA (texdirections[side], -dot, samp->normal, directionnormals[side]);
-					VectorNormalize (directionnormals[side]);
-				}
-				VectorSubtract (vec3_origin, directionnormals[1], directionnormals[1]);
-			}
-#endif
-#ifdef HLRAD_GROWSAMPLE
-			VectorCopy (samp->light, lb);
-	#ifdef ZHLT_XASH
-			VectorCopy (samp->light_direction, direction);
-	#endif
-#else
-            // Should be a VectorCopy, but we scale by 2 to compensate for an earlier lighting flaw
-            // Specifically, the directlight contribution was included in the bounced light AND the directlight
-            // Since many of the levels were built with this assumption, this "fudge factor" compensates for it.
-
-			// Default direct_scale has been changed from 2 to 1 and default scale has been changed from 1 to 2. --vluzacn
-            VectorScale(samp->light, g_direct_scale, lb);
-#ifdef ZHLT_XASH
-			VectorScale (samp->light_direction, g_direct_scale, direction);
-			vec3_t v_direction;
-#endif
-
-#ifdef ZHLT_TEXLIGHT
-#ifndef HLRAD_GatherPatchLight
-            if (g_numbounce)//LRC && (k == 0))
-#endif
-            {
-                SampleTriangulation(trian, samp->pos, v, 
-	#ifdef ZHLT_XASH
-					v_direction, 
-	#endif
-					f->styles[k]); //LRC
-#else
-            if (
-#ifndef HLRAD_GatherPatchLight
-				g_numbounce &&
-#endif
-				(k == 0))
-            {
-                SampleTriangulation(trian, samp->pos, v);
-#endif
-
-                if (isPointFinite(v))
-                {
-#ifdef HLRAD_STYLE_CORING
-					VectorAdd (lb, v, v);
-	#ifdef ZHLT_XASH
-					VectorAdd (direction, v_direction, v_direction);
-	#endif
-					if (VectorMaximum (v) >= g_corings[f->styles[k]])
-					{
-						VectorCopy (v, lb);
-	#ifdef ZHLT_XASH
-						VectorCopy (v_direction, direction);
-	#endif
-					}
-	#ifdef HLRAD_AUTOCORING
-					else
-					{
-						if (VectorMaximum (v) > g_maxdiscardedlight + NORMAL_EPSILON)
-						{
-							ThreadLock ();
-							if (VectorMaximum (v) > g_maxdiscardedlight + NORMAL_EPSILON)
-							{
-								g_maxdiscardedlight = VectorMaximum (v);
-								VectorCopy (samp->pos, g_maxdiscardedpos);
-							}
-							ThreadUnlock ();
-						}
-					}
-	#endif
-#else
-                    VectorAdd(lb, v, lb);
-#endif
-                }
-                else
-                {
-                    Warning("point (%4.3f %4.3f %4.3f) infinite v (%4.3f %4.3f %4.3f)\n",
-                            samp->pos[0], samp->pos[1], samp->pos[2], v[0], v[1], v[2]);
-                }
-
-
-            }
-#endif
-#ifdef HLRAD_FinalLightFace_VL
-			if (f->styles[0] != 0)
-			{
-				Warning ("wrong f->styles[0]");
-			}
-			VectorCompareMaximum (lb, vec3_origin, lb);
-			if (k == 0)
-			{
-				VectorCopy (lb, original_basiclight[j]);
-	#ifdef ZHLT_XASH
-				VectorCopy (direction, original_basicdirection[j]);
-	#endif
+				// Just copy the light vector straight
+				VectorCopy(samp->light, lbi);
 			}
 			else
 			{
-				VectorAdd (lb, original_basiclight[j], lb);
-	#ifdef ZHLT_XASH
-				VectorAdd (direction, original_basicdirection[j], direction);
-	#endif
-			}
-	#ifdef ZHLT_XASH
-			{
-				VectorCopy (lb, debug_original_light);
-				VectorCopy (direction, debug_original_direction);
-				// get the real direction
-				// this is what the direction should be after style 0 and this style are added together
-				vec_t avg = VectorAvg (lb);
-				if (avg > NORMAL_EPSILON)
+
+				VectorCopy(samp->light, lb);
+				if (f->styles[0] != 0)
 				{
-					VectorScale (direction, 1 / avg, direction);
+					Warning("wrong f->styles[0]");
 				}
-				else
+				VectorCompareMaximum(lb, vec3_origin, lb);
+				if (k == 0)
 				{
-					VectorClear (direction);
+					VectorCopy(lb, original_basiclight[j]);
 				}
-			}
-	#endif
-#endif
-            // ------------------------------------------------------------------------
-	        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-	        // colour lightscale:
-#ifdef HLRAD_WHOME
-	        lb[0] *= g_colour_lightscale[0];
-	        lb[1] *= g_colour_lightscale[1];
-	        lb[2] *= g_colour_lightscale[2];
-#else
-            VectorScale(lb, g_lightscale, lb);
-#endif
-            // ------------------------------------------------------------------------
-
-            // clip from the bottom first
-            for (i = 0; i < 3; i++)
-            {
-                if (lb[i] < minlight)
-                {
-                    lb[i] = minlight;
-                }
-            }
-
-#ifndef HLRAD_FinalLightFace_VL
-            // clip from the top
-            {
-                vec_t           max = VectorMaximum(lb);
-
-                if (max > g_maxlight)
-                {
-                    vec_t           scale = g_maxlight / max;
-
-                    lb[0] *= scale;
-                    lb[1] *= scale;
-                    lb[2] *= scale;
-                }
-            }
-#endif
-
-	        // ------------------------------------------------------------------------
-	        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-#ifdef HLRAD_WHOME
-
-            // AJM: your code is formatted really wierd, and i cant understand a damn thing. 
-            //      so i reformatted it into a somewhat readable "normal" fashion. :P
-
-	        if ( g_colour_qgamma[0] != 1.0 ) 
-		        lb[0] = (float) pow(lb[0] / 256.0f, g_colour_qgamma[0]) * 256.0f;
-
-	        if ( g_colour_qgamma[1] != 1.0 ) 
-		        lb[1] = (float) pow(lb[1] / 256.0f, g_colour_qgamma[1]) * 256.0f;
-
-	        if ( g_colour_qgamma[2] != 1.0 ) 
-		        lb[2] = (float) pow(lb[2] / 256.0f, g_colour_qgamma[2]) * 256.0f;
-
-	        // Two different ways of adding noise to the lightmap - colour jitter
-	        // (red, green and blue channels are independent), and mono jitter
-	        // (monochromatic noise). For simulating dithering, on the cheap. :)
-
-	        // Tends to create seams between adjacent polygons, so not ideal.
-
-	        // Got really weird results when it was set to limit values to 256.0f - it
-	        // was as if r, g or b could wrap, going close to zero.
-
-	#ifndef HLRAD_FinalLightFace_VL
-	        if (g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2]) 
-            {
-		        for (i = 0; i < 3; i++) 
-                {
-		            lb[i] += g_colour_jitter_hack[i] * ((float)rand() / RAND_MAX - 0.5);
-		            if (lb[i] < 0.0f)
-                    {
-			            lb[i] = 0.0f;
-                    }
-		            else if (lb[i] > 255.0f)
-                    {
-			            lb[i] = 255.0f;
-                    }
-		        }
-	        }
-
-	        if (g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2]) 
-            {
-		        temp_rand = (float)rand() / RAND_MAX - 0.5;
-		        for (i = 0; i < 3; i++) 
-                {
-		            lb[i] += g_jitter_hack[i] * temp_rand;
-		            if (lb[i] < 0.0f)
-                    {
-			            lb[i] = 0.0f;
-                    }
-		            else if (lb[i] > 255.0f)
-                    {
-			            lb[i] = 255.0f;
-                    }
-		        }
-	        }
-	#endif
-#else
-            if (g_qgamma != 1.0) {
-	            for (i = 0; i < 3; i++) {
-	                lb[i] = (float) pow(lb[i] / 256.0f, g_qgamma) * 256.0f;
-	            }
-	        }
-#endif
-			
-#ifdef HLRAD_PRESERVELIGHTMAPCOLOR
-			// clip from the top
-			{
-				vec_t max = VectorMaximum (lb);
-				if (g_limitthreshold >= 0 && max > g_limitthreshold)
+				else if(!g_bumpmaps)
 				{
-					if (!g_drawoverload)
+					VectorAdd(lb, original_basiclight[j], lb);
+				}
+
+				// ------------------------------------------------------------------------
+				// Changes by Adam Foster - afoster@compsoc.man.ac.uk
+				// colour lightscale:
+				lb[0] *= g_colour_lightscale[0];
+				lb[1] *= g_colour_lightscale[1];
+				lb[2] *= g_colour_lightscale[2];
+				// ------------------------------------------------------------------------
+
+				// clip from the bottom first
+				for (i = 0; i < 3; i++)
+				{
+					if (lb[i] < minlight)
 					{
-						VectorScale (lb, g_limitthreshold / max, lb);
+						lb[i] = minlight;
 					}
 				}
-				else
+
+
+				// ------------------------------------------------------------------------
+				// Changes by Adam Foster - afoster@compsoc.man.ac.uk
+
+				// AJM: your code is formatted really wierd, and i cant understand a damn thing. 
+				//      so i reformatted it into a somewhat readable "normal" fashion. :P
+
+				if (g_colour_qgamma[0] != 1.0)
+					lb[0] = (float)pow(lb[0] / 256.0f, g_colour_qgamma[0]) * 256.0f;
+
+				if (g_colour_qgamma[1] != 1.0)
+					lb[1] = (float)pow(lb[1] / 256.0f, g_colour_qgamma[1]) * 256.0f;
+
+				if (g_colour_qgamma[2] != 1.0)
+					lb[2] = (float)pow(lb[2] / 256.0f, g_colour_qgamma[2]) * 256.0f;
+
+				// Two different ways of adding noise to the lightmap - colour jitter
+				// (red, green and blue channels are independent), and mono jitter
+				// (monochromatic noise). For simulating dithering, on the cheap. :)
+
+				// Tends to create seams between adjacent polygons, so not ideal.
+
+				// Got really weird results when it was set to limit values to 256.0f - it
+				// was as if r, g or b could wrap, going close to zero.
+
+
+				// clip from the top
 				{
+					vec_t max = VectorMaximum(lb);
 					if (g_drawoverload)
 					{
-						VectorScale (lb, 0.1, lb); // darken good points
+						VectorScale(lb, 0.1, lb); // darken good points
+					}
+				}
+				for (i = 0; i < 3; ++i)
+					if (lb[i] < g_minlight)
+						lb[i] = g_minlight;
+				// ------------------------------------------------------------------------
+				for (i = 0; i < 3; ++i)
+				{
+					lbi[i] = (int)floor(lb[i] + 0.5);
+					if (lbi[i] < 0) lbi[i] = 0;
+				}
+				if (!g_bumpmaps || f->styles[k] == DEFAULT_STYLE)
+				{
+					if (k == 0)
+					{
+						VectorCopy(lbi, final_basiclight[j]);
+					}
+					else
+					{
+						VectorSubtract(lbi, final_basiclight[j], lbi);
+					}
+				}
+
+				if (k == 0)
+				{
+					if (g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2])
+						for (i = 0; i < 3; i++)
+							lbi[i] += g_colour_jitter_hack[i] * ((float)rand() / RAND_MAX - 0.5);
+					if (g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2])
+					{
+						temp_rand = (float)rand() / RAND_MAX - 0.5;
+						for (i = 0; i < 3; i++)
+							lbi[i] += g_jitter_hack[i] * temp_rand;
 					}
 				}
 			}
-#endif
-#ifdef HLRAD_MINLIGHT
-			for (i = 0; i < 3; ++i)
-				if (lb[i] < g_minlight)
-					lb[i] = g_minlight;
-#endif
-	        // ------------------------------------------------------------------------
-#ifdef HLRAD_FinalLightFace_VL
-			for (i = 0; i < 3; ++i)
-			{
-				lbi[i] = (int) floor (lb[i] + 0.5);
-				if (lbi[i] < 0) lbi[i] = 0;
-			}
-	#ifdef ZHLT_XASH
-			{
-				vec_t avg = (lbi[0] + lbi[1] + lbi[2]) / 3.0;
-				VectorScale (direction, avg, direction);
-				VectorCopy (lbi, debug_final_light);
-				VectorCopy (direction, debug_final_direction);
-			}
-	#endif
-			if (k == 0)
-			{
-				VectorCopy (lbi, final_basiclight[j]);
-	#ifdef ZHLT_XASH
-				VectorCopy (direction, final_basicdirection[j]);
-	#endif
-			}
-			else
-			{
-				VectorSubtract (lbi, final_basiclight[j], lbi);
-	#ifdef ZHLT_XASH
-				VectorSubtract (direction, final_basicdirection[j], direction);
-	#endif
-			}
-	#ifdef ZHLT_XASH
-			{
-				// because the direction will be multiplied with the brightness when styles are added together, now divide the direction by the brightness
-				vec_t avg = (lbi[0] + lbi[1] + lbi[2]) / 3.0;
-				avg = qmax (1, avg);
-				VectorScale (direction, 1 / avg, direction);
-			}
-	#endif
-	#ifdef HLRAD_WHOME
-			if (k == 0)
-			{
-				if (g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2]) 
-					for (i = 0; i < 3; i++) 
-						lbi[i] += g_colour_jitter_hack[i] * ((float)rand() / RAND_MAX - 0.5);
-				if (g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2]) 
-				{
-					temp_rand = (float)rand() / RAND_MAX - 0.5;
-					for (i = 0; i < 3; i++) 
-						lbi[i] += g_jitter_hack[i] * temp_rand;
-				}
-			}
-	#endif
+
 			for (i = 0; i < 3; ++i)
 			{
 				if (lbi[i] < 0) lbi[i] = 0;
 				if (lbi[i] > 255) lbi[i] = 255;
 			}
+
             {
                 unsigned char* colors = &g_dlightdata[f->lightofs + k * fl->numsamples * 3 + j * 3];
 
@@ -9017,83 +5327,18 @@ void            FinalLightFace(const int facenum)
                 colors[1] = (unsigned char)lbi[1];
                 colors[2] = (unsigned char)lbi[2];
             }
-	#ifdef ZHLT_XASH
-			{
-				vec3_t v;
-				VectorScale (direction, g_directionscale, v); // the scale is calculated such that length(v) < 1
-				if (DotProduct (v, v) > 1 + NORMAL_EPSILON)
-				{
-	#if 0
-					{
-						ThreadLock ();
-						printf ("facenum = %d sample = %d styleindex = %d\n", facenum, j, k);
-						printf ("original_basiclight = %f %f %f\n", (vec_t)original_basiclight[j][0], (vec_t)original_basiclight[j][1], (vec_t)original_basiclight[j][2]);
-						printf ("original_basicdirection = %f %f %f\n", (vec_t)original_basicdirection[j][0], (vec_t)original_basicdirection[j][1], (vec_t)original_basicdirection[j][2]);
-						printf ("final_basiclight = %f %f %f\n", (vec_t)final_basiclight[j][0], (vec_t)final_basiclight[j][1], (vec_t)final_basiclight[j][2]);
-						printf ("final_basicdirection = %f %f %f\n", (vec_t)final_basicdirection[j][0], (vec_t)final_basicdirection[j][1], (vec_t)final_basicdirection[j][2]);
-						printf ("debug_original_light = %f %f %f\n",  (vec_t)debug_original_light[0], (vec_t)debug_original_light[1], (vec_t)debug_original_light[2]);
-						printf ("debug_original_direction = %f %f %f\n",  (vec_t)debug_original_direction[0], (vec_t)debug_original_direction[1], (vec_t)debug_original_direction[2]);
-						printf ("debug_final_light = %f %f %f\n",  (vec_t)debug_final_light[0], (vec_t)debug_final_light[1], (vec_t)debug_final_light[2]);
-						printf ("debug_final_direction = %f %f %f\n",  (vec_t)debug_final_direction[0], (vec_t)debug_final_direction[1], (vec_t)debug_final_direction[2]);
-						ThreadUnlock ();
-					}
-	#endif
-					VectorNormalize (v);
-				}
-				VectorSubtract (vec3_origin, v, v); // let the direction point from face sample to light source
-				unsigned char *dots = &g_ddlitdata[f->lightofs + k * fl->numsamples * 3 + j * 3];
-				for (int x = 0; x < 3; x++)
-				{
-					int i;
-					i = DotProduct (v, directionnormals[x]) * 128 + 128;
-					i = qmax (0, qmin (i, 255));
-					dots[x] = (unsigned char)i;
-				}
-			}
-	#endif
-#else
-            {
-                unsigned char* colors = &g_dlightdata[f->lightofs + k * fl->numsamples * 3 + j * 3];
-
-                colors[0] = (unsigned char)lb[0];
-                colors[1] = (unsigned char)lb[1];
-                colors[2] = (unsigned char)lb[2];
-            }
-#endif
         }
     }
-#ifdef HLRAD_FinalLightFace_VL
 	free (original_basiclight);
 	free (final_basiclight);
-#ifdef ZHLT_XASH
-	free (original_basicdirection);
-	free (final_basicdirection);
-#endif
-#endif
-
-#ifndef HLRAD_GROWSAMPLE
-#ifndef HLRAD_GatherPatchLight
-    if (g_numbounce)
-#endif
-    {
-        FreeTriangulation(trian);
-    }
-#endif
 }
 
 
-#ifdef ZHLT_TEXLIGHT
 //LRC
 vec3_t    totallight_default = { 0, 0, 0 };
-#ifdef ZHLT_XASH
-vec3_t    totallight_default_direction = { 0, 0, 0 };
-#endif
 
 //LRC - utility for getting the right totallight value from a patch
 vec3_t* GetTotalLight(patch_t* patch, int style
-#ifdef ZHLT_XASH
-	, const vec3_t *&direction_out
-#endif
 	)
 {
 	int i;
@@ -9101,23 +5346,18 @@ vec3_t* GetTotalLight(patch_t* patch, int style
 	{
 		if (patch->totalstyle[i] == style)
 		{
-#ifdef ZHLT_XASH
-			direction_out = &(patch->totallight_direction[i]);
-#endif
 			return &(patch->totallight[i]);
 		}
 	}
-#ifdef ZHLT_XASH
-	direction_out = &totallight_default_direction;
-#endif
 	return &totallight_default;
 }
+
 extern bool g_bumpmaps;
 
 // =====================================================================================
 //
 // =====================================================================================
-bool ExportALDData( ald_datatype_t type )
+bool ExportALDData(ald_datatype_t type)
 {
 	aldheader_t* poriginal = nullptr;
 
@@ -9127,7 +5367,7 @@ bool ExportALDData( ald_datatype_t type )
 	strcat(szpath, ".ald");
 
 	FILE* pfin = fopen(szpath, "rb");
-	if(pfin)
+	if (pfin)
 	{
 		fseek(pfin, 0, SEEK_END);
 		int filesize = ftell(pfin);
@@ -9142,46 +5382,46 @@ bool ExportALDData( ald_datatype_t type )
 
 	// Create new lump
 	aldlumptype_t lumptype;
-	switch(type)
+	switch (type)
 	{
 	case ALD_DATA_DAYLIGHT_RETURN:
-		{
-			lumptype = g_bumpmaps ? ALD_LUMP_DAYLIGHT_RETURN_DATA_BUMP : ALD_LUMP_DAYLIGHT_RETURN_DATA_NOBUMP;
-		}
-		break;
+	{
+		lumptype = g_bumpmaps ? ALD_LUMP_DAYLIGHT_RETURN_DATA_BUMP : ALD_LUMP_DAYLIGHT_RETURN_DATA_NOBUMP;
+	}
+	break;
 	case ALD_DATA_NIGHTSTAGE:
 	default:
-		{
-			lumptype = g_bumpmaps ? ALD_LUMP_NIGHTDATA_BUMP : ALD_LUMP_NIGHTDATA_NOBUMP;
-		}
-		break;
+	{
+		lumptype = g_bumpmaps ? ALD_LUMP_NIGHTDATA_BUMP : ALD_LUMP_NIGHTDATA_NOBUMP;
+	}
+	break;
 	}
 
 	// Create file based on original if present
 	int newnumlumps = 0;
 	int totalsize = 0;
 
-	if(poriginal)
+	if (poriginal)
 	{
 		totalsize = sizeof(aldheader_t);
 
-		for(int i = 0; i < poriginal->numlumps; i++)
+		for (int i = 0; i < poriginal->numlumps; i++)
 		{
 			aldlump_t* plump = (aldlump_t*)((byte*)poriginal + poriginal->lumpoffset) + i;
-			if(plump->type != lumptype)
+			if (plump->type != lumptype)
 			{
 				totalsize += plump->lumpsize + sizeof(aldlump_t);
 				newnumlumps++;
 			}
 		}
 
-		totalsize += sizeof(aldlump_t) + sizeof(byte)*g_lightdatasize;
+		totalsize += sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
 		newnumlumps++;
 	}
 	else
 	{
 		// No original file
-		totalsize = sizeof(aldheader_t) + sizeof(aldlump_t) + sizeof(byte)*g_lightdatasize;
+		totalsize = sizeof(aldheader_t) + sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
 		newnumlumps = 1;
 	}
 
@@ -9197,16 +5437,16 @@ bool ExportALDData( ald_datatype_t type )
 	pnewhdr->lumpoffset = fileoffset;
 
 	aldlump_t* pnewlump = nullptr;
-	if(poriginal)
+	if (poriginal)
 	{
 		aldlump_t* pnewlumps = (aldlump_t*)(pfilebuffer + fileoffset);
-		fileoffset += sizeof(aldlump_t)*newnumlumps;
+		fileoffset += sizeof(aldlump_t) * newnumlumps;
 
 		int j = 0;
-		for(int i = 0; i < poriginal->numlumps; i++)
+		for (int i = 0; i < poriginal->numlumps; i++)
 		{
 			aldlump_t* psrclump = (aldlump_t*)((byte*)poriginal + poriginal->lumpoffset) + i;
-			if(psrclump->type == lumptype)
+			if (psrclump->type == lumptype)
 				continue;
 
 			pnewlumps[j].type = psrclump->type;
@@ -9229,7 +5469,7 @@ bool ExportALDData( ald_datatype_t type )
 	else
 	{
 		pnewlump = (aldlump_t*)(pfilebuffer + fileoffset);
-		fileoffset += sizeof(aldlump_t)*newnumlumps;
+		fileoffset += sizeof(aldlump_t) * newnumlumps;
 	}
 
 	pnewlump->type = lumptype;
@@ -9241,7 +5481,7 @@ bool ExportALDData( ald_datatype_t type )
 	memcpy(pdestdata, g_dlightdata, g_lightdatasize);
 	fileoffset += g_lightdatasize;
 
-	if(fileoffset != totalsize)
+	if (fileoffset != totalsize)
 	{
 		Log("Data size mismatch(%d != %d) when writing ALD data file '%s'.\n", fileoffset, totalsize, szpath);
 		delete[] pfilebuffer;
@@ -9250,14 +5490,14 @@ bool ExportALDData( ald_datatype_t type )
 
 	// write the file
 	FILE* pf = fopen(szpath, "wb");
-	if(!pf)
+	if (!pf)
 	{
 		Log("Failed to open '%s' for writing.\n", szpath);
 		delete[] pfilebuffer;
 		return false;
 	}
 
-	fwrite(pfilebuffer, sizeof(byte)*totalsize, 1, pf);
+	fwrite(pfilebuffer, sizeof(byte) * totalsize, 1, pf);
 	fclose(pf);
 
 	delete[] pfilebuffer;
@@ -9265,4 +5505,3 @@ bool ExportALDData( ald_datatype_t type )
 	Log("%s written(%d bytes).\n", szpath, totalsize);
 	return true;
 }
-#endif

@@ -156,10 +156,8 @@ void            MakeHeadnodePortals(node_t* node, const vec3_t mins, const vec3_
  */
 
 static FILE*    pf;
-#ifdef HLBSP_VIEWPORTAL
 static FILE *pf_view;
 extern bool g_viewportal;
-#endif
 static int      num_visleafs;                              // leafs the player can be in
 static int      num_visportals;
 
@@ -170,11 +168,7 @@ static void     WritePortalFile_r(const node_t* const node)
     Winding*        w;
     dplane_t        plane2;
 
-#ifdef ZHLT_DETAILBRUSH
 	if (!node->isportalleaf)
-#else
-    if (!node->contents)
-#endif
     {
         WritePortalFile_r(node->children[0]);
         WritePortalFile_r(node->children[1]);
@@ -201,7 +195,6 @@ static void     WritePortalFile_r(const node_t* const node)
                 w->getPlane(plane2);
                 if (DotProduct(p->plane.normal, plane2.normal) < 1.0 - ON_EPSILON)
                 {                                          // backwards...
-#ifdef ZHLT_WINDING_FIX
 					if (DotProduct(p->plane.normal, plane2.normal) > -1.0 + ON_EPSILON)
 					{
 						Warning ("Colinear portal @");
@@ -212,7 +205,6 @@ static void     WritePortalFile_r(const node_t* const node)
 						Warning ("Backward portal @");
 						w->Print ();
 					}
-#endif
                     fprintf(pf, "%u %i %i ", w->m_NumPoints, p->nodes[1]->visleafnum, p->nodes[0]->visleafnum);
                 }
                 else
@@ -225,7 +217,6 @@ static void     WritePortalFile_r(const node_t* const node)
                     fprintf(pf, "(%f %f %f) ", w->m_Points[i][0], w->m_Points[i][1], w->m_Points[i][2]);
                 }
                 fprintf(pf, "\n");
-#ifdef HLBSP_VIEWPORTAL
 				if (g_viewportal)
 				{
 					vec3_t center, center1, center2;
@@ -246,7 +237,6 @@ static void     WritePortalFile_r(const node_t* const node)
 						fprintf (pf_view, "%5.2f %5.2f %5.2f\n", center1[0], center1[1], center1[2]);
 					}
 				}
-#endif
             }
         }
 
@@ -271,11 +261,7 @@ static void     NumberLeafs_r(node_t* node)
 {
     portal_t*       p;
 
-#ifdef ZHLT_DETAILBRUSH
 	if (!node->isportalleaf)
-#else
-    if (!node->contents)
-#endif
     {                                                      // decision node
         node->visleafnum = -99;
         NumberLeafs_r(node->children[0]);
@@ -308,7 +294,6 @@ static void     NumberLeafs_r(node_t* node)
     }
 }
 
-#ifdef ZHLT_DETAILBRUSH
 static int CountChildLeafs_r (node_t *node)
 {
 	if (node->planenum == -1)
@@ -347,7 +332,6 @@ static void WriteLeafCount_r (node_t *node)
 		fprintf (pf, "%i\n", count);
 	}
 }
-#endif
 /*
  * ================
  * WritePortalfile
@@ -366,7 +350,6 @@ void            WritePortalfile(node_t* headnode)
     {
         Error("Error writing portal file %s", g_portfilename);
     }
-#ifdef HLBSP_VIEWPORTAL
 	if (g_viewportal)
 	{
 		char filename[_MAX_PATH];
@@ -378,22 +361,17 @@ void            WritePortalfile(node_t* headnode)
 		}
 		Log ("Writing '%s' ...\n", filename);
 	}
-#endif
 
     fprintf(pf, "%i\n", num_visleafs);
     fprintf(pf, "%i\n", num_visportals);
 
-#ifdef ZHLT_DETAILBRUSH
 	WriteLeafCount_r (headnode);
-#endif
     WritePortalFile_r(headnode);
     fclose(pf);
-#ifdef HLBSP_VIEWPORTAL
 	if (g_viewportal)
 	{
 		fclose (pf_view);
 	}
-#endif
     Log("BSP generation successful, writing portal file '%s'\n", g_portfilename);
 }
 
@@ -404,11 +382,7 @@ void            FreePortals(node_t* node)
     portal_t*       p;
     portal_t*       nextp;
 
-#ifdef ZHLT_DETAILBRUSH
 	if (!node->isportalleaf)
-#else
-    if (node->planenum != -1)
-#endif
     {
         FreePortals(node->children[0]);
         FreePortals(node->children[1]);

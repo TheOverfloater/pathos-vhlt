@@ -46,18 +46,14 @@ int             GetThreadWork()
 {
     int             r, f, i;
     double          ct, finish, finish2, finish3;
-#ifdef ZHLT_LANGFILE
 	static const char *s1 = NULL; // avoid frequent call of Localize() in PrintConsole
 	static const char *s2 = NULL;
-#endif
 
     ThreadLock();
-#ifdef ZHLT_LANGFILE
 	if (s1 == NULL)
 		s1 = Localize ("  (%d%%: est. time to completion %ld/%ld/%ld secs)   ");
 	if (s2 == NULL)
 		s2 = Localize ("  (%d%%: est. time to completion <1 sec)   ");
-#endif
 
     if (dispatch == 0)
     {
@@ -86,19 +82,8 @@ int             GetThreadWork()
     f = THREADTIMES_SIZE * dispatch / workcount;
     if (pacifier)
     {
-#ifdef ZHLT_CONSOLE
 		PrintConsole
-#else
-        printf
-#endif
 			("\r%6d /%6d", dispatch, workcount);
-#ifdef ZHLT_PROGRESSFILE // AJM
-        if (g_progressfile)
-        {
-            
-
-        }
-#endif
 
         if (f != oldf)
         {
@@ -121,46 +106,15 @@ int             GetThreadWork()
 
                 if (finish > 1.0)
                 {
-#ifdef ZHLT_CONSOLE
 					PrintConsole
-#else
-                    printf
-#endif
-#ifdef ZHLT_LANGFILE
 						(s1, f, (long)(finish), (long)(finish2),
                            (long)(finish3));
-#else
-						("  (%d%%: est. time to completion %ld/%ld/%ld secs)   ", f, (long)(finish), (long)(finish2),
-                           (long)(finish3));
-#endif
-#ifdef ZHLT_PROGRESSFILE // AJM
-                    if (g_progressfile)
-                    {
-
-
-                    }
-#endif
                 }
                 else
                 {
-#ifdef ZHLT_CONSOLE
 					PrintConsole
-#else
-                    printf
-#endif
-#ifdef ZHLT_LANGFILE
 						(s2, f);
-#else
-						("  (%d%%: est. time to completion <1 sec)   ", f);
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-                    if (g_progressfile)
-                    {
-
-
-                    }
-#endif
                 }
             }
         }
@@ -194,11 +148,7 @@ int             GetThreadWork()
             case 85:
             case 95:
 */
-#ifdef ZHLT_CONSOLE
 				PrintConsole
-#else
-                printf
-#endif
 					("%d%%...", f);
             default:
                 break;
@@ -461,11 +411,7 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
     end = I_FloatTime();
     if (pacifier)
     {
-#ifdef ZHLT_CONSOLE
 		PrintConsole
-#else
-        printf
-#endif
 			("\r%60s\r", "");
     }
     Log(" (%.2f seconds)\n", end - start);
@@ -543,11 +489,7 @@ q_threadfunction q_entry;
 
 static void*    CDECL ThreadEntryStub(void* pParam)
 {
-#ifdef ZHLT_64BIT_FIX
     q_entry((int)(intptr_t)pParam);
-#else
-    q_entry((int)pParam);
-#endif
     return NULL;
 }
 
@@ -644,11 +586,7 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
     end = I_FloatTime();
     if (pacifier)
     {
-#ifdef ZHLT_CONSOLE
 		PrintConsole
-#else
-        printf
-#endif
 			("\r%60s\r", "");
     }
 
@@ -721,11 +659,7 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
 
     if (pacifier)
     {
-#ifdef ZHLT_CONSOLE
 		PrintConsole
-#else
-        printf
-#endif
 			("\r%60s\r", "");
     }
 

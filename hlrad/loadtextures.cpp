@@ -1,5 +1,4 @@
 #include "qrad.h"
-#ifdef HLRAD_TEXTURE
 
 #ifdef WORDS_BIGENDIAN
 #error "HLRAD_TEXTURE doesn't support WORDS_BIGENDIAN, because I have no big endian machine to test it"
@@ -62,9 +61,7 @@ static int CDECL lump_sorter_by_name (const void *lump1, const void *lump2)
 }
 
 void OpenWadFile (const char *name
-#ifdef ZHLT_NOWADDIR
 	, bool fullpath = false
-#endif
 	)
 {
 	int i;
@@ -78,7 +75,6 @@ void OpenWadFile (const char *name
 		wad->next = *pos;
 		*pos = wad;
 	}
-#ifdef ZHLT_NOWADDIR
    if (fullpath)
    {
 	safe_snprintf (wad->path, _MAX_PATH, "%s", name);
@@ -90,7 +86,6 @@ void OpenWadFile (const char *name
    }
    else
    {
-#endif
 	waddir_t *dir;
 	for (dir = g_waddirs; dir; dir = dir->next)
 	{
@@ -106,9 +101,7 @@ void OpenWadFile (const char *name
 		Fatal (assume_COULD_NOT_LOCATE_WAD, "Could not locate wad file %s", name);
 		return;
 	}
-#ifdef ZHLT_NOWADDIR
    }
-#endif
 	Log ("Using Wadfile: %s\n", wad->path);
 	wad->filesize = q_filelength (wad->file);
 	struct
@@ -155,7 +148,6 @@ void TryOpenWadFiles ()
 	if (!g_wadfiles_opened)
 	{
 		g_wadfiles_opened = true;
-#ifdef ZHLT_NOWADDIR
 		char filename[_MAX_PATH];
 		safe_snprintf(filename, _MAX_PATH, "%s.wa_", g_Mapname);
 	   if (q_exists (filename))
@@ -165,7 +157,6 @@ void TryOpenWadFiles ()
 	   else
 	   {
 		Warning ("Couldn't open %s", filename);
-#endif
 		Log ("Opening wad files from directories:\n");
 		if (!g_waddirs)
 		{
@@ -202,9 +193,7 @@ void TryOpenWadFiles ()
 				j++;
 			}
 		}
-#ifdef ZHLT_NOWADDIR
 	   }
-#endif
 		CheckFatal ();
 	}
 }
@@ -384,7 +373,6 @@ void LoadTextures ()
 				LoadTextureFromWad (tex, mt);
 			}
 		}
-#ifdef HLRAD_REFLECTIVITY
 		{
 			vec3_t total;
 			VectorClear (total);
@@ -415,7 +403,6 @@ void LoadTextures ()
 				Warning ("Texture '%s': reflectivity (%f,%f,%f) greater than 1.0.", tex->name, tex->reflectivity[0], tex->reflectivity[1], tex->reflectivity[2]);
 			}
 		}
-#endif
 	}
 	if (!g_notextures)
 	{
@@ -424,7 +411,6 @@ void LoadTextures ()
 	}
 }
 
-#ifdef ZHLT_EMBEDLIGHTMAP
 
 // color quantization algorithm
 
@@ -1503,5 +1489,3 @@ void EmbedLightmapInTextures ()
 	}
 }
 
-#endif
-#endif

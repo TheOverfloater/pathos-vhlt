@@ -10,20 +10,8 @@
 #undef BOGUS_RANGE
 #undef ON_EPSILON
 
-#ifdef ZHLT_LARGERANGE
 #define	BOGUS_RANGE	80000.0
-#else
-#define	BOGUS_RANGE	10000.0
-#endif
-#ifdef ZHLT_WINDING_EPSILON
 #define ON_EPSILON epsilon
-#else
-#ifdef ZHLT_LARGERANGE
-#define ON_EPSILON 0.04
-#else
-#define ON_EPSILON 0.01
-#endif
-#endif
 
 //
 // Winding Public Methods
@@ -159,9 +147,7 @@ Winding*        Winding::Copy() const
 }
 
 void            Winding::Check(
-#ifdef ZHLT_WINDING_EPSILON
 							   vec_t epsilon
-#endif
 							   ) const
 {
     unsigned int    i, j;
@@ -386,9 +372,7 @@ Winding::Winding(const vec3_t normal, const vec_t dist)
 }
 
 Winding::Winding(const dface_t& face
-#ifdef ZHLT_WINDING_EPSILON
 				 , vec_t epsilon
-#endif
 				 )
 {
     int             se;
@@ -416,9 +400,7 @@ Winding::Winding(const dface_t& face
     }
 
     RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
 }
 
@@ -436,12 +418,9 @@ Winding::Winding(const dplane_t& plane)
 // Specialized Functions
 //
 
-#ifdef ZHLT_WINDING_RemoveColinearPoints_VL
 // Remove the colinear point of any three points that forms a triangle which is thinner than ON_EPSILON
 void			Winding::RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 											  vec_t epsilon
-#endif
 											  )
 {
 	unsigned int	i;
@@ -469,146 +448,10 @@ void			Winding::RemoveColinearPoints(
 		}
 	}
 }
-#else /*ZHLT_WINDING_RemoveColinearPoints_VL*/
-#ifdef COMMON_HULLU
-void            Winding::RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
-											  , vec_t epsilon
-#endif
-											  )
-{
-    unsigned int    i;
-    unsigned int    nump;
-    int             j;
-    vec3_t          v1, v2;
-    vec3_t          p[128];
-
-    //JK: Did the optimizations...
-
-    if (m_NumPoints>1)
-    {
-        VectorSubtract(m_Points[0], m_Points[m_NumPoints - 1], v2);
-        VectorNormalize(v2);
-    }
-    nump=0;
-    for (i = 0; i < m_NumPoints; i++)
-    {
-        j = (i + 1) % m_NumPoints;                  // i + 1
-
-        VectorSubtract(m_Points[i], m_Points[j], v1);
-
-        VectorNormalize(v1);
-
-        VectorAdd(v1, v2, v2);
-
-        if (!VectorCompare(v2, vec3_origin))
-        {
-            VectorCopy(m_Points[i], p[nump]);
-            nump++;
-        }
-#if 0
-        else
-        {
-            Log("v3 was (%4.3f %4.3f %4.3f)\n", v2[0], v2[1], v2[2]);
-        }
-#endif
-        //Set v2 for next round
-        v2[0]=-v1[0];
-        v2[1]=-v1[1];
-        v2[2]=-v1[2];
-    }
-
-    if (nump == m_NumPoints)
-    {
-        return;  
-    }
-
-#if 0
-    Warning("RemoveColinearPoints: Removed %u points, from %u to %u\n", m_NumPoints - nump, m_NumPoints, nump);
-    Warning("Before :\n");
-    Print();
-#endif
-    m_NumPoints = nump;
-    memcpy(m_Points, p, nump * sizeof(vec3_t));
-
-#if 0
-    Warning("After :\n");
-    Print();
-
-    Warning("==========\n");
-#endif
-}
-
-
-#else /*COMMON_HULLU*/
-
-
-void            Winding::RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
-											  , vec_t epsilon
-#endif
-											  )
-{
-    unsigned int    i;
-    unsigned int    nump;
-    int             j, k;
-    vec3_t          v1, v2, v3;
-    vec3_t          p[128];
-
-    // TODO: OPTIMIZE:  this could be 1/2 the number of vectornormalize calls by caching one of the previous values through the loop
-    // TODO: OPTIMIZE: Remove the modulo operations inside the loop and replace with compares
-    nump = 0;
-    for (i = 0; i < m_NumPoints; i++)
-    {
-        j = (i + 1) % m_NumPoints;                  // i + 1
-        k = (i + m_NumPoints - 1) % m_NumPoints;    // i - 1 
-        VectorSubtract(m_Points[i], m_Points[j], v1);
-        VectorSubtract(m_Points[i], m_Points[k], v2);
-        VectorNormalize(v1);
-        VectorNormalize(v2);
-        VectorAdd(v1, v2, v3);
-        if (!VectorCompare(v3, vec3_origin))
-        {
-            VectorCopy(m_Points[i], p[nump]);
-            nump++;
-        }
-#if 0
-        else
-        {
-            Log("v3 was (%4.3f %4.3f %4.3f)\n", v3[0], v3[1], v3[2]);
-        }
-#endif
-    }
-
-    if (nump == m_NumPoints)
-    {
-        return;  
-    }
-
-#if 0
-    Warning("RemoveColinearPoints: Removed %u points, from %u to %u\n", m_NumPoints - nump, m_NumPoints, nump);
-    Warning("Before :\n");
-    Print();
-#endif
-    m_NumPoints = nump;
-    memcpy(m_Points, p, nump * sizeof(vec3_t));
-
-#if 0
-    Warning("After :\n");
-    Print();
-
-    Warning("==========\n");
-#endif
-}
-
-#endif /*!COMMON_HULLU*/
-#endif /*ZHLT_WINDING_RemoveColinearPoints_VL*/
 
 
 void            Winding::Clip(const dplane_t& plane, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 							  , vec_t epsilon
-#endif
 							  )
 {
     vec3_t normal;
@@ -616,17 +459,13 @@ void            Winding::Clip(const dplane_t& plane, Winding** front, Winding** 
     VectorCopy(plane.normal, normal);
     dist = plane.dist;
     Clip(normal, dist, front, back
-#ifdef ZHLT_WINDING_EPSILON
 		, epsilon
-#endif
 		);
 }
 
 
 void            Winding::Clip(const vec3_t normal, const vec_t dist, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 							  , vec_t epsilon
-#endif
 							  )
 {
     vec_t           dists[MAX_POINTS_ON_WINDING + 4];
@@ -769,16 +608,11 @@ void            Winding::Clip(const vec3_t normal, const vec_t dist, Winding** f
         Error("Winding::Clip : MAX_POINTS_ON_WINDING");
     }
     f->RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
     b->RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
-#ifdef ZHLT_WINDING_RemoveColinearPoints_VL
 	if (f->m_NumPoints == 0)
 	{
 		delete f;
@@ -789,22 +623,17 @@ void            Winding::Clip(const vec3_t normal, const vec_t dist, Winding** f
 		delete b;
 		*back = NULL;
 	}
-#endif
 }
 
 bool          Winding::Chop(const vec3_t normal, const vec_t dist
-#ifdef ZHLT_WINDING_EPSILON
 							, vec_t epsilon
-#endif
 							)
 {
     Winding*      f;
     Winding*      b;
 
     Clip(normal, dist, &f, &b
-#ifdef ZHLT_WINDING_EPSILON
 		, epsilon
-#endif
 		);
     if (b)
     {
@@ -830,9 +659,7 @@ bool          Winding::Chop(const vec3_t normal, const vec_t dist
 }
 
 int             Winding::WindingOnPlaneSide(const vec3_t normal, const vec_t dist
-#ifdef ZHLT_WINDING_EPSILON
 											, vec_t epsilon
-#endif
 											)
 {
     bool            front, back;
@@ -877,9 +704,7 @@ int             Winding::WindingOnPlaneSide(const vec3_t normal, const vec_t dis
 
 
 bool Winding::Clip(const dplane_t& split, bool keepon
-#ifdef ZHLT_WINDING_EPSILON
 				   , vec_t epsilon
-#endif
 				   )
 {
     vec_t           dists[MAX_POINTS_ON_WINDING];
@@ -901,11 +726,7 @@ bool Winding::Clip(const dplane_t& split, bool keepon
         {
             sides[i] = SIDE_FRONT;
         }
-#ifdef ZHLT_WINDING_FIX
         else if (dot < -ON_EPSILON)
-#else
-        else if (dot < ON_EPSILON)
-#endif
         {
             sides[i] = SIDE_BACK;
         }
@@ -971,7 +792,6 @@ bool Winding::Clip(const dplane_t& split, bool keepon
         }
         vec_t* p2 = m_Points[tmp];
         dot = dists[i] / (dists[i] - dists[i + 1]);
-#ifdef ZHLT_WINDING_FIX // we must guarantee that no reversed edge will form
         for (j = 0; j < 3; j++)
         {                                                  // avoid round off error when possible
             if (split.normal[j] == 1)
@@ -981,26 +801,6 @@ bool Winding::Clip(const dplane_t& split, bool keepon
             else
                 mid[j] = p1[j] + dot * (p2[j] - p1[j]);
         }
-#else
-        for (j = 0; j < 3; j++)
-        {                                                  // avoid round off error when possible
-            if (split.normal[j] < 1.0 - NORMAL_EPSILON)
-            {
-                if (split.normal[j] > -1.0 + NORMAL_EPSILON)
-                {
-                    mid[j] = p1[j] + dot * (p2[j] - p1[j]);
-                }
-                else
-                {
-                    mid[j] = -split.dist;
-                }
-            }
-            else
-            {
-                mid[j] = split.dist;
-            }
-        }
-#endif
 
         VectorCopy(mid, newPoints[newNumPoints]);
         newNumPoints++;
@@ -1016,11 +816,8 @@ bool Winding::Clip(const dplane_t& split, bool keepon
     m_NumPoints = newNumPoints;
 
     RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
-#ifdef ZHLT_WINDING_RemoveColinearPoints_VL
 	if (m_NumPoints == 0)
 	{
 		delete[] m_Points;
@@ -1028,7 +825,6 @@ bool Winding::Clip(const dplane_t& split, bool keepon
 		m_NumPoints = 0;
 		return false;
 	}
-#endif
 
     return true;
 }
@@ -1044,9 +840,7 @@ bool Winding::Clip(const dplane_t& split, bool keepon
  */
 
 void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 					 , vec_t epsilon
-#endif
 					 )
 {
     vec_t           dists[MAX_POINTS_ON_WINDING];
@@ -1083,7 +877,6 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
 
     *front = *back = NULL;
 
-#ifdef HLBSP_SPLITFACE_FIX
 	if (!counts[0] && !counts[1])
 	{
 		vec_t sum = 0.0;
@@ -1103,7 +896,6 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
 		}
 		return;
 	}
-#endif
     if (!counts[0])
     {
         *back = this;   // Makes this function non-const
@@ -1164,7 +956,6 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
         }
         vec_t* p2 = m_Points[tmp];
         dot = dists[i] / (dists[i] - dists[i + 1]);
-#ifdef ZHLT_WINDING_FIX
         for (j = 0; j < 3; j++)
         {                                                  // avoid round off error when possible
             if (split.normal[j] == 1)
@@ -1174,26 +965,6 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
             else
                 mid[j] = p1[j] + dot * (p2[j] - p1[j]);
         }
-#else
-        for (j = 0; j < 3; j++)
-        {                                                  // avoid round off error when possible
-            if (split.normal[j] < 1.0 - NORMAL_EPSILON)
-            {
-                if (split.normal[j] > -1.0 + NORMAL_EPSILON)
-                {
-                    mid[j] = p1[j] + dot * (p2[j] - p1[j]);
-                }
-                else
-                {
-                    mid[j] = -split.dist;
-                }
-            }
-            else
-            {
-                mid[j] = split.dist;
-            }
-        }
-#endif
 
         VectorCopy(mid, f->m_Points[f->m_NumPoints]);
         VectorCopy(mid, b->m_Points[b->m_NumPoints]);
@@ -1207,16 +978,11 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
     }
 
     f->RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
     b->RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		epsilon
-#endif
 		);
-#ifdef ZHLT_WINDING_RemoveColinearPoints_VL
 	if (f->m_NumPoints == 0)
 	{
 		delete f;
@@ -1231,7 +997,6 @@ void Winding::Divide(const dplane_t& split, Winding** front, Winding** back
 		*back = NULL;
 		*front = this;
 	}
-#endif
 }
 
 

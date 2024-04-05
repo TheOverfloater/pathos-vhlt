@@ -2,169 +2,12 @@
 
 plane_t         g_mapplanes[MAX_INTERNAL_MAP_PLANES];
 int             g_nummapplanes;
-#ifdef HLCSG_HULLBRUSH
 hullshape_t		g_defaulthulls[NUM_HULLS];
 int				g_numhullshapes;
 hullshape_t		g_hullshapes[MAX_HULLSHAPES];
-#endif
 
-#ifdef ZHLT_LARGERANGE
 #define DIST_EPSILON   0.04
-#else
-#define DIST_EPSILON   0.01
-#endif
 
-#if !defined HLCSG_FASTFIND
-
-/*
- * =============
- * FindIntPlane
- *
- * Returns which plane number to use for a given integer defined plane.
- *
- * =============
- */
-
-int             FindIntPlane(const vec_t* const normal, const vec_t* const origin)
-{
-    int             i, j;
-    plane_t*        p;
-    plane_t         temp;
-    vec_t           t;
-    bool            locked;
-
-    p = g_mapplanes;
-    locked = false;
-    i = 0;
-
-    while (1)
-    {
-        if (i == g_nummapplanes)
-        {
-            if (!locked)
-            {
-                locked = true;
-                ThreadLock();                              // make sure we don't race
-            }
-            if (i == g_nummapplanes)
-            {
-                break;                                     // we didn't race
-            }
-        }
-
-#ifdef HLCSG_FACENORMALEPSILON
-		t = DotProduct (origin, p->normal) - p->dist;
-		if (fabs (t) < DIST_EPSILON)
-		{
-            for (j = 0; j < 3; j++)
-            {
-                if (fabs(normal[j] - p->normal[j]) > DIR_EPSILON)
-                {
-                    break;
-                }
-            }
-            if (j == 3)
-            {
-                if (locked)
-                {
-                    ThreadUnlock();
-                }
-                return i;
-            }
-		}
-#else
-        t = 0;                                             // Unrolled loop
-        t += (origin[0] - p->origin[0]) * normal[0];
-        t += (origin[1] - p->origin[1]) * normal[1];
-        t += (origin[2] - p->origin[2]) * normal[2];
-
-        if (fabs(t) < DIST_EPSILON)
-        {                                                  // on plane
-            // see if the normal is forward, backwards, or off
-            for (j = 0; j < 3; j++)
-            {
-                if (fabs(normal[j] - p->normal[j]) > NORMAL_EPSILON)
-                {
-                    break;
-                }
-            }
-            if (j == 3)
-            {
-                if (locked)
-                {
-                    ThreadUnlock();
-                }
-                return i;
-            }
-        }
-#endif
-
-        i++;
-        p++;
-    }
-
-    hlassert(locked);
-
-    // create a new plane
-    p->origin[0] = origin[0];
-    p->origin[1] = origin[1];
-    p->origin[2] = origin[2];
-
-    (p + 1)->origin[0] = origin[0];
-    (p + 1)->origin[1] = origin[1];
-    (p + 1)->origin[2] = origin[2];
-
-    p->normal[0] = normal[0];
-    p->normal[1] = normal[1];
-    p->normal[2] = normal[2];
-
-    (p + 1)->normal[0] = -normal[0];
-    (p + 1)->normal[1] = -normal[1];
-    (p + 1)->normal[2] = -normal[2];
-
-    hlassume(g_nummapplanes < MAX_INTERNAL_MAP_PLANES, assume_MAX_INTERNAL_MAP_PLANES);
-
-    VectorNormalize(p->normal);
-
-    p->type = (p + 1)->type = PlaneTypeForNormal(p->normal);
-#ifdef ZHLT_PLANETYPE_FIX
-	if (p->type <= last_axial)
-	{
-		for (int i = 0; i < 3; i++)
-		{
-			if (i == p->type)
-				p->normal[i] = p->normal[i] > 0? 1: -1;
-			else
-				p->normal[i] = 0;
-		}
-	}
-#endif
-
-    p->dist = DotProduct(origin, p->normal);
-    VectorSubtract(vec3_origin, p->normal, (p + 1)->normal);
-    (p + 1)->dist = -p->dist;
-
-    // always put axial planes facing positive first
-    if (p->type <= last_axial)
-    {
-        if (normal[0] < 0 || normal[1] < 0 || normal[2] < 0)
-        {
-            // flip order
-            temp = *p;
-            *p = *(p + 1);
-            *(p + 1) = temp;
-            g_nummapplanes += 2;
-            ThreadUnlock();
-            return i + 1;
-        }
-    }
-
-    g_nummapplanes += 2;
-    ThreadUnlock();
-    return i;
-}
-
-#else //ifdef HLCSG_FASTFIND
 
 // =====================================================================================
 //  FindIntPlane, fast version (replacement by KGP)
@@ -186,7 +29,6 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 	for( ; returnval < g_nummapplanes; returnval++)
 	{
 		// BUG: there might be some multithread issue --vluzacn
-#ifdef HLCSG_FACENORMALEPSILON
 		if(	-DIR_EPSILON < (t = normal[0] - g_mapplanes[returnval].normal[0]) && t < DIR_EPSILON &&
 			-DIR_EPSILON < (t = normal[1] - g_mapplanes[returnval].normal[1]) && t < DIR_EPSILON &&
 			-DIR_EPSILON < (t = normal[2] - g_mapplanes[returnval].normal[2]) && t < DIR_EPSILON )
@@ -196,20 +38,6 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 			if (-DIST_EPSILON < t && t < DIST_EPSILON)
 			{ return returnval; }
 		}
-#else
-		if(	-NORMAL_EPSILON < (t = normal[0] - g_mapplanes[returnval].normal[0]) && t < NORMAL_EPSILON &&
-			-NORMAL_EPSILON < (t = normal[1] - g_mapplanes[returnval].normal[1]) && t < NORMAL_EPSILON &&
-			-NORMAL_EPSILON < (t = normal[2] - g_mapplanes[returnval].normal[2]) && t < NORMAL_EPSILON )
-		{
-			//t = (origin - plane_origin) dot (normal), unrolled
-			t = (origin[0] - g_mapplanes[returnval].origin[0]) * normal[0]
-				+ (origin[1] - g_mapplanes[returnval].origin[1]) * normal[1]
-				+ (origin[2] - g_mapplanes[returnval].origin[2]) * normal[2];
-
-			if (-DIST_EPSILON < t && t < DIST_EPSILON) // on plane
-			{ return returnval; }
-		}
-#endif
 	}
 
 	ThreadLock();
@@ -228,7 +56,6 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 	VectorCopy(normal,p->normal);
     VectorNormalize(p->normal);
 	p->type = PlaneTypeForNormal(p->normal);
-#ifdef ZHLT_PLANETYPE_FIX
 	if (p->type <= last_axial)
 	{
 		for (int i = 0; i < 3; i++)
@@ -239,7 +66,6 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 				p->normal[i] = 0;
 		}
 	}
-#endif
     p->dist = DotProduct(origin, p->normal);
 
 	VectorCopy(origin,(p+1)->origin);
@@ -248,11 +74,7 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 	(p+1)->dist = -p->dist;
 
     // always put axial planes facing positive first
-#ifdef ZHLT_PLANETYPE_FIX
 	if (normal[(p->type)%3] < 0)
-#else
-    if (p->type <= last_axial && (normal[0] < 0 || normal[1] < 0 || normal[2] < 0))	// flip order
-#endif
 	{
 		temp = *p;
 		*p = *(p+1);
@@ -267,7 +89,6 @@ int FindIntPlane(const vec_t* const normal, const vec_t* const origin)
 	return returnval;
 }
 
-#endif //HLCSG_FASTFIND
 
 
 int PlaneFromPoints(const vec_t* const p0, const vec_t* const p1, const vec_t* const p2)
@@ -285,7 +106,6 @@ int PlaneFromPoints(const vec_t* const p0, const vec_t* const p1, const vec_t* c
     return -1;
 }
 
-#ifdef HLCSG_PRECISIONCLIP
 
 const char ClipTypeStrings[5][11] = {{"smallest"},{"normalized"},{"simple"},{"precise"},{"legacy"}};
 
@@ -307,10 +127,6 @@ void AddHullPlane(brushhull_t* hull, const vec_t* const normal, const vec_t* con
 	//up cases where we know the plane hasn't been added yet, like axial case)
 	if(check_planenum)
 	{
-#ifndef HLCSG_HULLBRUSH
-		if(g_mapplanes[planenum].type <= last_axial) //we know axial planes are added in last step
-		{ return; }
-#endif
 
 		bface_t* current_face;
 		for(current_face = hull->faces; current_face; current_face = current_face->next)
@@ -325,11 +141,7 @@ void AddHullPlane(brushhull_t* hull, const vec_t* const normal, const vec_t* con
 	new_face->next = hull->faces;
 	new_face->contents = CONTENTS_EMPTY;
 	hull->faces = new_face;
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 	new_face->texinfo = -1;
-#else
-	new_face->texinfo = 0;
-#endif
 }
 
 // =====================================================================================
@@ -366,7 +178,6 @@ void AddHullPlane(brushhull_t* hull, const vec_t* const normal, const vec_t* con
 //     cliptype          simple    precise     legacy normalized   smallest
 //     clipnodecount        971       1089       1202       1232       1000
 
-#ifdef HLCSG_HULLBRUSH
 void ExpandBrushWithHullBrush (const brush_t *brush, const brushhull_t *hull0, const hullbrush_t *hb, brushhull_t *hull)
 {
 	const hullbrushface_t *hbf;
@@ -482,11 +293,7 @@ void ExpandBrushWithHullBrush (const brush_t *brush, const brushhull_t *hull0, c
 				if (!warned)
 				{
 					Warning("Illegal Brush (edge without opposite face): Entity %i, Brush %i\n",
-#ifdef HLCSG_COUNT_NEW
 						brush->originalentitynum, brush->originalbrushnum
-#else
-						brush->entitynum, brush->brushnum
-#endif
 						);
 					warned = true;
 				}
@@ -575,10 +382,8 @@ void ExpandBrushWithHullBrush (const brush_t *brush, const brushhull_t *hull0, c
 	free (axialbevel);
 }
 
-#endif
 void ExpandBrush(brush_t* brush, const int hullnum)
 {
-#ifdef HLCSG_HULLBRUSH
 	const hullshape_t *hs = &g_defaulthulls[hullnum];
 	{ // look up the name of its hull shape in g_hullshapes[]
 		const char *name = brush->hullshapes[hullnum];
@@ -593,11 +398,7 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 					if (found)
 					{
 						Warning ("Entity %i, Brush %i: Found several info_hullshape entities with the same name '%s'.",
-#ifdef HLCSG_COUNT_NEW
 							brush->originalentitynum, brush->originalbrushnum,
-#else
-							brush->entitynum, brush->brushnum,
-#endif
 							name);
 					}
 					hs = s;
@@ -607,11 +408,7 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 			if (!found)
 			{
 				Error ("Entity %i, Brush %i: Couldn't find info_hullshape entity '%s'.",
-#ifdef HLCSG_COUNT_NEW
 					brush->originalentitynum, brush->originalbrushnum,
-#else
-					brush->entitynum, brush->brushnum,
-#endif
 					name);
 			}
 		}
@@ -627,7 +424,6 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 
 		return;
 	}
-#endif
 	//for looping through the faces and constructing the hull
 	bface_t* current_face;
 	plane_t* current_plane;
@@ -658,11 +454,7 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 		if(current_plane->type <= last_axial)
 		{
 			//flag case where bounding box shouldn't expand
-#ifdef HLCSG_CUSTOMHULL
 			if (current_face->bevel)
-#else
-			if((g_texinfo[current_face->texinfo].flags & TEX_BEVEL))
-#endif
 			{
 				switch(current_plane->type)
 				{
@@ -692,15 +484,10 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 		//preciseclip is turned off to allow backward compatability -- some of the improperly beveled edges
 		//grow using the new origins, and might cause additional problems.
 
-#ifdef HLCSG_CUSTOMHULL
 		if (current_face->bevel)
-#else
-		if((g_texinfo[current_face->texinfo].flags & TEX_BEVEL))
-#endif
 		{
 			//don't adjust origin - we'll correct g_texinfo's flags in a later step
 		}
-#ifdef HLCSG_CLIPTYPEPRECISE_EPSILON_FIX
 		// The old offset will generate an extremely small gap when the normal is close to axis, causing epsilon errors (ambiguous leafnode content, player falling into ground, etc.).
 		// For example: with the old shifting method, slopes with angle arctan(1/8) and arctan(1/64) will result in gaps of 0.0299 unit and 0.000488 unit respectively, which are smaller than ON_EPSILON, while in both 'simple' cliptype and the new method, the gaps are 2.0 units and 0.25 unit, which are good.
 		// This also reduce the number of clipnodes used for cliptype precise.
@@ -713,9 +500,6 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 			origin[2] += g_hull_size[hullnum][1][2];
 		}
 		else if (g_cliptype == clip_legacy || g_cliptype == clip_normalized)
-#else
-		else if(g_cliptype == clip_legacy || (g_cliptype == clip_precise && (normal[2] > FLOOR_Z)) || g_cliptype == clip_normalized)
-#endif
 		{
 			if(normal[0])
 			{ origin[0] += normal[0] * (normal[0] > 0 ? g_hull_size[hullnum][1][0] : -g_hull_size[hullnum][0][0]); }
@@ -745,11 +529,6 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 		for(current_face = brush->hulls[0].faces; current_face; current_face = current_face->next)
 		{
 			current_plane = current_face->plane;
-#ifndef HLCSG_BEVELMISSINGFIX
-			// for example, (0, 0.707, 0.707) -edge- (0.707, 0, -0.707). --vluzacn
-			if(current_plane->type <= last_axial || !current_plane->normal[0] || !current_plane->normal[1] || !current_plane->normal[2])
-			{ continue; } //only add bevels to completely non-axial planes
-#endif
 
 			//test to see if the plane is completely non-axial (if it is, need to add bevels to any
 			//existing "inflection edges" where there's a sign change with a neighboring plane's normal for
@@ -797,11 +576,7 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 					if(hullnum == 1 && !warned)
 					{
 						Warning("Illegal Brush (edge without opposite face): Entity %i, Brush %i\n",
-#ifdef HLCSG_COUNT_NEW
 							brush->originalentitynum, brush->originalbrushnum
-#else
-							brush->entitynum, brush->brushnum
-#endif
 							);
 						warned = true;
 					}
@@ -814,11 +589,7 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 				//check each direction for sign change in normal -- zero can be safely ignored
 				for(dir = 0; dir < 3; dir++)
 				{
-#ifdef HLCSG_BEVELMISSINGFIX
 					if(current_plane->normal[dir]*other_plane->normal[dir] < -NORMAL_EPSILON) //sign changed, add bevel
-#else
-					if(current_plane->normal[dir]*other_plane->normal[dir] < 0) //sign changed, add bevel
-#endif
 					{
 						//pick direction of bevel edge by looking at normal of existing planes
 						VectorClear(bevel_edge);
@@ -829,18 +600,15 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 
 						//normalize to length 1
 						VectorNormalize(normal);
-#ifdef HLCSG_BEVELMISSINGFIX
 						if (fabs (normal[(dir+1)%3]) <= NORMAL_EPSILON || fabs (normal[(dir+2)%3]) <= NORMAL_EPSILON)
 						{ // coincide with axial plane
 							continue;
 						}
-#endif
 
 						//get the origin
 						VectorCopy(edge_start,origin);
 
 						//unrolled loop - legacy never hits this point, so don't test for it
-#ifdef HLCSG_CLIPTYPEPRECISE_EPSILON_FIX
 						if (g_cliptype == clip_precise && normal[2] > FLOOR_Z)
 						{
 							origin[0] += 0;
@@ -848,9 +616,6 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 							origin[2] += g_hull_size[hullnum][1][2];
 						}
 						else if (g_cliptype == clip_normalized)
-#else
-						if((g_cliptype == clip_precise && (normal[2] > FLOOR_Z)) || g_cliptype == clip_normalized)
-#endif
 						{
 							if(normal[0])
 							{ origin[0] += normal[0] * (normal[0] > 0 ? g_hull_size[hullnum][1][0] : -g_hull_size[hullnum][0][0]); }
@@ -932,216 +697,10 @@ void ExpandBrush(brush_t* brush, const int hullnum)
 	}
 */
 }
-#else //!HLCSG_PRECISIONCLIP
-
-#define	MAX_HULL_POINTS	32
-#define	MAX_HULL_EDGES	64
-
-typedef struct
-{
-    brush_t*        b;
-    int             hullnum;
-    int             num_hull_points;
-    vec3_t          hull_points[MAX_HULL_POINTS];
-    vec3_t          hull_corners[MAX_HULL_POINTS * 8];
-    int             num_hull_edges;
-    int             hull_edges[MAX_HULL_EDGES][2];
-} expand_t;
-
-/*
- * =============
- * IPlaneEquiv
- *
- * =============
- */
-bool            IPlaneEquiv(const plane_t* const p1, const plane_t* const p2)
-{
-    vec_t           t;
-    int             j;
-
-    // see if origin is on plane
-    t = 0;
-    for (j = 0; j < 3; j++)
-    {
-        t += (p2->origin[j] - p1->origin[j]) * p2->normal[j];
-    }
-    if (fabs(t) > DIST_EPSILON)
-    {
-        return false;
-    }
-
-    // see if the normal is forward, backwards, or off
-    for (j = 0; j < 3; j++)
-    {
-        if (fabs(p2->normal[j] - p1->normal[j]) > NORMAL_EPSILON)
-        {
-            break;
-        }
-    }
-    if (j == 3)
-    {
-        return true;
-    }
-
-    for (j = 0; j < 3; j++)
-    {
-        if (fabs(p2->normal[j] - p1->normal[j]) > NORMAL_EPSILON)
-        {
-            break;
-        }
-    }
-    if (j == 3)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-/*
- * ============
- * AddBrushPlane
- * =============
- */
-void            AddBrushPlane(const expand_t* const ex, const plane_t* const plane)
-{
-    plane_t*        pl;
-    bface_t*        f;
-    bface_t*        nf;
-    brushhull_t*    h;
-
-    h = &ex->b->hulls[ex->hullnum];
-    // see if the plane has allready been added
-    for (f = h->faces; f; f = f->next)
-    {
-        pl = f->plane;
-        if (IPlaneEquiv(plane, pl))
-        {
-            return;
-        }
-    }
-
-    nf = (bface_t*)Alloc(sizeof(*nf));                               // TODO: This leaks
-    nf->planenum = FindIntPlane(plane->normal, plane->origin);
-    nf->plane = &g_mapplanes[nf->planenum];
-    nf->next = h->faces;
-    nf->contents = CONTENTS_EMPTY;
-    h->faces = nf;
-
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
-	nf->texinfo = -1;
-#else
-    nf->texinfo = 0;                                       // all clip hulls have same texture
-#endif
-}
-
-// =====================================================================================
-//  ExpandBrush
-// =====================================================================================
-void            ExpandBrush(brush_t* b, const int hullnum)
-{
-    int             x;
-    int             s;
-    int             corner;
-    bface_t*        brush_faces;
-    bface_t*        f;
-    bface_t*        nf;
-    plane_t*        p;
-    plane_t         plane;
-    vec3_t          origin;
-    vec3_t          normal;
-    expand_t        ex;
-    brushhull_t*    h;
-    bool            axial;
-
-    brush_faces = b->hulls[0].faces;
-    h = &b->hulls[hullnum];
-
-    ex.b = b;
-    ex.hullnum = hullnum;
-    ex.num_hull_points = 0;
-    ex.num_hull_edges = 0;
-
-    // expand all of the planes
-
-    axial = true;
-
-    // for each of this brushes faces
-    for (f = brush_faces; f; f = f->next)
-    {
-        p = f->plane;
-        if (p->type > last_axial) // ajm: last_axial == (planetypes enum)plane_z == (2)
-        {
-            axial = false;                                 // not an xyz axial plane
-        }
-
-        VectorCopy(p->origin, origin);
-        VectorCopy(p->normal, normal);
-
-        for (x = 0; x < 3; x++)
-        {
-            if (p->normal[x] > 0)
-            {
-                corner = g_hull_size[hullnum][1][x];
-            }
-            else if (p->normal[x] < 0)
-            {
-                corner = -g_hull_size[hullnum][0][x];
-            }
-            else
-            {
-                corner = 0;
-            }
-            origin[x] += p->normal[x] * corner;
-        }
-        nf = (bface_t*)Alloc(sizeof(*nf));                           // TODO: This leaks
-
-        nf->planenum = FindIntPlane(normal, origin);
-        nf->plane = &g_mapplanes[nf->planenum];
-        nf->next = h->faces;
-        nf->contents = CONTENTS_EMPTY;
-        h->faces = nf;
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
-		nf->texinfo = -1;
-#else
-        nf->texinfo = 0;                        // all clip hulls have same texture
-#endif
-//        nf->texinfo = f->texinfo;               // Hack to view clipping hull with textures (might crash halflife)
-    }
-
-    // if this was an axial brush, we are done
-    if (axial)
-    {
-        return;
-    }
-
-    // add any axis planes not contained in the brush to bevel off corners
-    for (x = 0; x < 3; x++)
-    {
-        for (s = -1; s <= 1; s += 2)
-        {
-            // add the plane
-            VectorCopy(vec3_origin, plane.normal);
-            plane.normal[x] = s;
-            if (s == -1)
-            {
-                VectorAdd(b->hulls[0].bounds.m_Mins, g_hull_size[hullnum][0], plane.origin);
-            }
-            else
-            {
-                VectorAdd(b->hulls[0].bounds.m_Maxs, g_hull_size[hullnum][1], plane.origin);
-            }
-            AddBrushPlane(&ex, &plane);
-        }
-    }
-}
-
-#endif //HLCSG_PRECISIONCLIP
 
 // =====================================================================================
 //  MakeHullFaces
 // =====================================================================================
-#ifdef HLCSG_SORTSIDES
 void SortSides (brushhull_t *h)
 {
 	int numsides;
@@ -1199,20 +758,12 @@ void SortSides (brushhull_t *h)
 	free (isused);
 	free (sorted);
 }
-#endif
 void            MakeHullFaces(const brush_t* const b, brushhull_t *h)
 {
     bface_t*        f;
     bface_t*        f2;
-#ifdef HLCSG_PRECISIONCLIP //#ifdef HLCSG_PRECISECLIP //vluzacn
-#ifndef HLCSG_CUSTOMHULL
-	bool warned = false;
-#endif
-#endif
-#ifdef HLCSG_SORTSIDES
 	// this will decrease AllocBlock amount
 	SortSides (h);
-#endif
 
 restart:
     h->bounds.reset();
@@ -1229,34 +780,15 @@ restart:
             }
             const plane_t* p = &g_mapplanes[f2->planenum ^ 1];
             if (!w->Chop(p->normal, p->dist
-#ifdef HLCSG_MakeHullFaces_PRECISE
 				, NORMAL_EPSILON  // fix "invalid brush" in ExpandBrush
-#endif
 				))   // Nothing left to chop (getArea will return 0 for us in this case for below)
             {
                 break;
             }
         }
-#ifdef HLCSG_MakeHullFaces_PRECISE
 		w->RemoveColinearPoints (ON_EPSILON);
-#endif
         if (w->getArea() < 0.1)
         {
-#ifdef HLCSG_PRECISIONCLIP //#ifdef HLCSG_PRECISECLIP //vluzacn
-#ifndef HLCSG_CUSTOMHULL // this occurs when there are BEVEL faces.
-			if(w->getArea() == 0 && !warned) //warn user when there's a bad brush (face not contributing)
-			{
-				Warning("Illegal Brush (plane doesn't contribute to final shape): Entity %i, Brush %i\n",
-#ifdef HLCSG_COUNT_NEW
-					b->originalentitynum, b->originalbrushnum
-#else
-					b->entitynum, b->brushnum
-#endif
-					);
-				warned = true;
-			}
-#endif
-#endif
             delete w;
             if (h->faces == f)
             {
@@ -1290,11 +822,7 @@ restart:
         if (h->bounds.m_Mins[i] < -BOGUS_RANGE / 2 || h->bounds.m_Maxs[i] > BOGUS_RANGE / 2)
         {
             Fatal(assume_BRUSH_OUTSIDE_WORLD, "Entity %i, Brush %i: outside world(+/-%d): (%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f)",
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum,
-#else
-                  b->entitynum, b->brushnum,
-#endif
                   BOGUS_RANGE / 2,
                   h->bounds.m_Mins[0], h->bounds.m_Mins[1], h->bounds.m_Mins[2],
                   h->bounds.m_Maxs[0], h->bounds.m_Maxs[1], h->bounds.m_Maxs[2]);
@@ -1334,11 +862,7 @@ bool            MakeBrushPlanes(brush_t* b)
         if (planenum == -1)
         {
             Fatal(assume_PLANE_WITH_NO_NORMAL, "Entity %i, Brush %i, Side %i: plane with no normal", 
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum
-#else
-				b->entitynum, b->brushnum
-#endif
 				, i);
         }
 
@@ -1350,11 +874,7 @@ bool            MakeBrushPlanes(brush_t* b)
             if (f->planenum == planenum || f->planenum == (planenum ^ 1))
             {
                 Fatal(assume_BRUSH_WITH_COPLANAR_FACES, "Entity %i, Brush %i, Side %i: has a coplanar plane at (%.0f, %.0f, %.0f), texture %s",
-#ifdef HLCSG_COUNT_NEW
 					b->originalentitynum, b->originalbrushnum
-#else
-                      b->entitynum, b->brushnum
-#endif
 					  , i, s->planepts[0][0] + origin[0], s->planepts[0][1] + origin[1],
                       s->planepts[0][2] + origin[2], s->td.name);
             }
@@ -1367,13 +887,8 @@ bool            MakeBrushPlanes(brush_t* b)
         f->next = b->hulls[0].faces;
         b->hulls[0].faces = f;
         f->texinfo = g_onlyents ? 0 : TexinfoForBrushTexture(f->plane, &s->td, origin
-#ifdef ZHLT_HIDDENSOUNDTEXTURE
-						, s->shouldhide
-#endif
 						);
-#ifdef HLCSG_CUSTOMHULL
 		f->bevel = b->bevel || s->bevel;
-#endif
     }
 
     return true;
@@ -1385,7 +900,6 @@ bool            MakeBrushPlanes(brush_t* b)
 // =====================================================================================
 static contents_t TextureContents(const char* const name)
 {
-#ifdef HLCSG_CUSTOMCONTENT
 	if (!strncasecmp(name, "contentsolid", 12))
 		return CONTENTS_SOLID;
 	if (!strncasecmp(name, "contentwater", 12))
@@ -1394,18 +908,13 @@ static contents_t TextureContents(const char* const name)
 		return CONTENTS_TOEMPTY;
 	if (!strncasecmp(name, "contentsky", 10))
 		return CONTENTS_SKY;
-#endif
     if (!strncasecmp(name, "sky", 3))
         return CONTENTS_SKY;
 
 // =====================================================================================
 //Cpt_Andrew - Env_Sky Check
 // =====================================================================================
-#ifdef HLCSG_TextureContents_FIX
     if (!strncasecmp(name, "env_sky", 7))
-#else
-    if (!strncasecmp(name, "env_sky", 3))
-#endif
         return CONTENTS_SKY;
 // =====================================================================================
 
@@ -1414,13 +923,11 @@ static contents_t TextureContents(const char* const name)
 
     if (!strncasecmp(name + 1, "!slime", 6))
         return CONTENTS_SLIME;
-#ifdef HLCSG_TextureContents_FIX
     if (!strncasecmp(name, "!lava", 5))
         return CONTENTS_LAVA;
 
     if (!strncasecmp(name, "!slime", 6))
         return CONTENTS_SLIME;
-#endif
 
     if (name[0] == '!') //optimized -- don't check for current unless it's liquid (KGP)
 	{
@@ -1441,33 +948,18 @@ static contents_t TextureContents(const char* const name)
 
     if (!strncasecmp(name, "origin", 6))
         return CONTENTS_ORIGIN;
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 	if (!strncasecmp(name, "boundingbox", 11))
 		return CONTENTS_BOUNDINGBOX;
-#endif
 
-#ifndef HLCSG_CUSTOMHULL
-    if (!strncasecmp(name, "clip", 4))
-        return CONTENTS_CLIP;
-#endif
 
-#ifdef HLCSG_HLBSP_SOLIDHINT
 	if (!strncasecmp(name, "solidhint", 9))
 		return CONTENTS_NULL;
-#endif
-#ifdef HLCSG_NOSPLITBYHINT
 	if (!strncasecmp(name, "splitface", 9))
 		return CONTENTS_HINT;
 	if (!strncasecmp(name, "hint", 4))
 		return CONTENTS_TOEMPTY;
 	if (!strncasecmp(name, "skip", 4))
 		return CONTENTS_TOEMPTY;
-#else
-    if (!strncasecmp(name, "hint", 4))
-        return CONTENTS_HINT;
-    if (!strncasecmp(name, "skip", 4))
-        return CONTENTS_HINT;
-#endif
 
     if (!strncasecmp(name, "translucent", 11))
         return CONTENTS_TRANSLUCENT;
@@ -1475,14 +967,10 @@ static contents_t TextureContents(const char* const name)
     if (name[0] == '@')
         return CONTENTS_TRANSLUCENT;
 
-#ifdef ZHLT_NULLTEX // AJM:
 	if (!strncasecmp(name, "null", 4))
         return CONTENTS_NULL;
-#ifdef HLCSG_PRECISIONCLIP // KGP
 	if(!strncasecmp(name,"bevel",5))
 		return CONTENTS_NULL;
-#endif //precisionclip
-#endif //nulltex
 
     return CONTENTS_SOLID;
 }
@@ -1508,14 +996,8 @@ const char*     ContentsToString(const contents_t type)
         return "SKY";
     case CONTENTS_ORIGIN:
         return "ORIGIN";
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 	case CONTENTS_BOUNDINGBOX:
 		return "BOUNDINGBOX";
-#endif
-#ifndef HLCSG_CUSTOMHULL
-    case CONTENTS_CLIP:
-        return "CLIP";
-#endif
     case CONTENTS_CURRENT_0:
         return "CURRENT_0";
     case CONTENTS_CURRENT_90:
@@ -1533,20 +1015,12 @@ const char*     ContentsToString(const contents_t type)
     case CONTENTS_HINT:
         return "HINT";
 
-#ifdef ZHLT_NULLTEX // AJM
     case CONTENTS_NULL:
         return "NULL";
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-    case CONTENTS_DETAIL:
-        return "DETAIL";
-#endif
 
-#ifdef HLCSG_EMPTYBRUSH
 	case CONTENTS_TOEMPTY:
 		return "EMPTY";
-#endif
 
     default:
         return "UNKNOWN";
@@ -1563,42 +1037,29 @@ contents_t      CheckBrushContents(const brush_t* const b)
     contents_t      contents;
     side_t*         s;
     int             i;
-#ifdef HLCSG_CheckBrushContents_FIX
 	int				best_i;
-#endif
-#ifdef HLCSG_CUSTOMCONTENT
 	bool			assigned = false;
-#endif
 
     s = &g_brushsides[b->firstside];
 
     // cycle though the sides of the brush and attempt to get our best side contents for
     //  determining overall brush contents
-#ifdef HLCSG_CheckBrushContents_FIX
 	if (b->numsides == 0)
 	{
 		Error ("Entity %i, Brush %i: Brush with no sides.\n",
-#ifdef HLCSG_COUNT_NEW
 			b->originalentitynum, b->originalbrushnum
-#else
-			b->entitynum, b->brushnum
-#endif
 			);
 	}
 	best_i = 0;
-#endif
     best_contents = TextureContents(s->td.name);
-#ifdef HLCSG_CUSTOMCONTENT
 	// Difference between SKIP, ContentEmpty:
 	// SKIP doesn't split space in bsp process, ContentEmpty splits space normally.
 	if (!(strncasecmp (s->td.name, "content", 7) && strncasecmp (s->td.name, "skip", 4)))
 		assigned = true;
-#endif
     s++;
 	for (i = 1; i < b->numsides; i++, s++)
     {
         contents_t contents_consider = TextureContents(s->td.name);
-#ifdef HLCSG_CUSTOMCONTENT
 		if (assigned)
 			continue;
 		if (!(strncasecmp (s->td.name, "content", 7) && strncasecmp (s->td.name, "skip", 4)))
@@ -1607,12 +1068,9 @@ contents_t      CheckBrushContents(const brush_t* const b)
 			best_contents = contents_consider;
 			assigned = true;
 		}
-#endif
         if (contents_consider > best_contents)
         {
-#ifdef HLCSG_CheckBrushContents_FIX
 			best_i = i;
-#endif
             // if our current surface contents is better (larger) than our best, make it our best.
             best_contents = contents_consider;
         }
@@ -1621,77 +1079,48 @@ contents_t      CheckBrushContents(const brush_t* const b)
 
     // attempt to pick up on mixed_face_contents errors
     s = &g_brushsides[b->firstside];
-#ifdef HLCSG_CheckBrushContents_FIX
 	for (i = 0; i < b->numsides; i++, s++)
-#else
-    s++;
-    for (i = 1; i < b->numsides; i++, s++)
-#endif
     {
         contents_t contents2 = TextureContents(s->td.name);
-#ifdef HLCSG_CUSTOMCONTENT
 		if (assigned
 			&& strncasecmp (s->td.name, "content", 7)
 			&& strncasecmp (s->td.name, "skip", 4)
 			&& contents2 != CONTENTS_ORIGIN
 			&& contents2 != CONTENTS_HINT
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 			&& contents2 != CONTENTS_BOUNDINGBOX
-#endif
 			)
 		{
 			continue; // overwrite content for this texture
 		}
-#endif
 
         // AJM: sky and null types are not to cause mixed face contents
         if (contents2 == CONTENTS_SKY)
             continue;
 
-#ifdef ZHLT_NULLTEX
         if (contents2 == CONTENTS_NULL)
             continue;
-#endif
 
         if (contents2 != best_contents)
         {
             Fatal(assume_MIXED_FACE_CONTENTS, "Entity %i, Brush %i: mixed face contents\n    Texture %s and %s",
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum, 
-#else
-				b->entitynum, b->brushnum, 
-#endif
-#ifdef HLCSG_CheckBrushContents_FIX
                 g_brushsides[b->firstside + best_i].td.name,
-#else
-                g_brushsides[b->firstside].td.name, 
-#endif
 				s->td.name);
         }
     }
-#ifdef HLCSG_HLBSP_CONTENTSNULL_FIX
 	if (contents == CONTENTS_NULL)
 		contents = CONTENTS_SOLID;
-#endif
 
     // check to make sure we dont have an origin brush as part of worldspawn
     if ((b->entitynum == 0) || (strcmp("func_group", ValueForKey(&g_entities[b->entitynum], "classname"))==0))
     {
         if (contents == CONTENTS_ORIGIN
-#ifdef HLCSG_FUNCGROUP_FIX
 				&& b->entitynum == 0
-#endif
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 			|| contents == CONTENTS_BOUNDINGBOX
-#endif
 			)
         {
             Fatal(assume_BRUSH_NOT_ALLOWED_IN_WORLD, "Entity %i, Brush %i: %s brushes not allowed in world\n(did you forget to tie this origin brush to a rotating entity?)", 
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum, 
-#else
-				b->entitynum, b->brushnum, 
-#endif
 				ContentsToString(contents));
         }
     }
@@ -1706,31 +1135,13 @@ contents_t      CheckBrushContents(const brush_t* const b)
         case CONTENTS_SLIME:
         case CONTENTS_LAVA:
         case CONTENTS_ORIGIN:
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 		case CONTENTS_BOUNDINGBOX:
-#endif
-#ifndef HLCSG_CUSTOMHULL
-        case CONTENTS_CLIP:
-#endif
-#ifdef HLCSG_ALLOWHINTINENTITY
 		case CONTENTS_HINT:
-#endif
-#ifdef HLCSG_EMPTYBRUSH
 		case CONTENTS_TOEMPTY:
-#endif
-#ifdef ZHLT_NULLTEX // AJM
-#ifndef HLCSG_HLBSP_CONTENTSNULL_FIX
-        case CONTENTS_NULL:
-#endif
             break;
-#endif
         default:
             Fatal(assume_BRUSH_NOT_ALLOWED_IN_ENTITY, "Entity %i, Brush %i: %s brushes not allowed in entity", 
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum, 
-#else
-				b->entitynum, b->brushnum, 
-#endif
 				ContentsToString(contents));
             break;
         }
@@ -1744,7 +1155,6 @@ contents_t      CheckBrushContents(const brush_t* const b)
 //  CreateBrush
 //      makes a brush!
 // =====================================================================================
-#ifdef HLCSG_CUSTOMHULL
 void CreateBrush(const int brushnum) //--vluzacn
 {
 	brush_t*        b;
@@ -1757,10 +1167,8 @@ void CreateBrush(const int brushnum) //--vluzacn
 
 	if (contents == CONTENTS_ORIGIN)
 		return;
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 	if (contents == CONTENTS_BOUNDINGBOX)
 		return;
-#endif
 
 	//  HULL 0
 	MakeBrushPlanes(b);
@@ -1768,10 +1176,8 @@ void CreateBrush(const int brushnum) //--vluzacn
 
 	if (contents == CONTENTS_HINT)
 		return;
-#ifdef HLCSG_EMPTYBRUSH
 	if (contents == CONTENTS_TOEMPTY)
 		return;
-#endif
 
 	if (g_noclip)
 	{
@@ -1806,67 +1212,6 @@ void CreateBrush(const int brushnum) //--vluzacn
 		}
 	}
 }
-#else /*HLCSG_CUSTOMHULL*/
-void CreateBrush(const int brushnum)
-{
-    brush_t*        b;
-    int             contents;
-    int             h;
-
-    b = &g_mapbrushes[brushnum];
-
-    contents = b->contents;
-
-    if (contents == CONTENTS_ORIGIN)
-        return;
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
-	if (contents == CONTENTS_BOUNDINGBOX)
-		return;
-#endif
-
-    //  HULL 0
-    MakeBrushPlanes(b);
-    MakeHullFaces(b, &b->hulls[0]);
-
-    // these brush types do not need to be represented in the clipping hull
-    switch (contents)
-    {
-        case CONTENTS_LAVA:
-        case CONTENTS_SLIME:
-        case CONTENTS_WATER:
-        case CONTENTS_TRANSLUCENT:
-        case CONTENTS_HINT:
-            return;
-    }
-#ifdef HLCSG_EMPTYBRUSH
-	if (contents == CONTENTS_TOEMPTY)
-		return;
-#endif
-
-#ifdef HLCSG_CLIPECONOMY // AJM
-    if (b->noclip)
-        return;
-#endif
-
-    // HULLS 1-3
-    if (!g_noclip)
-    {
-        for (h = 1; h < NUM_HULLS; h++)
-        {
-			ExpandBrush(b, h);
-            MakeHullFaces(b, &b->hulls[h]);
-        }
-    }
-
-    // clip brushes don't stay in the drawing hull
-    if (contents == CONTENTS_CLIP)
-    {
-        b->hulls[0].faces = NULL;
-        b->contents = CONTENTS_SOLID;
-    }
-}
-#endif /*HLCSG_CUSTOMHULL*/
-#ifdef HLCSG_HULLBRUSH
 hullbrush_t *CreateHullBrush (const brush_t *b)
 {
 	const int MAXSIZE = 256;
@@ -1910,11 +1255,7 @@ hullbrush_t *CreateHullBrush (const brush_t *b)
 				if (fabs (p[j][k] - floor (p[j][k] + 0.5)) <= ON_EPSILON && p[j][k] != floor (p[j][k] + 0.5))
 				{
 					Warning ("Entity %i, Brush %i: vertex (%4.8f %4.8f %4.8f) of an info_hullshape entity is slightly off-grid.",
-#ifdef HLCSG_COUNT_NEW
 							b->originalentitynum, b->originalbrushnum,
-#else
-							b->entitynum, b->brushnum,
-#endif
 							p[j][0], p[j][1], p[j][2]);
 				}
 			}
@@ -2115,11 +1456,7 @@ hullbrush_t *CreateHullBrush (const brush_t *b)
 	{
 		hb = NULL;
 		Error ("Entity %i, Brush %i: invalid brush. This brush cannot be used for info_hullshape.",
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum
-#else
-				b->entitynum, b->brushnum
-#endif
 				);
 	}
 
@@ -2220,11 +1557,7 @@ void CreateHullShape (int entitynum, bool disabled, const char *id, int defaulth
 	{
 		brush_t *b = &g_mapbrushes[entity->firstbrush];
 		Error ("Entity %i, Brush %i: Too many brushes in info_hullshape.",
-#ifdef HLCSG_COUNT_NEW
 			b->originalentitynum, b->originalbrushnum
-#else
-			b->entitynum, b->brushnum
-#endif
 			);
 	}
 
@@ -2251,4 +1584,3 @@ void CreateHullShape (int entitynum, bool disabled, const char *id, int defaulth
 		}
 	}
 }
-#endif

@@ -2,12 +2,8 @@
 #include "mathlib.h"
 #include "bspfile.h"
 #include "log.h" //--vluzacn
-#ifdef HLRAD_OPAQUE_NODE
 #include "winding.h"
-#endif
-#ifdef HLRAD_OPAQUE_ALPHATEST
 #include "qrad.h"
-#endif
 
 // #define      ON_EPSILON      0.001
 
@@ -44,13 +40,11 @@ static void     MakeTnode(const int nodenum)
 
     t->type = plane->type;
     VectorCopy(plane->normal, t->normal);
-#ifdef ZHLT_PLANETYPE_FIX //debug
 	if (plane->normal[(plane->type)%3] < 0)
 		if (plane->type < 3)
 			Warning ("MakeTnode: negative plane");
 		else
 			Developer (DEVELOPER_LEVEL_MESSAGE, "Warning: MakeTnode: negative plane\n");
-#endif
     t->dist = plane->dist;
 
     for (i = 0; i < 2; i++)
@@ -302,12 +296,8 @@ void            MakeTnodes(dmodel_t* /*bm*/)
     tnodes = (tnode_t*)calloc((g_numnodes + 1), sizeof(tnode_t));
 
 	// The alignment doesn't have any effect at all. --vluzacn
-#ifdef ZHLT_64BIT_FIX
 	int ofs = 31 - (int)(((uintptr_t)tnodes + (uintptr_t)31) & (uintptr_t)31);
 	tnodes = (tnode_t *)((byte *)tnodes + ofs);
-#else
-    tnodes = (tnode_t*)(((int)tnodes + 31) & ~31);
-#endif
     tnode_p = tnodes;
 
     MakeTnode(0);
@@ -319,12 +309,8 @@ void            MakeTnodes(dmodel_t* /*bm*/)
 //==========================================================
 
 int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 						   , int &linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 						   , vec_t *skyhit
-#endif
 						   )
 {
     tnode_t*        tnode;
@@ -334,12 +320,10 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
     int             side;
     int             r;
 
-#ifdef HLRAD_WATERBLOCKLIGHT
 	if (node < 0)
 	{
 		if (node == linecontent)
 			return CONTENTS_EMPTY;
-#ifdef HLRAD_OPAQUEINSKY_FIX
 		if (node == CONTENTS_SOLID)
 		{
 			return CONTENTS_SOLID;
@@ -352,10 +336,6 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
 			}
 			return CONTENTS_SKY;
 		}
-#else
-		if (node == CONTENTS_SOLID || node == CONTENTS_SKY)
-			return node;
-#endif
 		if (linecontent)
 		{
 			return CONTENTS_SOLID;
@@ -363,22 +343,6 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
 		linecontent = node;
 		return CONTENTS_EMPTY;
 	}
-#else
-#ifdef HLRAD_OPAQUEINSKY_FIX
-	if (node == CONTENTS_SKY)
-	{
-		VectorCopy (start, skyhit);
-	}
-#endif
-	if (   (node == CONTENTS_SOLID) 
-        || (node == CONTENTS_SKY  ) 
-      /*|| (node == CONTENTS_NULL ) */
-       )
-		return node;
-
-    if (node < 0)
-        return CONTENTS_EMPTY; 
-#endif
 
     tnode = &tnodes[node];
     switch (tnode->type)
@@ -401,48 +365,31 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
         break;
     }
 
-#ifdef HLRAD_TestLine_EDGE_FIX
 	if (front > ON_EPSILON/2 && back > ON_EPSILON/2)
 	{
 		return TestLine_r(tnode->children[0], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 			, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 			, skyhit
-#endif
 			);
 	}
 	if (front < -ON_EPSILON/2 && back < -ON_EPSILON/2)
 	{
 		return TestLine_r(tnode->children[1], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 			, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 			, skyhit
-#endif
 			);
 	}
 	if (fabs(front) <= ON_EPSILON && fabs(back) <= ON_EPSILON)
 	{
 		int r1 = TestLine_r(tnode->children[0], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 			, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 			, skyhit
-#endif
 			);
 		if (r1 == CONTENTS_SOLID)
 			return CONTENTS_SOLID;
 		int r2 = TestLine_r(tnode->children[1], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 			, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 			, skyhit
-#endif
 			);
 		if (r2 == CONTENTS_SOLID)
 			return CONTENTS_SOLID;
@@ -458,93 +405,28 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
 	mid[1] = start[1] + (stop[1] - start[1]) * frac;
 	mid[2] = start[2] + (stop[2] - start[2]) * frac;
 	r = TestLine_r(tnode->children[side], start, mid
-#ifdef HLRAD_WATERBLOCKLIGHT
 		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 		, skyhit
-#endif
 		);
 	if (r != CONTENTS_EMPTY)
 		return r;
 	return TestLine_r(tnode->children[!side], mid, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 		, skyhit
-#endif
 		);
-#else //bug: light can go through edges of solid brushes
-    if (front >= -ON_EPSILON && back >= -ON_EPSILON)
-        return TestLine_r(tnode->children[0], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
-		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
-		, skyhit
-#endif
-		);
-
-    if (front < ON_EPSILON && back < ON_EPSILON)
-        return TestLine_r(tnode->children[1], start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
-		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
-		, skyhit
-#endif
-		);
-
-    side = front < 0;
-
-    frac = front / (front - back);
-
-    mid[0] = start[0] + (stop[0] - start[0]) * frac;
-    mid[1] = start[1] + (stop[1] - start[1]) * frac;
-    mid[2] = start[2] + (stop[2] - start[2]) * frac;
-
-    r = TestLine_r(tnode->children[side], start, mid
-#ifdef HLRAD_WATERBLOCKLIGHT
-		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
-		, skyhit
-#endif
-		);
-    if (r != CONTENTS_EMPTY)
-        return r;
-    return TestLine_r(tnode->children[!side], mid, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
-		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
-		, skyhit
-#endif
-		);
-#endif
 }
 
 int             TestLine(const vec3_t start, const vec3_t stop
-#ifdef HLRAD_OPAQUEINSKY_FIX
 						 , vec_t *skyhit
-#endif
 						 )
 {
-#ifdef HLRAD_WATERBLOCKLIGHT
 	int linecontent = 0;
-#endif
     return TestLine_r(0, start, stop
-#ifdef HLRAD_WATERBLOCKLIGHT
 		, linecontent
-#endif
-#ifdef HLRAD_OPAQUEINSKY_FIX
 		, skyhit
-#endif
 		);
 }
 
-#ifdef HLRAD_OPAQUE_NODE
 
 typedef struct
 {
@@ -552,14 +434,12 @@ typedef struct
 	dplane_t plane;
 	int numedges;
 	dplane_t *edges;
-#ifdef HLRAD_OPAQUE_ALPHATEST
 	int texinfo;
 	bool tex_alphatest;
 	vec_t tex_vecs[2][4];
 	int tex_width;
 	int tex_height;
 	const byte *tex_canvas;
-#endif
 } opaqueface_t;
 opaqueface_t *opaquefaces;
 
@@ -597,12 +477,10 @@ bool TryMerge (opaqueface_t *f, const opaqueface_t *f2)
 	{
 		return false;
 	}
-#ifdef HLRAD_OPAQUE_ALPHATEST
 	if ((f->tex_alphatest || f2->tex_alphatest) && f->texinfo != f2->texinfo)
 	{
 		return false;
 	}
-#endif
 
 	Winding *w = f->winding;
 	const Winding *w2 = f2->winding;
@@ -790,7 +668,6 @@ void CreateOpaqueNodes ()
 			VectorInverse (of->plane.normal);
 			of->plane.dist = -of->plane.dist;
 		}
-#ifdef HLRAD_OPAQUE_ALPHATEST
 		of->texinfo = df->texinfo;
 		texinfo_t *info = &g_texinfo[of->texinfo];
 		for (j = 0; j < 2; j++)
@@ -805,7 +682,6 @@ void CreateOpaqueNodes ()
 		of->tex_width = tex->width;
 		of->tex_height = tex->height;
 		of->tex_canvas = tex->canvas;
-#endif
 	}
 	for (i = 0; i < g_numnodes; i++)
 	{
@@ -869,7 +745,6 @@ int TestLineOpaque_face (int facenum, const vec3_t hit)
 			return 0;
 		}
 	}
-#ifdef HLRAD_OPAQUE_ALPHATEST
 	if (thisface->tex_alphatest)
 	{
 		double x, y;
@@ -884,7 +759,6 @@ int TestLineOpaque_face (int facenum, const vec3_t hit)
 			return 0;
 		}
 	}
-#endif
 	return 1;
 }
 
@@ -1030,7 +904,6 @@ int CountOpaqueFaces (int modelnum)
 	return CountOpaqueFaces_r (&opaquenodes[opaquemodels[modelnum].headnode]);
 }
 
-#ifdef HLRAD_OPAQUE_BLOCK
 int TestPointOpaque_r (int nodenum, bool solid, const vec3_t point)
 {
 	opaquenode_t *thisnode;
@@ -1103,6 +976,4 @@ int TestPointOpaque (int modelnum, const vec3_t modelorigin, bool solid, const v
 	return TestPointOpaque_r (thismodel->headnode, solid, newpoint);
 }
 #endif
-#endif
 
-#endif

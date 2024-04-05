@@ -115,7 +115,6 @@ const char*     stristr(const char* const string, const char* const substring)
 // New implementation of FlipSlashes, DefaultExtension, StripFilename, 
 // StripExtension, ExtractFilePath, ExtractFile, ExtractFileBase, etc.
 ----------------------------------------------------------------------*/
-#ifdef ZHLT_NEW_FILE_FUNCTIONS //added "const". --vluzacn
 
 //Since all of these functions operate around either the extension 
 //or the directory path, centralize getting both numbers here so we
@@ -212,12 +211,7 @@ void ExtractFile(const char* const path, char* dest)
 
 	int length = strlen(path);
 
-#ifdef ZHLT_FILE_FUNCTIONS_FIX
 	length -= directory_pos + 1;
-#else
-	if(directory_pos == -1)	{ directory_pos = 0; }
-	else { length -= directory_pos + 1; }
-#endif
 
     memcpy(dest,path+directory_pos+1,length); //exclude directory slash
     dest[length] = 0;
@@ -229,12 +223,7 @@ void ExtractFileBase(const char* const path, char* dest)
 	getFilePositions(path,&extension_pos,&directory_pos);
 	int length = extension_pos == -1 ? strlen(path) : extension_pos;
 
-#ifdef ZHLT_FILE_FUNCTIONS_FIX
 	length -= directory_pos + 1;
-#else
-	if(directory_pos == -1)	{ directory_pos = 0; }
-	else { length -= directory_pos + 1; }
-#endif
 
     memcpy(dest,path+directory_pos+1,length); //exclude directory slash
     dest[length] = 0;
@@ -254,151 +243,6 @@ void ExtractFileExtension(const char* const path, char* dest)
 	{ dest[0] = 0; }
 }
 //-------------------------------------------------------------------
-#else //old cmdlib functions
-
-char*           FlipSlashes(char* string)
-{
-    while (*string)
-    {
-        if (PATHSEPARATOR(*string))
-        {
-            *string = SYSTEM_SLASH_CHAR;
-        }
-        string++;
-    }
-    return string;
-}
-
-void            DefaultExtension(char* path, const char* extension)
-{
-    char*           src;
-
-    //
-    // if path doesn't have a .EXT, append extension
-    // (extension should include the .)
-    //
-    src = path + strlen(path) - 1;
-
-    while (!PATHSEPARATOR(*src) && src != path)
-    {
-        if (*src == '.')
-            return;                                        // it has an extension
-        src--;
-    }
-
-    strcat(path, extension);
-}
-
-void            StripFilename(char* path)
-{
-    int             length;
-
-    length = strlen(path) - 1;
-    while (length > 0 && !PATHSEPARATOR(path[length]))
-        length--;
-    path[length] = 0;
-}
-
-void            StripExtension(char* path)
-{
-    int             length;
-
-    length = strlen(path) - 1;
-    while (length > 0 && path[length] != '.')
-    {
-        length--;
-        if (PATHSEPARATOR(path[length]))
-            return;                                        // no extension
-    }
-    if (length)
-        path[length] = 0;
-}
-
-/*
- * ====================
- * Extract file parts
- * ====================
- */
-void            ExtractFilePath(const char* const path, char* dest)
-{
-    hlassert (path != dest);
-
-    const char*           src;
-
-    src = path + strlen(path) - 1;
-
-    //
-    // back up until a \ or the start
-    //
-    while (src != path && !PATHSEPARATOR(*(src - 1)))
-        src--;
-
-    memcpy(dest, path, src - path);
-    dest[src - path] = 0;
-}
-
-void            ExtractFile(const char* const path, char* dest)
-{
-    hlassert (path != dest);
-
-    const char*           src;
-
-    src = path + strlen(path) - 1;
-
-    while (src != path && !PATHSEPARATOR(*(src - 1)))
-        src--;
-
-    while (*src)
-    {
-        *dest++ = *src++;
-    }
-    *dest = 0;
-}
-
-void            ExtractFileBase(const char* const path, char* dest)
-{
-    hlassert (path != dest);
-
-    const char*           src;
-
-    src = path + strlen(path) - 1;
-
-    //
-    // back up until a \ or the start
-    //
-    while (src != path && !PATHSEPARATOR(*(src - 1)))
-        src--;
-
-    while (*src && *src != '.')
-    {
-        *dest++ = *src++;
-    }
-    *dest = 0;
-}
-
-void            ExtractFileExtension(const char* const path, char* dest)
-{
-    hlassert (path != dest);
-
-    const char*           src;
-
-    src = path + strlen(path) - 1;
-
-    //
-    // back up until a . or the start
-    //
-    while (src != path && *(src - 1) != '.')
-        src--;
-    if (src == path)
-    {
-        *dest = 0;                                         // no extension
-        return;
-    }
-
-    strcpy_s(dest, src);
-}
-
-#endif
 
 /*
  * ============================================================================

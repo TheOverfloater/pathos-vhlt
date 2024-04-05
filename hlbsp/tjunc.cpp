@@ -30,22 +30,16 @@ static wedge_t  wedges[MAX_WEDGES];
 
 //============================================================================
 
-#ifdef HLBSP_HASH_FIX
 #define NUM_HASH	4096
-#else
-#define	NUM_HASH	1024
-#endif
 
 wedge_t*        wedge_hash[NUM_HASH];
 
 static vec3_t   hash_min;
 static vec3_t   hash_scale;
-#ifdef HLBSP_HASH_FIX
 // It's okay if the coordinates go under hash_min, because they are hashed in a cyclic way (modulus by hash_numslots)
 // So please don't change the hardcoded hash_min and scale
 static int		hash_numslots[3];
 #define MAX_HASH_NEIGHBORS	4
-#endif
 
 static void     InitHash(const vec3_t mins, const vec3_t maxs)
 {
@@ -54,21 +48,15 @@ static void     InitHash(const vec3_t mins, const vec3_t maxs)
     vec_t           scale;
     int             newsize[2];
 
-#ifdef HLBSP_HASH_FIX
 	// Let's ignore the parameters and make things more predictable, so there won't be strange cases such as division by 0 or extreme scaling values.
 	VectorFill(hash_min, -8000);
 	VectorFill(size, 16000);
-#else
-    VectorCopy(mins, hash_min);
-    VectorSubtract(maxs, mins, size);
-#endif
     memset(wedge_hash, 0, sizeof(wedge_hash));
 
     volume = size[0] * size[1];
 
     scale = sqrt(volume / NUM_HASH);
 
-#ifdef HLBSP_HASH_FIX
 	hash_numslots[0] = (int)floor (size[0] / scale);
 	hash_numslots[1] = (int)floor (size[1] / scale);
 	while (hash_numslots[0] * hash_numslots[1] > NUM_HASH)
@@ -80,17 +68,8 @@ static void     InitHash(const vec3_t mins, const vec3_t maxs)
 
 	hash_scale[0] = hash_numslots[0] / size[0];
 	hash_scale[1] = hash_numslots[1] / size[1];
-#else
-    newsize[0] = size[0] / scale;
-    newsize[1] = size[1] / scale;
-
-    hash_scale[0] = newsize[0] / size[0];
-    hash_scale[1] = newsize[1] / size[1];
-    hash_scale[2] = newsize[1];
-#endif
 }
 
-#ifdef HLBSP_HASH_FIX
 static int HashVec (const vec3_t vec, int *num_hashneighbors, int *hashneighbors)
 {
 	int h;
@@ -141,19 +120,6 @@ static int HashVec (const vec3_t vec, int *num_hashneighbors, int *hashneighbors
 
 	return h;
 }
-#else
-static unsigned HashVec(const vec3_t vec)
-{
-    unsigned        h;
-
-    h = hash_scale[0] * (vec[0] - hash_min[0]) * hash_scale[2] + hash_scale[1] * (vec[1] - hash_min[1]);
-    if (h >= NUM_HASH)
-    {
-        return NUM_HASH - 1;
-    }
-    return h;
-}
-#endif
 
 //============================================================================
 
@@ -216,10 +182,8 @@ static wedge_t *FindEdge(const vec3_t p1, const vec3_t p2, vec_t* t1, vec_t* t2)
     wedge_t*        w;
     vec_t           temp;
     int             h;
-#ifdef HLBSP_HASH_FIX
 	int				num_hashneighbors;
 	int				hashneighbors[MAX_HASH_NEIGHBORS];
-#endif
 
     VectorSubtract(p2, p1, dir);
     if (!CanonicalVector(dir))
@@ -241,20 +205,11 @@ static wedge_t *FindEdge(const vec3_t p1, const vec3_t p2, vec_t* t1, vec_t* t2)
         *t2 = temp;
     }
 
-#ifdef HLBSP_HASH_FIX
 	h = HashVec(origin, &num_hashneighbors, hashneighbors);
-#else
-    h = HashVec(origin);
-#endif
 
-#ifdef HLBSP_HASH_FIX
   for (int i = 0; i < num_hashneighbors; ++i)
 	for (w = wedge_hash[hashneighbors[i]]; w; w = w->next)
-#else
-    for (w = wedge_hash[h]; w; w = w->next)
-#endif
     {
-#ifdef HLBSP_TJUNC_PRECISION_FIX
 		if (fabs (w->origin[0] - origin[0]) > EQUAL_EPSILON ||
 			fabs (w->origin[1] - origin[1]) > EQUAL_EPSILON ||
 			fabs (w->origin[2] - origin[2]) > EQUAL_EPSILON )
@@ -267,39 +222,6 @@ static wedge_t *FindEdge(const vec3_t p1, const vec3_t p2, vec_t* t1, vec_t* t2)
 		{
 			continue;
 		}
-#else
-        temp = w->origin[0] - origin[0];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-        temp = w->origin[1] - origin[1];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-        temp = w->origin[2] - origin[2];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-
-        temp = w->dir[0] - dir[0];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-        temp = w->dir[1] - dir[1];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-        temp = w->dir[2] - dir[2];
-        if (temp < -EQUAL_EPSILON || temp > EQUAL_EPSILON)
-        {
-            continue;
-        }
-#endif
 
         return w;
     }

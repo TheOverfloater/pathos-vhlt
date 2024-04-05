@@ -26,23 +26,14 @@
 */
 
 static FILE*    out[NUM_HULLS]; // pointer to each of the hull out files (.p0, .p1, ect.)  
-#ifdef HLCSG_VIEWSURFACE
 static FILE*    out_view[NUM_HULLS];
-#endif
-#ifdef ZHLT_DETAILBRUSH
 static FILE*    out_detailbrush[NUM_HULLS];
-#endif
 static int      c_tiny;        
 static int      c_tiny_clip;
 static int      c_outfaces;
 static int      c_csgfaces;
 BoundingBox     world_bounds;
 
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG
-char            wadconfigname[MAX_WAD_CFG_NAME];
-#endif
-#endif
 
 vec_t           g_tiny_threshold = DEFAULT_TINY_THRESHOLD;
      
@@ -54,58 +45,29 @@ bool            g_skyclip = DEFAULT_SKYCLIP;            // no sky clipping "-nos
 bool            g_estimate = DEFAULT_ESTIMATE;          // progress estimates "-estimate"
 bool            g_info = DEFAULT_INFO;                  // "-info" ?
 const char*     g_hullfile = NULL;                      // external hullfile "-hullfie sdfsd"
-#ifdef HLCSG_WADCFG_NEW
 const char*		g_wadcfgfile = NULL;
 const char*		g_wadconfigname = NULL;
-#endif
 
-#ifdef ZHLT_NULLTEX // AJM
 bool            g_bUseNullTex = DEFAULT_NULLTEX;        // "-nonulltex"
-#endif
 
-#ifdef HLCSG_PRECISIONCLIP // KGP
 cliptype		g_cliptype = DEFAULT_CLIPTYPE;			// "-cliptype <value>"
-#endif
 
-#ifdef HLCSG_NULLIFY_INVISIBLE
 const char*			g_nullfile = NULL;
-#endif
 
-#ifdef HLCSG_CLIPECONOMY // AJM
 bool            g_bClipNazi = DEFAULT_CLIPNAZI;         // "-noclipeconomy"
-#endif
 
-#ifdef HLCSG_AUTOWAD // AJM
 bool            g_bWadAutoDetect = DEFAULT_WADAUTODETECT; // "-wadautodetect"
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-bool            g_bDetailBrushes = DEFAULT_DETAIL; // "-detail"
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-char*           g_progressfile = DEFAULT_PROGRESSFILE; // "-progressfile path"
-#endif
-#ifdef HLCSG_SCALESIZE
 vec_t g_scalesize = DEFAULT_SCALESIZE;
-#endif
-#ifdef HLCSG_KEEPLOG
 bool g_resetlog = DEFAULT_RESETLOG;
-#endif
-#ifdef HLCSG_OPTIMIZELIGHTENTITY
 bool g_nolightopt = DEFAULT_NOLIGHTOPT;
-#endif
 #ifdef HLCSG_GAMETEXTMESSAGE_UTF8
 bool g_noutf8 = DEFAULT_NOUTF8;
 #endif
-#ifdef HLCSG_NULLIFYAAATRIGGER
 bool g_nullifytrigger = DEFAULT_NULLIFYTRIGGER;
-#endif
-#ifdef HLCSG_VIEWSURFACE
 bool g_viewsurface = false;
-#endif
 
-#ifdef ZHLT_INFO_COMPILE_PARAMETERS
 // =====================================================================================
 //  GetParamsFromEnt
 //      parses entity keyvalues for setting information
@@ -169,7 +131,6 @@ void            GetParamsFromEnt(entity_t* mapent)
         Log("%30s [ %-9s ]\n", "Custom Hullfile", g_hullfile);
     }
 
-#ifdef HLCSG_AUTOWAD
     // wadautodetect(choices) : "Wad Auto Detect" : 0 =	[ 0 : "Off" 1 : "On" ]
     if (!strcmp(ValueForKey(mapent, "wadautodetect"), "1"))
     { 
@@ -180,19 +141,7 @@ void            GetParamsFromEnt(entity_t* mapent)
         g_bWadAutoDetect = false;
     }
     Log("%30s [ %-9s ]\n", "Wad Auto Detect", g_bWadAutoDetect ? "on" : "off");
-#endif
 	
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG
-	// wadconfig(string) : "Custom Wad Configuration" : ""
-    if (strlen(ValueForKey(mapent, "wadconfig")) > 0)
-    { 
-        safe_strncpy(wadconfigname, ValueForKey(mapent, "wadconfig"), MAX_WAD_CFG_NAME);
-        Log("%30s [ %-9s ]\n", "Custom Wad Configuration", wadconfigname);
-    }
-#endif
-#endif
-#ifdef HLCSG_WADCFG_NEW
 	// wadconfig(string) : "Custom Wad Configuration" : ""
     if (*ValueForKey(mapent, "wadconfig"))
     {
@@ -205,9 +154,7 @@ void            GetParamsFromEnt(entity_t* mapent)
         g_wadcfgfile = _strdup (ValueForKey(mapent, "wadcfgfile"));
         Log("%30s [ %-9s ]\n", "Custom Wad Configuration File", g_wadcfgfile);
     }
-#endif
 
-#ifdef HLCSG_CLIPECONOMY
     // noclipeconomy(choices) : "Strip Uneeded Clipnodes?" : 1 = [ 1 : "Yes" 0 : "No" ]
     iTmp = IntForKey(mapent, "noclipeconomy");
     if (iTmp == 1)
@@ -219,7 +166,6 @@ void            GetParamsFromEnt(entity_t* mapent)
         g_bClipNazi = false;
     }        
     Log("%30s [ %-9s ]\n", "Clipnode Economy Mode", g_bClipNazi ? "on" : "off");
-#endif
 
     /*
     hlcsg(choices) : "HLCSG" : 1 =
@@ -260,7 +206,6 @@ void            GetParamsFromEnt(entity_t* mapent)
         g_noclip = false;
     }
     Log("%30s [ %-9s ]\n", "Clipping Hull Generation", g_noclip ? "off" : "on");
-#ifdef HLCSG_PRECISIONCLIP
     // cliptype(choices) : "Clip Hull Type" : 4 = [ 0 : "Smallest" 1 : "Normalized" 2: "Simple" 3 : "Precise" 4 : "Legacy" ]
     iTmp = IntForKey(mapent, "cliptype");
 	switch(iTmp)
@@ -282,7 +227,6 @@ void            GetParamsFromEnt(entity_t* mapent)
 		break;
 	}
     Log("%30s [ %-9s ]\n", "Clip Hull Type", GetClipTypeString(g_cliptype));
-#endif
     /*
     noskyclip(choices) : "No Sky Clip" : 0 =
     [
@@ -304,24 +248,7 @@ void            GetParamsFromEnt(entity_t* mapent)
     ///////////////
     Log("\n");
 }
-#endif
 
-#ifndef HLCSG_CUSTOMHULL
-#ifdef HLCSG_PRECISIONCLIP
-// =====================================================================================
-// FixBevelTextures
-// =====================================================================================
-
-void FixBevelTextures()
-{
-	for(int counter = 0; counter < g_numtexinfo; counter++)
-	{
-		if(g_texinfo[counter].flags & TEX_BEVEL)
-		{ g_texinfo[counter].flags &= ~TEX_BEVEL; }
-	}
-}
-#endif
-#endif
 
 // =====================================================================================
 //  NewFaceFromFace
@@ -337,9 +264,7 @@ bface_t*        NewFaceFromFace(const bface_t* const in)
     newf->texinfo = in->texinfo;
     newf->planenum = in->planenum;
     newf->plane = in->plane;
-#ifdef HLCSG_EMPTYBRUSH
 	newf->backcontents = in->backcontents;
-#endif
 
     return newf;
 }
@@ -353,80 +278,12 @@ void            FreeFace(bface_t* f)
     Free(f);
 }
 
-#ifndef HLCSG_NOFAKESPLITS
-// =====================================================================================
-//  ClipFace
-//      Clips a faces by a plane, returning the fragment on the backside and adding any 
-//      fragment to the outside.
-//      Faces exactly on the plane will stay inside unless overdrawn by later brush.
-//      Frontside is the side of the plane that holds the outside list.
-//      Precedence is necesary to handle overlapping coplanar faces.
-#define	SPLIT_EPSILON	0.3
-// =====================================================================================
-static bface_t* ClipFace(bface_t* f, bface_t** outside, const int splitplane, const bool precedence)
-{
-    bface_t*        front;  // clip face
-    Winding*        fw;     // forward wind
-    Winding*        bw;     // back wind
-    plane_t*        split; // plane to clip on
-
-    // handle exact plane matches special
-
-    if (f->planenum == (splitplane ^ 1)) 
-        return f;    // opposite side, so put on inside list
-
-    if (f->planenum == splitplane)  // coplanar
-    {       
-        // this fragment will go to the inside, because
-        //   the earlier one was clipped to the outside
-        if (precedence)
-            return f;
-
-        f->next = *outside;
-        *outside = f;
-        return NULL;
-    }
-
-    split = &g_mapplanes[splitplane];
-    f->w->Clip(split->normal, split->dist, &fw, &bw);
-
-    if (!fw)
-    {
-        delete bw;
-        return f;
-    }
-    else if (!bw)
-    {
-        delete fw;
-        f->next = *outside;
-        *outside = f;
-        return NULL;
-    }
-    else
-    {
-        delete f->w;
-    
-        front = NewFaceFromFace(f);
-        front->w = fw;
-        fw->getBounds(front->bounds);
-        front->next = *outside;
-        *outside = front;
-    
-        f->w = bw;
-        bw->getBounds(f->bounds);
-    
-        return f;
-    }
-}
-#endif
 
 // =====================================================================================
 //  WriteFace
 // =====================================================================================
 void            WriteFace(const int hull, const bface_t* const f
-#ifdef ZHLT_DETAILBRUSH
 						  , int detaillevel
-#endif
 						  )
 {
     unsigned int    i;
@@ -440,26 +297,17 @@ void            WriteFace(const int hull, const bface_t* const f
     w = f->w;
 
     // plane summary
-#ifdef ZHLT_DETAILBRUSH
 	fprintf (out[hull], "%i %i %i %i %u\n", detaillevel, f->planenum, f->texinfo, f->contents, w->m_NumPoints);
-#else
-    fprintf(out[hull], "%i %i %i %u\n", f->planenum, f->texinfo, f->contents, w->m_NumPoints);
-#endif
 
     // for each of the points on the face
     for (i = 0; i < w->m_NumPoints; i++)
     {
         // write the co-ords
-#ifdef HLCSG_PRICISION_FIX
         fprintf(out[hull], "%5.8f %5.8f %5.8f\n", w->m_Points[i][0], w->m_Points[i][1], w->m_Points[i][2]);
-#else
-        fprintf(out[hull], "%5.2f %5.2f %5.2f\n", w->m_Points[i][0], w->m_Points[i][1], w->m_Points[i][2]);
-#endif
     }
 
     // put in an extra line break
     fprintf(out[hull], "\n");
-#ifdef HLCSG_VIEWSURFACE
 	if (g_viewsurface)
 	{
 		static bool side = false;
@@ -483,11 +331,9 @@ void            WriteFace(const int hull, const bface_t* const f
 			fprintf (out_view[hull], "%5.2f %5.2f %5.2f\n", center2[0], center2[1], center2[2]);
 		}
 	}
-#endif
 
     ThreadUnlock();
 }
-#ifdef ZHLT_DETAILBRUSH
 void WriteDetailBrush (int hull, const bface_t *faces)
 {
 	ThreadLock ();
@@ -504,7 +350,6 @@ void WriteDetailBrush (int hull, const bface_t *faces)
 	fprintf (out_detailbrush[hull], "-1 -1\n");
 	ThreadUnlock ();
 }
-#endif
 
 // =====================================================================================
 //  SaveOutside
@@ -525,7 +370,6 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
     {
         next = f->next;
 
-#ifdef HLCSG_EMPTYBRUSH
 		int frontcontents, backcontents;
 		int texinfo = f->texinfo;
 		const char *texname = GetTextureByNumber_CSG (texinfo);
@@ -553,16 +397,13 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
 		if (mirrorcontents == CONTENTS_TOEMPTY)
 		{
 			if (strncasecmp (texname, "SKIP", 4) && strncasecmp (texname, "HINT", 4)
-	#ifdef HLCSG_HLBSP_SOLIDHINT
 				&& strncasecmp (texname, "SOLIDHINT", 9)
-	#endif
 				)
 				// SKIP and HINT are special textures for hlbsp
 			{
 				backnull = true;
 			}
 		}
-	#ifdef HLCSG_HLBSP_SOLIDHINT
 		if (!strncasecmp (texname, "SOLIDHINT", 9))
 		{
 			if (frontcontents != backcontents)
@@ -570,28 +411,18 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
 				frontnull = backnull = true; // not discardable, so remove "SOLIDHINT" texture name and behave like NULL
 			}
 		}
-	#endif
-	#ifdef HLCSG_WATERBACKFACE_FIX
 		if (b->entitynum != 0 && !strncasecmp (texname, "!", 1))
 		{
 			backnull = true; // strip water face on one side
 		}
-	#endif
-#endif
 
-#ifdef HLCSG_EMPTYBRUSH
 		f->contents = frontcontents;
 		f->texinfo = frontnull? -1: texinfo;
-#endif
         if (f->w->getArea() < g_tiny_threshold)
         {
             c_tiny++;
             Verbose("Entity %i, Brush %i: tiny fragment\n", 
-#ifdef HLCSG_COUNT_NEW
 				b->originalentitynum, b->originalbrushnum
-#else
-				b->entitynum, b->brushnum
-#endif
 				);
             continue;
         }
@@ -613,7 +444,6 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
             }
         }
 
-#ifdef HLCSG_WARNBADTEXINFO
 		// check the texture alignment of this face
 		if (!hull)
 		{
@@ -624,9 +454,7 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
 			if (texinfo != -1 // nullified textures (NULL, BEVEL, aaatrigger, etc.)
 				&& !(tex->flags & TEX_SPECIAL) // sky
 				&& strncasecmp (texname, "SKIP", 4) && strncasecmp (texname, "HINT", 4) // HINT and SKIP will be nullified only after hlbsp
-	#ifdef HLCSG_HLBSP_SOLIDHINT
 				&& strncasecmp (texname, "SOLIDHINT", 9)
-	#endif
 				)
 			{
 				// check for "Malformed face (%d) normal"
@@ -636,11 +464,7 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
 				if (fabs (DotProduct (texnormal, f->plane->normal)) <= NORMAL_EPSILON)
 				{
 					Warning ("Entity %i, Brush %i: Malformed texture alignment (texture %s): Texture axis perpendicular to face.",
-	#ifdef HLCSG_COUNT_NEW
 						b->originalentitynum, b->originalbrushnum,
-	#else
-						b->entitynum, b->brushnum,
-	#endif
 						texname
 						);
 				}
@@ -666,39 +490,24 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
 				if (bad)
 				{
 					Warning ("Entity %i, Brush %i: Malformed texture alignment (texture %s): Bad surface extents.",
-	#ifdef HLCSG_COUNT_NEW
 						b->originalentitynum, b->originalbrushnum,
-	#else
-						b->entitynum, b->brushnum,
-	#endif
 						texname
 						);
 				}
 			}
 		}
 
-#endif
         WriteFace(hull, f
-#ifdef ZHLT_DETAILBRUSH
 			, 
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 			(hull? b->clipnodedetaillevel: b->detaillevel)
-#else
-			b->detaillevel
-#endif
-#endif
 			);
 
         //              if (mirrorcontents != CONTENTS_SOLID)
         {
             f->planenum ^= 1;
             f->plane = &g_mapplanes[f->planenum];
-#ifdef HLCSG_EMPTYBRUSH
 			f->contents = backcontents;
 			f->texinfo = backnull? -1: texinfo;
-#else
-            f->contents = mirrorcontents;
-#endif
 
             // swap point orders
             for (i = 0; i < f->w->m_NumPoints / 2; i++)      // add points backwards
@@ -708,14 +517,8 @@ static void     SaveOutside(const brush_t* const b, const int hull, bface_t* out
                 VectorCopy(temp, f->w->m_Points[f->w->m_NumPoints - 1 - i]);
             }
             WriteFace(hull, f
-#ifdef ZHLT_DETAILBRUSH
 				, 
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 				(hull? b->clipnodedetaillevel: b->detaillevel)
-#else
-				b->detaillevel
-#endif
-#endif
 				);
         }
 
@@ -812,9 +615,7 @@ static bface_t* CopyFacesToOutside(brushhull_t* bh)
 // =====================================================================================
 //  CSGBrush
 // =====================================================================================
-#ifdef ZHLT_DETAILBRUSH
 extern const char *ContentsToString (const contents_t type);
-#endif
 static void     CSGBrush(int brushnum)
 {
     int             hull;
@@ -827,13 +628,7 @@ static void     CSGBrush(int brushnum)
     bface_t*        f;
     bface_t*        f2;
     bface_t*        next;
-#ifndef HLCSG_NOFAKESPLITS
-    bface_t*        fcopy;
-#endif
     bface_t*        outside;
-#ifndef HLCSG_NOFAKESPLITS
-    bface_t*        oldoutside;
-#endif
     entity_t*       e;
     vec_t           area;
 
@@ -845,33 +640,20 @@ static void     CSGBrush(int brushnum)
     for (hull = 0; hull < NUM_HULLS; hull++)
     {
         bh1 = &b1->hulls[hull];
-#ifdef ZHLT_DETAILBRUSH
 		if (bh1->faces && 
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 			(hull? b1->clipnodedetaillevel: b1->detaillevel)
-#else
-			b1->detaillevel
-#endif
 			)
 		{
 			switch (b1->contents)
 			{
 			case CONTENTS_ORIGIN:
-	#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 			case CONTENTS_BOUNDINGBOX:
-	#endif
 			case CONTENTS_HINT:
-	#ifdef HLCSG_EMPTYBRUSH
 			case CONTENTS_TOEMPTY:
-	#endif
 				break;
 			default:
 				Error ("Entity %i, Brush %i: %s brushes not allowed in detail\n", 
-	#ifdef HLCSG_COUNT_NEW
 					b1->originalentitynum, b1->originalbrushnum, 
-	#else
-					b1->entitynum, b1->brushnum, 
-	#endif
 					ContentsToString((contents_t)b1->contents));
 				break;
 			case CONTENTS_SOLID:
@@ -879,12 +661,10 @@ static void     CSGBrush(int brushnum)
 				break;
 			}
 		}
-#endif
 
         // set outside to a copy of the brush's faces
         outside = CopyFacesToOutside(bh1);
         overwrite = false;
-#ifdef HLCSG_EMPTYBRUSH
 		if (b1->contents == CONTENTS_TOEMPTY)
 		{
 			for (f = outside; f; f = f->next)
@@ -893,66 +673,39 @@ static void     CSGBrush(int brushnum)
 				f->backcontents = CONTENTS_TOEMPTY;
 			}
 		}
-#endif
 
         // for each brush in entity e
         for (bn = 0; bn < e->numbrushes; bn++)
         {
             // see if b2 needs to clip a chunk out of b1
-#ifdef HLCSG_CSGBrush_BRUSHNUM_FIX
 			if (e->firstbrush + bn == brushnum)
 			{
 				continue;
 			}
             overwrite = e->firstbrush + bn > brushnum;
-#else
-            if (bn == brushnum)  
-            {
-                overwrite = true;                          // later brushes now overwrite
-                continue;
-            }
-#endif
 
             b2 = &g_mapbrushes[e->firstbrush + bn];
             bh2 = &b2->hulls[hull];
-#ifdef HLCSG_EMPTYBRUSH
 			if (b2->contents == CONTENTS_TOEMPTY)
 				continue;
-#endif
-#ifdef ZHLT_DETAILBRUSH
 			if (
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 				(hull? (b2->clipnodedetaillevel - 0 > b1->clipnodedetaillevel + 0): (b2->detaillevel - b2->chopdown > b1->detaillevel + b1->chopup))
-#else
-				b2->detaillevel - b2->chopdown > b1->detaillevel + b1->chopup
-#endif
 				)
 				continue; // you can't chop
 			if (b2->contents == b1->contents && 
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 				(hull? (b2->clipnodedetaillevel != b1->clipnodedetaillevel): (b2->detaillevel != b1->detaillevel))
-#else
-				b2->detaillevel != b1->detaillevel
-#endif
 				)
 			{
 				overwrite = 
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 					(hull? (b2->clipnodedetaillevel < b1->clipnodedetaillevel): (b2->detaillevel < b1->detaillevel))
-#else
-					b2->detaillevel < b1->detaillevel
-#endif
 					;
 			}
-#endif
-#ifdef HLCSG_COPLANARPRIORITY
 			if (b2->contents == b1->contents
 				&& hull == 0 && b2->detaillevel == b1->detaillevel
 				&& b2->coplanarpriority != b1->coplanarpriority)
 			{
 				overwrite = b2->coplanarpriority > b1->coplanarpriority;
 			}
-#endif
 
             if (!bh2->faces)
                 continue;                                  // brush isn't in this hull
@@ -980,20 +733,13 @@ static void     CSGBrush(int brushnum)
                     outside = f;
                     continue;
                 }
-#ifdef ZHLT_DETAILBRUSH
 				if (
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 					(hull? (b2->clipnodedetaillevel > b1->clipnodedetaillevel): (b2->detaillevel > b1->detaillevel))
-#else
-					b2->detaillevel > b1->detaillevel
-#endif
 					)
 				{
 					const char *texname = GetTextureByNumber_CSG (f->texinfo);
 					if (f->texinfo == -1 || !strncasecmp (texname, "SKIP", 4) || !strncasecmp (texname, "HINT", 4)
-	#ifdef HLCSG_HLBSP_SOLIDHINT
 						|| !strncasecmp (texname, "SOLIDHINT", 9)
-	#endif
 						)
 					{
 						// should not nullify the fragment inside detail brush
@@ -1002,16 +748,10 @@ static void     CSGBrush(int brushnum)
 						continue;
 					}
 				}
-#endif
 
-#ifndef HLCSG_NOFAKESPLITS
-                oldoutside = outside;
-                fcopy = CopyFace(f);                       // save to avoid fake splits
-#endif
 
                 // throw pieces on the front sides of the planes
                 // into the outside list, return the remains on the inside
-#ifdef HLCSG_NOFAKESPLITS
 				// find the fragment inside brush2
 				Winding *w = new Winding (*f->w);
 				for (f2 = bh2->faces; f2; f2 = f2->next)
@@ -1105,22 +845,12 @@ static void     CSGBrush(int brushnum)
 					f = NULL;
 				}
 				delete w;
-#else
-                for (f2 = bh2->faces; f2 && f; f2 = f2->next)
-                {
-                    f = ClipFace(f, &outside, f2->planenum, overwrite);
-                }
-#endif
 
                 area = f ? f->w->getArea() : 0;
                 if (f && area < g_tiny_threshold)
                 {
                     Verbose("Entity %i, Brush %i: tiny penetration\n", 
-#ifdef HLCSG_COUNT_NEW
 						b1->originalentitynum, b1->originalbrushnum
-#else
-						b1->entitynum, b1->brushnum
-#endif
 						);
                     c_tiny_clip++;
                     FreeFace(f);
@@ -1130,17 +860,9 @@ static void     CSGBrush(int brushnum)
                 {
                     // there is one convex fragment of the original
                     // face left inside brush2
-#ifndef HLCSG_NOFAKESPLITS
-                    FreeFace(fcopy);
-#endif
 
-#ifdef ZHLT_DETAILBRUSH
 					if (
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 						(hull? (b2->clipnodedetaillevel > b1->clipnodedetaillevel): (b2->detaillevel > b1->detaillevel))
-#else
-						b2->detaillevel > b1->detaillevel
-#endif
 						)
 					{ // don't chop or set contents, only nullify
 						f->next = outside;
@@ -1149,18 +871,12 @@ static void     CSGBrush(int brushnum)
 						continue;
 					}
 					if (
-#ifdef ZHLT_CLIPNODEDETAILLEVEL
 						(hull? b2->clipnodedetaillevel < b1->clipnodedetaillevel: b2->detaillevel < b1->detaillevel)
-#else
-						b2->detaillevel < b1->detaillevel
-#endif
 						&& b2->contents == CONTENTS_SOLID)
 					{ // real solid
 						FreeFace (f);
 						continue;
 					}
-#endif
-#ifdef HLCSG_EMPTYBRUSH
 					if (b1->contents == CONTENTS_TOEMPTY)
 					{
 						bool onfront = true, onback = true;
@@ -1176,9 +892,7 @@ static void     CSGBrush(int brushnum)
 						if (onback && f->backcontents < b2->contents)
 							f->backcontents = b2->contents;
 						if (f->contents == CONTENTS_SOLID && f->backcontents == CONTENTS_SOLID
-#ifdef HLCSG_HLBSP_SOLIDHINT
 							&& strncasecmp (GetTextureByNumber_CSG (f->texinfo), "SOLIDHINT", 9)
-#endif
 							)
 						{
 							FreeFace (f);
@@ -1190,11 +904,8 @@ static void     CSGBrush(int brushnum)
 						}
 						continue;
 					}
-#endif
                     if (b1->contents > b2->contents
-#ifdef HLCSG_HLBSP_SOLIDHINT
 						|| b1->contents == b2->contents && !strncasecmp (GetTextureByNumber_CSG (f->texinfo), "SOLIDHINT", 9)
-#endif
 						)
                     {                                      // inside a water brush
                         f->contents = b2->contents;
@@ -1206,26 +917,6 @@ static void     CSGBrush(int brushnum)
                         FreeFace(f);                       // throw it away
                     }
                 }
-#ifndef HLCSG_NOFAKESPLITS
-                else
-                {                                          // the entire thing was on the outside, even
-                    // though the bounding boxes intersected,
-                    // which will never happen with axial planes
-
-                    // free the fragments chopped to the outside
-                    while (outside != oldoutside)
-                    {
-                        f2 = outside->next;
-                        FreeFace(outside);
-                        outside = f2;
-                    }
-
-                    // revert to the original face to avoid
-                    // unneeded false cuts
-                    fcopy->next = outside;
-                    outside = fcopy;
-                }
-#endif
             }
 
         }
@@ -1251,7 +942,6 @@ static void     EmitPlanes()
     g_numplanes = g_nummapplanes;
     mp = g_mapplanes;
     dp = g_dplanes;
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 	{
 		char name[_MAX_PATH];
 		safe_snprintf (name, _MAX_PATH, "%s.pln", g_Mapname);
@@ -1261,7 +951,6 @@ static void     EmitPlanes()
 		SafeWrite (planeout, g_mapplanes, g_nummapplanes * sizeof (plane_t));
 		fclose (planeout);
 	}
-#endif
     for (i = 0; i < g_nummapplanes; i++, mp++, dp++)
     {
         //if (!(mp->redundant))
@@ -1300,7 +989,6 @@ static void     SetModelNumbers()
     }
 }
 
-#ifdef HLCSG_COPYMODELKEYVALUE
 void     ReuseModel ()
 {
 	int i;
@@ -1344,7 +1032,6 @@ void     ReuseModel ()
 		}
 	}
 }
-#endif
 
 // =====================================================================================
 //  SetLightStyles
@@ -1361,9 +1048,7 @@ static void     SetLightStyles()
     char            value[10];
     char            lighttargets[MAX_SWITCHED_LIGHTS][MAX_LIGHTTARGETS_NAME];
 
-#ifdef ZHLT_TEXLIGHT
     	bool			newtexlight = false;
-#endif
 
     // any light that is controlled (has a targetname)
     // must have a unique style number generated for it
@@ -1376,7 +1061,6 @@ static void     SetLightStyles()
         t = ValueForKey(e, "classname");
         if (strncasecmp(t, "light", 5))
         {
-#ifdef ZHLT_TEXLIGHT
             //LRC:
 			// if it's not a normal light entity, allocate it a new style if necessary.
 	        t = ValueForKey(e, "style");
@@ -1400,12 +1084,8 @@ static void     SetLightStyles()
 				// don't 'continue', fall out
 			}
 	        //LRC (ends)
-#else
-            continue;
-#endif
         }
         t = ValueForKey(e, "targetname");
-#ifdef HLCSG_STYLEHACK
 		if (*ValueForKey (e, "zhlt_usestyle"))
 		{
 			t = ValueForKey(e, "zhlt_usestyle");
@@ -1414,7 +1094,6 @@ static void     SetLightStyles()
 				t = "";
 			}
 		}
-#endif
         if (!t[0])
         {
             continue;
@@ -1460,7 +1139,6 @@ static void     ConvertHintToEmpty()
 // =====================================================================================
 //  WriteBSP
 // =====================================================================================
-#ifdef HLCSG_ONLYENTS_NOWADCHANGE
 void LoadWadValue ()
 {
 	char *wadvalue;
@@ -1514,39 +1192,27 @@ void LoadWadValue ()
 	SetKeyValue (&g_entities[0], "wad", wadvalue);
 	free (wadvalue);
 }
-#endif
 void WriteBSP(const char* const name)
 {
     char path[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(path, _MAX_PATH, "%s.bsp", name);
-#else
-    safe_strncpy(path, name, _MAX_PATH);
-    DefaultExtension(path, ".bsp");
-#endif
 
     SetModelNumbers();
-#ifdef HLCSG_COPYMODELKEYVALUE
 	ReuseModel();
-#endif
     SetLightStyles();
 
     if (!g_onlyents)
         WriteMiptex();
-#ifdef HLCSG_ONLYENTS_NOWADCHANGE
 	if (g_onlyents)
 	{
 		LoadWadValue ();
 	}
-#endif
 
     UnparseEntities();
     ConvertHintToEmpty(); // this is ridiculous. --vluzacn
-#ifdef HLCSG_CHART_FIX
     if (g_chart)
         PrintBSPFileSizes();
-#endif
     WriteBSPFile(path);
 }
 
@@ -1605,7 +1271,6 @@ void WriteBSP(const char* const name)
     hlassume(g_nummapbrushes < MAX_MAP_BRUSHES, assume_MAX_MAP_BRUSHES);
 }*/
 
-#ifdef HLCSG_CLIPECONOMY
 // AJM: added in 
 unsigned int    BrushClipHullsDiscarded = 0; 
 unsigned int    ClipNodesDiscarded = 0;
@@ -1626,6 +1291,43 @@ static void     MarkEntForNoclip(entity_t*  ent)
     }
 }
 
+// =====================================================================================
+//  CheckForClipEconomyEntity
+//      marks the noclip flag on func_clipeconomy or func_detail
+// =====================================================================================
+static void     CheckForClipEconomyEntity()
+{
+    int             i;
+    entity_t* ent;
+
+    char            entclassname[MAX_KEY];
+    int				count = 0;
+
+    for (i = 0; i < g_numentities; i++)
+    {
+        if (!i)
+            continue; // dont waste our time with worldspawn
+
+        if (!g_entities[i].numbrushes)
+            continue; // not a model
+
+        ent = &g_entities[i];
+
+        strcpy_s(entclassname, ValueForKey(ent, "classname"));
+#ifdef RECKONING_TOOLS
+        if (!strcmp(entclassname, "func_detail"))
+#else
+        if (!strcmp(entclassname, "func_clipeconomy"))
+#endif
+        {
+            MarkEntForNoclip(ent);
+            count++;
+        }
+    }
+
+    Log("%i clip economy entities discarded from clipping hulls\n", count);
+}
+
 // AJM
 // =====================================================================================
 //  CheckForNoClip
@@ -1638,9 +1340,7 @@ static void     CheckForNoClip()
 
     char            entclassname[MAX_KEY]; 
     int             spawnflags;
-#ifdef HLCSG_CUSTOMHULL
 	int				count = 0;
-#endif
 
     if (!g_bClipNazi) 
         return; // NO CLIP FOR YOU!!!
@@ -1659,19 +1359,15 @@ static void     CheckForNoClip()
         spawnflags = atoi(ValueForKey(ent, "spawnflags"));
 		int skin = IntForKey(ent, "skin"); //vluzacn
 
-#ifndef HLCSG_CUSTOMHULL
-		// condition 0, it's marked noclip (KGP)
-		if(strlen(ValueForKey(ent,"zhlt_noclip")) && strcmp(ValueForKey(ent,"zhlt_noclip"),"0"))
-		{ 
-			MarkEntForNoclip(ent);
-		}
-        // condition 1 //modified. --vluzacn
-        else
-#endif
 		if ((skin != -16) &&
 			(
 				!strcmp(entclassname, "env_bubbles")
 				|| !strcmp(entclassname, "func_illusionary")
+#ifdef RECKONING_TOOLS
+                || !strcmp(entclassname, "func_detail")
+#else
+                || !strcmp(entclassname, "func_clipeconomy")
+#endif
 				|| (spawnflags & 8) && 
 				(   /* NOTE: func_doors as far as i can tell may need clipnodes for their
 							player collision detection, so for now, they stay out of it. */
@@ -1691,9 +1387,7 @@ static void     CheckForNoClip()
 			))
 		{
 			MarkEntForNoclip(ent);
-#ifdef HLCSG_CUSTOMHULL
 			count++;
-#endif
 		}
         /*
         // condition 6: its a func_wall, while we noclip it, we remake the clipnodes manually 
@@ -1707,23 +1401,12 @@ static void     CheckForNoClip()
 */
     }
 
-#ifdef HLCSG_CUSTOMHULL
     Log("%i entities discarded from clipping hulls\n", count);
-#else
-    Log("%i brushes (totalling %i sides) discarded from clipping hulls\n", BrushClipHullsDiscarded, ClipNodesDiscarded);
-#endif
 }
-#endif
 
 // =====================================================================================
 //  ProcessModels
 // =====================================================================================
-#ifndef HLCSG_SORTBRUSH_FIX
-#define NUM_TYPECONTENTS    5 // AJM: should reflect the number of values below
-int typecontents[NUM_TYPECONTENTS] = { 
-    CONTENTS_WATER, CONTENTS_SLIME, CONTENTS_LAVA, CONTENTS_SKY, CONTENTS_HINT 
-};
-#endif
 
 
 static void     ProcessModels()
@@ -1740,7 +1423,6 @@ static void     ProcessModels()
 
         // sort the contents down so stone bites water, etc
         first = g_entities[i].firstbrush;
-#ifdef HLCSG_SORTBRUSH_KEEPORDER
 		brush_t *temps = (brush_t *)malloc (g_entities[i].numbrushes * sizeof (brush_t));
 		hlassume (temps, assume_NoMemory);
 		for (j = 0; j < g_entities[i].numbrushes; j++)
@@ -1775,52 +1457,6 @@ static void     ProcessModels()
 			placedcontents = contents;
 		}
 		free (temps);
-#else
-#ifdef HLCSG_SORTBRUSH_FIX
-        placed = 0;
-		while (placed < g_entities[i].numbrushes)
-		{
-			for (j = placed; j < g_entities[i].numbrushes; j++)
-			{
-				if (j == placed)
-				{
-					contents = g_mapbrushes[first + j].contents;
-				}
-				else
-				{
-					contents = qmin(g_mapbrushes[first + j].contents, contents);
-				}
-			}
-			for (j = placed; j < g_entities[i].numbrushes; j++)
-			{
-				if (g_mapbrushes[first + j].contents == contents)
-				{
-					temp = g_mapbrushes[first + placed];
-					g_mapbrushes[first + placed] = g_mapbrushes[first + j];
-					g_mapbrushes[first + j] = temp;
-					placed++;
-				}
-			}
-		}
-#else
-        placed = 0;
-        for (type = 0; type < NUM_TYPECONTENTS; type++)                 // for each of the contents types
-        {
-            contents = typecontents[type];
-            for (j = placed + 1; j < g_entities[i].numbrushes; j++)     // for each of the model's brushes
-            {
-                // if this brush is of the contents type in this for iteration
-                if (g_mapbrushes[first + j].contents == contents)       
-                {
-                    temp = g_mapbrushes[first + placed];
-                    g_mapbrushes[first + placed] = g_mapbrushes[j];
-                    g_mapbrushes[j] = temp;
-                    placed++;
-                }
-            }
-        }
-#endif
-#endif
 
         // csg them in order
         if (i == 0) // if its worldspawn....
@@ -1839,12 +1475,8 @@ static void     ProcessModels()
         // write end of model marker
         for (j = 0; j < NUM_HULLS; j++)
         {
-#ifdef ZHLT_DETAILBRUSH
 			fprintf (out[j], "-1 -1 -1 -1 -1\n");
 			fprintf (out_detailbrush[j], "-1\n");
-#else
-            fprintf(out[j], "-1 -1 -1 -1\n");
-#endif
         }
     }
 }
@@ -1870,9 +1502,7 @@ static void     SetModelCenters(int entitynum)
     for (i = e->firstbrush, last = e->firstbrush + e->numbrushes; i < last; i++)
     {
         if (g_mapbrushes[i].contents != CONTENTS_ORIGIN
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 			&& g_mapbrushes[i].contents != CONTENTS_BOUNDINGBOX
-#endif
 			)
         {
             bounds.add(g_mapbrushes[i].hulls->bounds);
@@ -1924,54 +1554,33 @@ static void     Usage()
     Banner(); // TODO: Call banner from main CSG process? 
 
     Log("\n-= %s Options =-\n\n", g_Program);
-#ifdef ZHLT_CONSOLE
 	Log("    -console #       : Set to 0 to turn off the pop-up console (default is 1)\n");
-#endif
-#ifdef ZHLT_LANGFILE
 	Log("    -lang file       : localization file\n");
-#endif
     Log("    -nowadtextures   : include all used textures into bsp\n");
     Log("    -wadinclude file : place textures used from wad specified into bsp\n");
     Log("    -noclip          : don't create clipping hull\n");
     
-#ifdef HLCSG_CLIPECONOMY    // AJM
-#ifdef HLCSG_CUSTOMHULL // default clip economy off
     Log("    -clipeconomy     : turn clipnode economy mode on\n");
-#else
-    Log("    -noclipeconomy   : turn clipnode economy mode off\n");
-#endif
-#endif
 
-#ifdef HLCSG_PRECISIONCLIP // KGP
 	Log("    -cliptype value  : set to smallest, normalized, simple, precise, or legacy (default)\n");
-#endif
-#ifdef HLCSG_NULLIFY_INVISIBLE // KGP
 	Log("    -nullfile file   : specify list of entities to retexture with NULL\n");
-#endif
 
     Log("    -onlyents        : do an entity update from .map to .bsp\n");
     Log("    -noskyclip       : disable automatic clipping of SKY brushes\n");
     Log("    -tiny #          : minmum brush face surface area before it is discarded\n");
     Log("    -brushunion #    : threshold to warn about overlapping brushes\n\n");
     Log("    -hullfile file   : Reads in custom collision hull dimensions\n");
-#ifdef HLCSG_WADCFG_NEW
 	Log("    -wadcfgfile file : wad configuration file\n");
 	Log("    -wadconfig name  : use the old wad configuration approach (select a group from wad.cfg)\n");
-#endif
     Log("    -texdata #       : Alter maximum texture memory limit (in kb)\n");
     Log("    -lightdata #     : Alter maximum lighting memory limit (in kb)\n");
     Log("    -chart           : display bsp statitics\n");
     Log("    -low | -high     : run program an altered priority level\n");
     Log("    -nolog           : don't generate the compile logfiles\n");
-#ifdef HLCSG_KEEPLOG
 	Log("    -noresetlog      : Do not delete log file\n");
-#endif
     Log("    -threads #       : manually specify the number of threads to run\n");
 #ifdef SYSTEM_WIN32
     Log("    -estimate        : display estimated time during compile\n");
-#endif
-#ifdef ZHLT_PROGRESSFILE // AJM
-    Log("    -progressfile path  : specify the path to a file for progress estimate output\n");
 #endif
 #ifdef SYSTEM_POSIX
     Log("    -noestimate      : do not display continuous compile time estimates\n");
@@ -1979,20 +1588,11 @@ static void     Usage()
     Log("    -verbose         : compile with verbose messages\n");
     Log("    -noinfo          : Do not show tool configuration information\n");
 
-#ifdef ZHLT_NULLTEX // AJM
     Log("    -nonulltex       : Turns off null texture stripping\n");
-#endif
-#ifdef HLCSG_NULLIFYAAATRIGGER
 	Log("    -nonullifytrigger: don't remove 'aaatrigger' texture\n");
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-    Log("    -nodetail        : dont handle detail brushes\n");
-#endif
 
-#ifdef HLCSG_OPTIMIZELIGHTENTITY
 	Log("    -nolightopt      : don't optimize engine light entities\n");
-#endif
 
 #ifdef HLCSG_GAMETEXTMESSAGE_UTF8
 	Log("    -notextconvert   : don't convert game_text message from Windows ANSI to UTF8 format\n");
@@ -2000,20 +1600,10 @@ static void     Usage()
 
     Log("    -dev #           : compile with developer message\n\n");
 
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG // AJM
-    Log("    -wadconfig name  : Specify a configuration to use from wad.cfg\n");
-    Log("    -wadcfgfile path : Manually specify a path to the wad.cfg file\n"); //JK:
-#endif
-#endif
 
-#ifdef HLCSG_AUTOWAD // AJM:
     Log("    -wadautodetect   : Force auto-detection of wadfiles\n");
-#endif
 
-#ifdef HLCSG_SCALESIZE
 	Log("    -scale #         : Scale the world. Use at your own risk.\n");
-#endif
     Log("    mapfile          : The mapfile to compile\n\n");
 
     exit(1);
@@ -2060,9 +1650,7 @@ static void     Settings()
 
     Log("verbose               [ %7s ] [ %7s ]\n", g_verbose ? "on" : "off", DEFAULT_VERBOSE ? "on" : "off");
     Log("log                   [ %7s ] [ %7s ]\n", g_log ? "on" : "off", DEFAULT_LOG ? "on" : "off");
-#ifdef HLCSG_KEEPLOG
     Log("reset logfile         [ %7s ] [ %7s ]\n", g_resetlog ? "on" : "off", DEFAULT_RESETLOG ? "on" : "off");
-#endif
 
     Log("developer             [ %7d ] [ %7d ]\n", g_developer, DEFAULT_DEVELOPER);
     Log("chart                 [ %7s ] [ %7s ]\n", g_chart ? "on" : "off", DEFAULT_CHART ? "on" : "off");
@@ -2090,36 +1678,21 @@ static void     Settings()
 
     Log("noclip                [ %7s ] [ %7s ]\n", g_noclip          ? "on" : "off", DEFAULT_NOCLIP       ? "on" : "off");
 
-#ifdef ZHLT_NULLTEX // AJM:
     Log("null texture stripping[ %7s ] [ %7s ]\n", g_bUseNullTex     ? "on" : "off", DEFAULT_NULLTEX      ? "on" : "off");
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-    Log("detail brushes        [ %7s ] [ %7s ]\n", g_bDetailBrushes  ? "on" : "off", DEFAULT_DETAIL       ? "on" : "off");
-#endif
 
-#ifdef HLCSG_CLIPECONOMY // AJM
     Log("clipnode economy mode [ %7s ] [ %7s ]\n", g_bClipNazi       ? "on" : "off", DEFAULT_CLIPNAZI     ? "on" : "off");
-#endif
 
-#ifdef HLCSG_PRECISIONCLIP // KGP
 	Log("clip hull type        [ %7s ] [ %7s ]\n", GetClipTypeString(g_cliptype), GetClipTypeString(DEFAULT_CLIPTYPE));
-#endif
 
     Log("onlyents              [ %7s ] [ %7s ]\n", g_onlyents        ? "on" : "off", DEFAULT_ONLYENTS     ? "on" : "off");
     Log("wadtextures           [ %7s ] [ %7s ]\n", g_wadtextures     ? "on" : "off", DEFAULT_WADTEXTURES  ? "on" : "off");
     Log("skyclip               [ %7s ] [ %7s ]\n", g_skyclip         ? "on" : "off", DEFAULT_SKYCLIP      ? "on" : "off");
     Log("hullfile              [ %7s ] [ %7s ]\n", g_hullfile ? g_hullfile : "None", "None");
-#ifdef HLCSG_WADCFG_NEW
 	Log("wad configuration file[ %7s ] [ %7s ]\n", g_wadcfgfile? g_wadcfgfile: "None", "None");
 	Log("wad.cfg group name    [ %7s ] [ %7s ]\n", g_wadconfigname? g_wadconfigname: "None", "None");
-#endif
-#ifdef HLCSG_NULLIFY_INVISIBLE // KGP
 	Log("nullfile              [ %7s ] [ %7s ]\n", g_nullfile ? g_nullfile : "None", "None");
-#endif
-#ifdef HLCSG_NULLIFYAAATRIGGER
 	Log("nullify trigger       [ %7s ] [ %7s ]\n", g_nullifytrigger? "on": "off", DEFAULT_NULLIFYTRIGGER? "on": "off");
-#endif
     // calc min surface area
     {
         char            tiny_penetration[10];
@@ -2139,7 +1712,6 @@ static void     Settings()
         safe_snprintf(default_brush_union, sizeof(default_brush_union), "%3.3f", DEFAULT_BRUSH_UNION_THRESHOLD);
         Log("brush union threshold [ %7s ] [ %7s ]\n", brush_union, default_brush_union);
     }
-#ifdef HLCSG_SCALESIZE
     {
         char            buf1[10];
         char            buf2[10];
@@ -2154,10 +1726,7 @@ static void     Settings()
 			strcpy (buf2, "None");
         Log("map scaling           [ %7s ] [ %7s ]\n", buf1, buf2);
     }
-#endif
-#ifdef HLCSG_OPTIMIZELIGHTENTITY
     Log("light name optimize   [ %7s ] [ %7s ]\n", !g_nolightopt? "on" : "off", !DEFAULT_NOLIGHTOPT? "on" : "off");
-#endif
 #ifdef HLCSG_GAMETEXTMESSAGE_UTF8
 	Log("convert game_text     [ %7s ] [ %7s ]\n", !g_noutf8? "on" : "off", !DEFAULT_NOUTF8? "on" : "off");
 #endif
@@ -2172,16 +1741,6 @@ static void     Settings()
 void            CSGCleanup()
 {
     //Log("CSGCleanup\n");
-#ifndef HLCSG_AUTOWAD_NEW
-#ifdef HLCSG_AUTOWAD
-    autowad_cleanup();
-#endif
-#endif
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG
-    WadCfg_cleanup();
-#endif
-#endif
     FreeWadPaths();
 }
 
@@ -2198,7 +1757,6 @@ int             main(const int argc, char** argv)
 
     g_Program = "hlcsg";
 
-#ifdef ZHLT_PARAMFILE
 	int argcold = argc;
 	char ** argvold = argv;
 	{
@@ -2206,11 +1764,8 @@ int             main(const int argc, char** argv)
 		char ** argv;
 		ParseParamFile (argcold, argvold, argc, argv);
 		{
-#endif
-#ifdef ZHLT_CONSOLE
 	if (InitConsole (argc, argv) < 0)
 		Usage();
-#endif
     if (argc == 1)
         Usage();
 
@@ -2219,14 +1774,7 @@ int             main(const int argc, char** argv)
     // error on zhlt.wad etc
     g_WadInclude.push_back("zhlt.wad");
 
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG
-    memset(wadconfigname, 0, sizeof(wadconfigname));//AJM
-#endif
-#endif
-#ifdef HLCSG_HULLBRUSH
 	InitDefaultHulls ();
-#endif
 
     // detect argv
     for (i = 1; i < argc; i++)
@@ -2248,7 +1796,6 @@ int             main(const int argc, char** argv)
             }
         }
 
-#ifdef ZHLT_CONSOLE
 		else if (!strcasecmp(argv[i], "-console"))
 		{
 #ifndef SYSTEM_WIN32
@@ -2259,7 +1806,6 @@ int             main(const int argc, char** argv)
 			else
 				Usage();
 		}
-#endif
 #ifdef SYSTEM_WIN32
         else if (!strcasecmp(argv[i], "-estimate"))
         {
@@ -2326,28 +1872,16 @@ int             main(const int argc, char** argv)
             g_onlyents = true;
         }
 
-#ifdef ZHLT_NULLTEX  // AJM: added in -nonulltex
         else if (!strcasecmp(argv[i], "-nonulltex"))
         {
             g_bUseNullTex = false;
         }
-#endif
 
-#ifdef HLCSG_CLIPECONOMY    // AJM: added in -noclipeconomy
-#ifdef HLCSG_CUSTOMHULL // default clip economy off
         else if (!strcasecmp(argv[i], "-clipeconomy"))
         {
             g_bClipNazi = true;
         }
-#else
-        else if (!strcasecmp(argv[i], "-noclipeconomy"))
-        {
-            g_bClipNazi = false;
-        }
-#endif
-#endif
 
-#ifdef HLCSG_PRECISIONCLIP	// KGP: added in -cliptype
 		else if (!strcasecmp(argv[i], "-cliptype"))
 		{
 			if (i + 1 < argc)	//added "1" .--vluzacn
@@ -2370,45 +1904,7 @@ int             main(const int argc, char** argv)
                 Usage();
             }
 		}
-#endif
 
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG
-        // AJM: added in -wadconfig
-        else if (!strcasecmp(argv[i], "-wadconfig"))
-        { 
-            if (i + 1 < argc)	//added "1" .--vluzacn
-            {
-                safe_strncpy(wadconfigname, argv[++i], MAX_WAD_CFG_NAME);
-                if (strlen(argv[i]) > MAX_WAD_CFG_NAME)
-                {
-                    Warning("wad configuration name was truncated to %i chars", MAX_WAD_CFG_NAME);
-                    wadconfigname[MAX_WAD_CFG_NAME] = 0;
-                }
-            }
-            else
-            {
-                Log("Error: -wadconfig: incorrect usage of parameter\n");
-                Usage();
-            }
-        }
-
-        //JK: added in -wadcfgfile
-        else if (!strcasecmp(argv[i], "-wadcfgfile"))
-        {
-            if (i + 1 < argc)	//added "1" .--vluzacn
-            {
-                g_wadcfgfile = argv[++i];
-            }
-            else
-            {
-            	Log("Error: -wadcfgfile: incorrect usage of parameter\n");
-                Usage();
-            }
-        }
-#endif
-#endif
-#ifdef HLCSG_NULLIFY_INVISIBLE
 		else if (!strcasecmp(argv[i], "-nullfile"))
 		{
             if (i + 1 < argc)	//added "1" .--vluzacn
@@ -2421,36 +1917,13 @@ int             main(const int argc, char** argv)
                 Usage();
             }
 		}
-#endif
 
-#ifdef HLCSG_AUTOWAD // AJM
         else if (!strcasecmp(argv[i], "-wadautodetect"))
         { 
             g_bWadAutoDetect = true;
         }
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-        else if (!strcasecmp(argv[i], "-nodetail"))
-        {
-            g_bDetailBrushes = false;
-        }
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-        else if (!strcasecmp(argv[i], "-progressfile"))
-        {
-            if (i + 1 < argc)	//added "1" .--vluzacn
-            {
-                g_progressfile = argv[++i];
-            }
-            else
-            {
-            	Log("Error: -progressfile: expected path to progress file following parameter\n");
-                Usage();
-            }
-        }
-#endif
 
         else if (!strcasecmp(argv[i], "-nowadtextures"))
         {
@@ -2532,7 +2005,6 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
-#ifdef HLCSG_WADCFG_NEW
 		else if (!strcasecmp (argv[i], "-wadcfgfile"))
 		{
 			if (i + 1 < argc)
@@ -2555,8 +2027,6 @@ int             main(const int argc, char** argv)
 				Usage ();
 			}
 		}
-#endif
-#ifdef HLCSG_SCALESIZE
         else if (!strcasecmp(argv[i], "-scale"))
         {
             if (i + 1 < argc)
@@ -2568,8 +2038,6 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
-#endif
-#ifdef ZHLT_LANGFILE
 		else if (!strcasecmp (argv[i], "-lang"))
 		{
 			if (i + 1 < argc)
@@ -2587,37 +2055,28 @@ int             main(const int argc, char** argv)
 				Usage();
 			}
 		}
-#endif
-#ifdef HLCSG_KEEPLOG
 		else if (!strcasecmp (argv[i], "-noresetlog"))
 		{
 			g_resetlog = false;
 		}
-#endif
-#ifdef HLCSG_OPTIMIZELIGHTENTITY
 		else if (!strcasecmp (argv[i], "-nolightopt"))
 		{
 			g_nolightopt = true;
 		}
-#endif
 #ifdef HLCSG_GAMETEXTMESSAGE_UTF8
 		else if (!strcasecmp (argv[i], "-notextconvert"))
 		{
 			g_noutf8 = true;
 		}
 #endif
-#ifdef HLCSG_VIEWSURFACE
 		else if (!strcasecmp (argv[i], "-viewsurface"))
 		{
 			g_viewsurface = true;
 		}
-#endif
-#ifdef HLCSG_NULLIFYAAATRIGGER
 		else if (!strcasecmp (argv[i], "-nonullifytrigger"))
 		{
 			g_nullifytrigger = false;
 		}
-#endif
         else if (argv[i][0] == '-')
         {
             Log("Unknown option \"%s\"\n", argv[i]);
@@ -2653,13 +2112,10 @@ int             main(const int argc, char** argv)
 
     // other stuff
     ResetErrorLog();                     
-#ifdef HLCSG_KEEPLOG
 	if (!g_onlyents && g_resetlog)
-#endif
 		ResetLog();                          
     OpenLog(g_clientid);                  
     atexit(CloseLog);                       
-#ifdef ZHLT_PARAMFILE
     LogStart(argcold, argvold);
 	{
 		int			 i;
@@ -2677,13 +2133,8 @@ int             main(const int argc, char** argv)
 		}
 		Log("\n");
 	}
-#else
-    LogStart(argc, argv);
-#endif
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
 	hlassume (CalcFaceExtents_test (), assume_first);
-#endif
 #endif
     atexit(CSGCleanup); // AJM
     dtexdata_init();                        
@@ -2694,7 +2145,6 @@ int             main(const int argc, char** argv)
     //  before settings are finalised and printed out, so that the info_compile_parameters
     //  entity can be dealt with effectively
     start = I_FloatTime();
-#ifdef HLCSG_HULLFILE_AUTOPATH
 	if (g_hullfile)
 	{
 		char temp[_MAX_PATH];
@@ -2747,8 +2197,6 @@ int             main(const int argc, char** argv)
 			}
 		}
 	}
-#endif
-#ifdef HLCSG_WADCFG_NEW
 	if (g_wadcfgfile)
 	{
 		char temp[_MAX_PATH];
@@ -2775,17 +2223,12 @@ int             main(const int argc, char** argv)
 			}
 		}
 	}
-#endif
     
     LoadHullfile(g_hullfile);               // if the user specified a hull file, load it now
-#ifdef HLCSG_NULLIFY_INVISIBLE
 	if(g_bUseNullTex)
 	{ properties_initialize(g_nullfile); }
-#endif
     safe_strncpy(name, mapname_from_arg, _MAX_PATH); // make a copy of the nap name
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	FlipSlashes(name);
-#endif
     DefaultExtension(name, ".map");                  // might be .reg
     
     LoadMapFile(name);
@@ -2829,11 +2272,8 @@ int             main(const int argc, char** argv)
 		}
 	}
 #endif
-#ifdef HLCSG_ONLYENTS_NOWADCHANGE
   if (!g_onlyents)
   {
-#endif
-#ifdef HLCSG_WADCFG_NEW
 	if (g_wadconfigname)
 	{
 		char temp[_MAX_PATH];
@@ -2866,38 +2306,15 @@ int             main(const int argc, char** argv)
 		Log("Using mapfile wad configuration\n");
 		GetUsedWads();
 	}
-#endif
-#ifndef HLCSG_WADCFG_NEW
-#ifdef HLCSG_WADCFG // AJM
-    // figure out what to do with the texture settings
-    if (wadconfigname[0])           // custom wad configuations will take precedence
-    {
-        LoadWadConfigFile();
-        ProcessWadConfiguration();
-    }
-    else
-    {
-        Log("Using mapfile wad configuration\n");
-    }
-    if (!g_bWadConfigsLoaded)  // dont try and override wad.cfg
-#endif
-    {
-        GetUsedWads(); 
-    }
-#endif
 
-#ifdef HLCSG_AUTOWAD
     if (g_bWadAutoDetect)
     {
         Log("Wadfiles not in use by the map will be excluded\n");
     }
-#endif
 
     DumpWadinclude();
     Log("\n");
-#ifdef HLCSG_ONLYENTS_NOWADCHANGE
   }
-#endif
 
     // if onlyents, just grab the entites and resave
     if (g_onlyents)
@@ -2906,45 +2323,22 @@ int             main(const int argc, char** argv)
 
         safe_snprintf(out, _MAX_PATH, "%s.bsp", g_Mapname);
         LoadBSPFile(out);
-#ifndef HLCSG_ONLYENTS_NOWADCHANGE
-        LoadWadincludeFile(g_Mapname);
-
-        HandleWadinclude();
-#endif
 
         // Write it all back out again.
-#ifndef HLCSG_CHART_FIX
-        if (g_chart)
-        {
-            PrintBSPFileSizes();
-        }
-#endif
         WriteBSP(g_Mapname);
 
         end = I_FloatTime();
         LogTimeElapsed(end - start);
         return 0;
     }
-#ifndef HLCSG_ONLYENTS_NOWADCHANGE
-    else
-    {
-        SaveWadincludeFile(g_Mapname);
-    }
-#endif
 
-#ifdef HLCSG_CLIPECONOMY // AJM
+    CheckForClipEconomyEntity();
     CheckForNoClip(); 
-#endif
 
     // createbrush
     NamedRunThreadsOnIndividual(g_nummapbrushes, g_estimate, CreateBrush);
     CheckFatal();
 
-#ifdef HLCSG_PRECISIONCLIP // KGP - drop TEX_BEVEL flag
-#ifndef HLCSG_CUSTOMHULL
-	FixBevelTextures();
-#endif
-#endif
 
     // boundworld
     BoundWorld();
@@ -2971,13 +2365,10 @@ int             main(const int argc, char** argv)
 
         if (!out[i]) 
             Error("Couldn't open %s", name);
-#ifdef ZHLT_DETAILBRUSH
 		safe_snprintf(name, _MAX_PATH, "%s.b%i", g_Mapname, i);
 		out_detailbrush[i] = fopen(name, "w");
 		if (!out_detailbrush[i])
 			Error("Couldn't open %s", name);
-#endif
-#ifdef HLCSG_VIEWSURFACE
 		if (g_viewsurface)
 		{
 			safe_snprintf (name, _MAX_PATH, "%s_surface%i.pts", g_Mapname, i);
@@ -2985,9 +2376,7 @@ int             main(const int argc, char** argv)
 			if (!out[i])
 				Error ("Counldn't open %s", name);
 		}
-#endif
     }
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	{
 		FILE			*f;
 		char			name[_MAX_PATH];
@@ -3009,7 +2398,6 @@ int             main(const int argc, char** argv)
 		}
 		fclose (f);
 	}
-#endif
 
     ProcessModels();
 
@@ -3022,23 +2410,15 @@ int             main(const int argc, char** argv)
     for (i = 0; i < NUM_HULLS; i++)
 	{
         fclose(out[i]);
-#ifdef ZHLT_DETAILBRUSH
 		fclose (out_detailbrush[i]);
-#endif
-#ifdef HLCSG_VIEWSURFACE
 		if (g_viewsurface)
 		{
 			fclose (out_view[i]);
 		}
-#endif
 	}
 
     EmitPlanes();
 
-#ifndef HLCSG_CHART_FIX
-    if (g_chart)
-        PrintBSPFileSizes();
-#endif
 
     WriteBSP(g_Mapname);
 
@@ -3069,9 +2449,7 @@ int             main(const int argc, char** argv)
     end = I_FloatTime();
     LogTimeElapsed(end - start);
 
-#ifdef ZHLT_PARAMFILE
 		}
 	}
-#endif
     return 0;
 }

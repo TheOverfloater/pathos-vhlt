@@ -16,18 +16,12 @@
 #include "filelib.h"
 #include "threads.h"
 #include "winding.h"
-#ifdef ZHLT_PARAMFILE
 #include "cmdlinecfg.h"
-#endif
 
 #define ENTITIES_VOID "entities.void"
 #define ENTITIES_VOID_EXT ".void"
 
-#ifdef ZHLT_LARGERANGE
 #define	BOGUS_RANGE	144000
-#else
-#define	BOGUS_RANGE	18000
-#endif
 
 // the exact bounding box of the brushes is expanded some for the headnode
 // volume.  is this still needed?
@@ -37,47 +31,28 @@
 
 #define MIN_SUBDIVIDE_SIZE      64
 
-#ifdef ZHLT_GENERAL
 #define MAX_SUBDIVIDE_SIZE      512
-#else
-#define MAX_SUBDIVIDE_SIZE      240
-#endif
 
 #define DEFAULT_SUBDIVIDE_SIZE  ((MAX_SURFACE_EXTENT-1)*TEXTURE_STEP) //#define DEFAULT_SUBDIVIDE_SIZE  240 //--vluzacn
 
 #define MIN_MAXNODE_SIZE        64
-#ifdef ZHLT_LARGERANGE
 #define MAX_MAXNODE_SIZE        65536
-#else
-#define MAX_MAXNODE_SIZE        8192
-#endif
 #define DEFAULT_MAXNODE_SIZE    1024
 
 #define DEFAULT_NOFILL          false
-#ifdef HLBSP_FILL
 #define DEFAULT_NOINSIDEFILL	false
-#endif
 #define DEFAULT_NOTJUNC         false
-#ifdef HLBSP_BRINKHACK
 #define DEFAULT_NOBRINK			false
-#endif
 #define DEFAULT_NOCLIP          false
 #define DEFAULT_NOOPT			false
-#ifdef HLBSP_MERGECLIPNODE
 #define DEFAULT_NOCLIPNODEMERGE	false
-#endif
 #define DEFAULT_LEAKONLY        false
 #define DEFAULT_WATERVIS        false
 #define DEFAULT_CHART           false
 #define DEFAULT_INFO            true
 
-#ifdef ZHLT_NULLTEX // AJM
 #define DEFAULT_NULLTEX             true
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-#define DEFAULT_PROGRESSFILE NULL // progress file is only used if g_progressfile is non-null
-#endif
 
 #ifdef SYSTEM_WIN32
 #define DEFAULT_ESTIMATE        false
@@ -87,9 +62,6 @@
 #define DEFAULT_ESTIMATE        true
 #endif
 
-#ifdef ZHLT_DETAIL // AJM
-#define DEFAULT_DETAIL      true
-#endif
 
 #define	MAXEDGES			48                 // 32
 #define	MAXPOINTS			28                 // don't let a base face get past this
@@ -101,15 +73,8 @@ typedef enum
     face_normal = 0,
     face_hint,
     face_skip,
-#ifdef ZHLT_NULLTEX // AJM
     face_null,
-#endif
-#ifdef ZHLT_DETAIL // AJM
-    face_detail
-#endif
-#ifdef HLCSG_HLBSP_SOLIDHINT
 	face_discardable, // contents must not differ between front and back
-#endif
 }
 facestyle_e;
 
@@ -119,18 +84,14 @@ typedef struct face_s                                      // This structure is 
     int             planenum;
     int             texturenum;
     int             contents;                              // contents in front of face
-#ifdef ZHLT_DETAILBRUSH
 	int				detaillevel; // defined by hlcsg
 	int				*outputedges; // used in WriteDrawNodes
-#endif
 
     struct face_s*  original;                              // face on node
     int             outputnumber;                          // only valid for original faces after write surfaces
     int             numpoints;
     facestyle_e     facestyle;
-#ifdef HLBSP_REMOVECOVEREDFACES
 	int				referenced;                            // only valid for original faces
-#endif
 
     // vector quad word aligned
     vec3_t          pts[MAXEDGES];                         // FIXME: change to use winding_t
@@ -146,9 +107,7 @@ typedef struct surface_s
     struct node_s*  onnode;                                // true if surface has already been used
     // as a splitting node
     face_t*         faces;                                 // links to all the faces on either side of the surf
-#ifdef ZHLT_DETAILBRUSH
 	int				detaillevel; // minimum detail level of its faces
-#endif
 }
 surface_t;
 
@@ -159,7 +118,6 @@ typedef struct
 }
 surfchain_t;
 
-#ifdef ZHLT_DETAILBRUSH
 typedef struct side_s
 {
 	struct side_s	*next;
@@ -175,31 +133,22 @@ typedef struct brush_s
 }
 brush_t;
 
-#endif
 //
 // there is a node_t structure for every node and leaf in the bsp tree
 //
 #define	PLANENUM_LEAF		-1
-#ifdef HLBSP_DETAILBRUSH_CULL
 #define BOUNDS_EXPANSION 1.0 // expand the bounds of detail leafs when clipping its boundsbrush, to prevent some strange brushes in the func_detail from clipping away the entire boundsbrush making the func_detail invisible.
-#endif
 
 typedef struct node_s
 {
     surface_t*      surfaces;
-#ifdef ZHLT_DETAILBRUSH
 	brush_t			*detailbrushes;
-#ifdef HLBSP_DETAILBRUSH_CULL
 	brush_t			*boundsbrush;
 	vec3_t			loosemins, loosemaxs; // all leafs and nodes have this, while 'mins' and 'maxs' are only valid for nondetail leafs and nodes.
-#endif
-#endif
 
-#ifdef ZHLT_DETAILBRUSH
 	bool			isdetail; // is under a diskleaf
 	bool			isportalleaf; // not detail and children are detail; only visleafs have contents, portals, mins, maxs
 	bool			iscontentsdetail; // inside a detail brush
-#endif
     vec3_t          mins, maxs;                            // bounding volume of portals;
 
     // information for decision nodes
@@ -214,9 +163,7 @@ typedef struct node_s
     int             visleafnum;                            // -1 = solid
     int             valid;                                 // for flood filling
     int             occupied;                              // light number in leaf for outside filling
-#ifdef HLBSP_FILL
 	int				empty;
-#endif
 }
 node_t;
 
@@ -226,9 +173,7 @@ node_t;
 // solidbsp.c
 extern void     SubdivideFace(face_t* f, face_t** prevptr);
 extern node_t*  SolidBSP(const surfchain_t* const surfhead, 
-#ifdef ZHLT_DETAILBRUSH
 						 brush_t *detailbrushes, 
-#endif
 						 bool report_progress);
 
 //=============================================================================
@@ -279,9 +224,7 @@ extern void     FinishBSPFile();
 extern node_t*  FillOutside(node_t* node, bool leakfile, unsigned hullnum);
 extern void     LoadAllowableOutsideList(const char* const filename);
 extern void     FreeAllowableOutsideList();
-#ifdef HLBSP_FILL
 extern void		FillInside (node_t* node);
-#endif
 
 //=============================================================================
 // misc functions
@@ -296,7 +239,6 @@ extern void     FreePortal(struct portal_s* p);
 extern surface_t* AllocSurface();
 extern void     FreeSurface(surface_t* s);
 
-#ifdef ZHLT_DETAILBRUSH
 extern side_t *	AllocSide ();
 extern void		FreeSide (side_t *s);
 extern side_t *	NewSideFromSide (const side_t *s);
@@ -304,23 +246,15 @@ extern brush_t *AllocBrush ();
 extern void		FreeBrush (brush_t *b);
 extern brush_t *NewBrushFromBrush (const brush_t *b);
 extern void		SplitBrush (brush_t *in, const dplane_t *split, brush_t **front, brush_t **back);
-#ifdef HLBSP_DETAILBRUSH_CULL
 extern brush_t *BrushFromBox (const vec3_t mins, const vec3_t maxs);
 extern void		CalcBrushBounds (const brush_t *b, vec3_t &mins, vec3_t &maxs);
-#endif
-#endif
 
 extern node_t*  AllocNode();
 
 extern bool     CheckFaceForHint(const face_t* const f);
 extern bool     CheckFaceForSkip(const face_t* const f);
-#ifdef ZHLT_NULLTEX// AJM
 extern bool     CheckFaceForNull(const face_t* const f);
-#endif
-#ifdef HLCSG_HLBSP_SOLIDHINT
 extern bool		CheckFaceForDiscardable (const face_t *f);
-#endif
-#ifdef HLBSP_BRINKHACK
 #define BRINK_FLOOR_THRESHOLD 0.7
 typedef enum
 {
@@ -334,7 +268,6 @@ typedef enum
 extern void *CreateBrinkinfo (const dclipnode_t *clipnodes, int headnode);
 extern bool FixBrinks (const void *brinkinfo, bbrinklevel_e level, int &headnode_out, dclipnode_t *clipnodes_out, int maxsize, int size, int &size_out);
 extern void DeleteBrinkinfo (void *brinkinfo);
-#endif
 
 
 // =====================================================================================
@@ -344,9 +277,6 @@ extern bool     CheckFaceForEnv_Sky(const face_t* const f);
 // =====================================================================================
 
 
-#ifdef ZHLT_DETAIL // AJM
-extern bool     CheckFaceForDetail(const face_t* const f);
-#endif
 
 //=============================================================================
 // cull.c
@@ -355,16 +285,10 @@ extern void     CullStuff();
 //=============================================================================
 // qbsp.c
 extern bool     g_nofill;
-#ifdef HLBSP_FILL
 extern bool		g_noinsidefill;
-#endif
 extern bool     g_notjunc;
-#ifdef HLBSP_BRINKHACK
 extern bool		g_nobrink;
-#endif
-#ifdef HLBSP_MERGECLIPNODE
 extern bool		g_noclipnodemerge;
-#endif
 extern bool     g_watervis;
 extern bool     g_chart;
 extern bool     g_estimate;
@@ -377,22 +301,13 @@ extern char     g_portfilename[_MAX_PATH];
 extern char     g_pointfilename[_MAX_PATH];
 extern char     g_linefilename[_MAX_PATH];
 extern char     g_bspfilename[_MAX_PATH];
-#ifdef ZHLT_64BIT_FIX
 extern char		g_extentfilename[_MAX_PATH];
-#endif
 
 
-#ifdef ZHLT_DETAIL // AJM
-extern bool g_bDetailBrushes;
-#endif
 
-#ifdef ZHLT_NULLTEX // AJM
 extern bool     g_bUseNullTex;
-#endif
 
-#ifdef HLBSP_REMOVEHULL2
 extern bool		g_nohull2;
-#endif
 
 extern face_t*  NewFaceFromFace(const face_t* const in);
 extern void     SplitFace(face_t* in, const dplane_t* const split, face_t** front, face_t** back);

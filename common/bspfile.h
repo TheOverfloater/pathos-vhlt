@@ -29,19 +29,12 @@
 #define MAX_MAP_NODES        262144 // Actual limit is the limit of int32
 #define MAX_MAP_CLIPNODES    262144 // Actual limit is the limit of int32
 
-#ifdef ZHLT_MAX_MAP_LEAFS
 #define MAX_MAP_LEAFS        262144 // Limit is arbitrary
 #define MAX_MAP_LEAFS_ENGINE 262144 // Limit is arbitrary
-#else
-#define MAX_MAP_LEAFS         8192
-// hard limit (halflife depends on it to setup pvs bits correctly)
-#endif
-
 #define MAX_MAP_VERTS        262144 // Actual limit is the size of uint32
 #define MAX_MAP_FACES        262144 // Actual limit is the size of uint32
-#ifdef ZHLT_WARNWORLDFACES
 #define MAX_MAP_WORLDFACES   262144
-#endif
+
 #define MAX_MAP_MARKSURFACES 262144 // Actual limit is the size of uint32
 // hard limit (data structures store them as unsigned shorts)
 
@@ -51,7 +44,7 @@
 #define MAX_MAP_TEXINFO      262144 // Actual limit is limit of int32
 
 #ifdef HLCSG_HLBSP_REDUCETEXTURE
-#define MAX_INTERNAL_MAP_TEXINFO 262144
+#define MAX_MAP_TEXINFO 262144
 #endif
 
 #define MAX_MAP_EDGES       524288 // Actual limit is the limit of Uint32
@@ -79,17 +72,10 @@
 // room for its mipmaps.'  This value is primarily used to catch damanged or invalid textures
 // in a wad file
 
-#ifdef ZHLT_XASH2
-#define TEXTURE_STEP        8
-#define MAX_SURFACE_EXTENT  64
-#else
 #define TEXTURE_STEP        16 // this constant was previously defined in lightmap.cpp. --vluzacn
 #define MAX_SURFACE_EXTENT  16 // if lightmap extent exceeds 16, the map will not be able to load in 'Software' renderer and HLDS. //--vluzacn
-#endif
 
-#ifdef ZHLT_LARGERANGE
-#define ENGINE_ENTITY_RANGE 4096.0
-#endif
+#define ENGINE_ENTITY_RANGE 32768
 //=============================================================================
 
 #define PBSP_HEADER						(('P'<<24)+('S'<<16)+('B'<<8)+'P')
@@ -97,9 +83,11 @@
 
 #define TOOLVERSION 2
 
+
 //
 // BSP File Structures
 //
+
 
 typedef struct
 {
@@ -122,16 +110,7 @@ lump_t;
 #define LUMP_EDGES        12
 #define LUMP_SURFEDGES    13
 #define LUMP_MODELS       14
-#ifdef ZHLT_XASH2
-#define LUMP_CLIPNODES2   15
-#define LUMP_CLIPNODES3   16
-#define HEADER_LUMPS      17
-#else
 #define HEADER_LUMPS      15
-#endif
-
-//#define LUMP_MISCPAD      -1
-//#define LUMP_ZEROPAD      -2
 
 typedef struct
 {
@@ -145,7 +124,7 @@ dmodel_t;
 
 typedef struct
 {
-	int				id;
+    int				id;
     int             version;
     lump_t          lumps[HEADER_LUMPS];
 }
@@ -190,9 +169,6 @@ typedef enum
     CONTENTS_LAVA = -5,
     CONTENTS_SKY = -6,
     CONTENTS_ORIGIN = -7,                                  // removed at csg time
-#ifndef HLCSG_CUSTOMHULL
-    CONTENTS_CLIP = -8,                                    // changed to contents_solid
-#endif
 
     CONTENTS_CURRENT_0 = -9,
     CONTENTS_CURRENT_90 = -10,
@@ -204,21 +180,12 @@ typedef enum
     CONTENTS_TRANSLUCENT = -15,
     CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
 
-#ifdef ZHLT_NULLTEX
     CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
-#endif
 
-#ifdef ZHLT_DETAIL   // AJM
-    CONTENTS_DETAIL = -18,  
-#endif
 
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 	CONTENTS_BOUNDINGBOX = -19, // similar to CONTENTS_ORIGIN
-#endif
 
-#ifdef HLCSG_EMPTYBRUSH
 	CONTENTS_TOEMPTY = -32,
-#endif
 }
 contents_t;
 
@@ -249,9 +216,6 @@ typedef struct texinfo_s
 texinfo_t;
 
 #define TEX_SPECIAL     1                                  // sky or slime or null, no lightmap or 256 subdivision
-#ifdef ZHLT_HIDDENSOUNDTEXTURE
-#define TEX_SHOULDHIDE  16384 // this flag is temporary; it might be set after CSG, but will be dropped after BSP
-#endif
 
 // note that edge 0 is never used, because negative edge nums are used for
 // counterclockwise use of the edge in a face
@@ -347,26 +311,16 @@ extern dnode_t  g_dnodes[MAX_MAP_NODES];
 extern int      g_dnodes_checksum;
 
 extern int      g_numtexinfo;
-#ifdef HLCSG_HLBSP_REDUCETEXTURE
-extern texinfo_t g_texinfo[MAX_INTERNAL_MAP_TEXINFO];
-#else
 extern texinfo_t g_texinfo[MAX_MAP_TEXINFO];
-#endif
 extern int      g_texinfo_checksum;
 
 extern int      g_numfaces;
 extern dface_t  g_dfaces[MAX_MAP_FACES];
 extern int      g_dfaces_checksum;
 
-#ifdef ZHLT_XASH2
-extern int      g_numclipnodes[MAX_MAP_HULLS - 1];
-extern dclipnode_t g_dclipnodes[MAX_MAP_HULLS - 1][MAX_MAP_CLIPNODES];
-extern int      g_dclipnodes_checksum[MAX_MAP_HULLS - 1];
-#else
 extern int      g_numclipnodes;
 extern dclipnode_t g_dclipnodes[MAX_MAP_CLIPNODES];
 extern int      g_dclipnodes_checksum;
-#endif
 
 extern int      g_numedges;
 extern dedge_t  g_dedges[MAX_MAP_EDGES];
@@ -387,7 +341,6 @@ extern void     LoadBSPImage(dheader_t* header);
 extern void     LoadBSPFile(const char* const filename);
 extern void     WriteBSPFile(const char* const filename);
 extern void     PrintBSPFileSizes();
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
 extern void		WriteExtentFile (const char *const filename);
 extern bool		CalcFaceExtents_test ();
@@ -395,12 +348,9 @@ extern bool		CalcFaceExtents_test ();
 extern void		LoadExtentFile (const char *const filename);
 #endif
 extern void		GetFaceExtents (int facenum, int mins_out[2], int maxs_out[2]);
-#endif
-#ifdef ZHLT_EMBEDLIGHTMAP
 extern int		ParseImplicitTexinfoFromTexture (int miptex);
 extern int		ParseTexinfoForFace (const dface_t *f);
 extern void		DeleteEmbeddedLightmaps ();
-#endif
 
 //
 // Entity Related Stuff
@@ -429,9 +379,7 @@ extern entity_t g_entities[MAX_MAP_ENTITIES];
 extern void            ParseEntities();
 extern void            UnparseEntities();
 
-#ifdef ZHLT_DELETEKEY
 extern void            DeleteKey(entity_t* ent, const char* const key);
-#endif
 extern void            SetKeyValue(entity_t* ent, const char* const key, const char* const value);
 extern const char*     ValueForKey(const entity_t* const ent, const char* const key);
 extern int             IntForKey(const entity_t* const ent, const char* const key);

@@ -16,11 +16,9 @@
 #include <conio.h>
 #endif
 #endif
-#ifdef ZHLT_LANGFILE
 #ifdef SYSTEM_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#endif
 #endif
 
 typedef enum
@@ -32,16 +30,12 @@ typedef enum
 hl_types;
 
 static hl_types g_mode = hl_undefined;
-#ifdef RIPENT_TEXTURE
 static hl_types g_texturemode = hl_undefined;
-#endif
 
 // g_parse: command line switch (-parse).
 // Added by: Ryan Gregg aka Nem
 bool g_parse = DEFAULT_PARSE;
-#ifdef RIPENT_TEXTURE
 bool g_textureparse = DEFAULT_TEXTUREPARSE;
-#endif
 
 bool g_chart = DEFAULT_CHART;
 
@@ -51,15 +45,9 @@ bool g_info = DEFAULT_INFO;
 bool g_pause = false;
 #endif
 
-#ifdef ZHLT_64BIT_FIX
 bool g_writeextentfile = DEFAULT_WRITEEXTENTFILE;
-#endif
 
-#ifdef ZHLT_EMBEDLIGHTMAP
-#ifdef RIPENT_TEXTURE
 bool g_deleteembeddedlightmaps = DEFAULT_DELETEEMBEDDEDLIGHTMAPS;
-#endif
-#endif
 
 
 // ScanForToken()
@@ -215,11 +203,7 @@ void ParseEntityData(const char *cTab, int iTabLength, const char *cNewLine, int
 			}
 		}
 
-#ifdef ZHLT_64BIT_FIX
 		Log("%d entities parsed.\n", (int)EntityList.size());
-#else
-		Log("%d entities parsed.\n", EntityList.size());
-#endif
 
 		//
 		// Calculate new data length.
@@ -400,18 +384,9 @@ static void     ReadBSP(const char* const name)
 {
     char            filename[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(filename, _MAX_PATH, "%s.bsp", name);
 
 	LoadBSPFile(filename);
-#else
-    safe_strncpy(filename, name, _MAX_PATH);
-    StripExtension(filename);
-    DefaultExtension(filename, ".bsp");
-
-    LoadBSPFile(name);
-#endif
-#ifdef ZHLT_64BIT_FIX
 	if (g_writeextentfile)
 	{
 #ifdef PLATFORM_CAN_CALC_EXTENT
@@ -424,25 +399,17 @@ static void     ReadBSP(const char* const name)
 		Error ("-writeextentfile is not allowed in the " PLATFORM_VERSIONSTRING " version. Please use the 32-bit version of ripent.");
 #endif
 	}
-#endif
 }
 
 static void     WriteBSP(const char* const name)
 {
     char            filename[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(filename, _MAX_PATH, "%s.bsp", name);
-#else
-    safe_strncpy(filename, name, _MAX_PATH);
-    StripExtension(filename);
-    DefaultExtension(filename, ".bsp");
-#endif
 	
 	Log ("\nUpdating %s.\n", filename); //--vluzacn
     WriteBSPFile(filename);
 }
-#ifdef RIPENT_TEXTURE
 #ifdef WORDS_BIGENDIAN
 #error "I haven't added support for bigendian. Please disable RIPENT_TEXTURE in cmdlib.h ."
 #endif
@@ -505,26 +472,14 @@ static void		WriteTextures(const char* const name)
 {
 	char wadfilename[_MAX_PATH];
 	FILE *wadfile;
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(wadfilename, _MAX_PATH, "%s.wad", name);
-#else
-    safe_strncpy(wadfilename, name, _MAX_PATH);
-    StripExtension(wadfilename);
-    DefaultExtension(wadfilename, ".wad");
-#endif
     _unlink(wadfilename);
 	wadfile = SafeOpenWrite (wadfilename);
 	Log("\nWriting %s.\n", wadfilename);
 
     char texfilename[_MAX_PATH];
 	FILE *texfile;
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(texfilename, _MAX_PATH, "%s.tex", name);
-#else
-    safe_strncpy(texfilename, name, _MAX_PATH);
-    StripExtension(texfilename);
-    DefaultExtension(texfilename, ".tex");
-#endif
     _unlink(texfilename);
 	if (!g_textureparse)
 	{
@@ -618,11 +573,7 @@ static void		WriteTextures(const char* const name)
 					strcpy (info[header.numlumps].name, tex->name);
 					header.numlumps++;
 				}
-#ifdef ZHLT_64BIT_FIX
 				fprintf (texfile, "[%d]", (int)strlen(tex->name));
-#else
-				fprintf (texfile, "[%d]", strlen(tex->name));
-#endif
 				SafeWrite (texfile, tex->name, strlen(tex->name));
 				fprintf (texfile, " %d %d\r\n", tex->width, tex->height);
 			}
@@ -643,25 +594,13 @@ static void		ReadTextures(const char *name)
 {
 	char wadfilename[_MAX_PATH];
 	FILE *wadfile;
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(wadfilename, _MAX_PATH, "%s.wad", name);
-#else
-    safe_strncpy(wadfilename, name, _MAX_PATH);
-    StripExtension(wadfilename);
-    DefaultExtension(wadfilename, ".wad");
-#endif
 	wadfile = SafeOpenRead (wadfilename);
 	Log("\nReading %s.\n", wadfilename);
 
     char texfilename[_MAX_PATH];
 	FILE *texfile;
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(texfilename, _MAX_PATH, "%s.tex", name);
-#else
-    safe_strncpy(texfilename, name, _MAX_PATH);
-    StripExtension(texfilename);
-    DefaultExtension(texfilename, ".tex");
-#endif
 	if (!g_textureparse)
 	{
 		wadinfo_t header;
@@ -759,34 +698,23 @@ static void		ReadTextures(const char *name)
 	}
 	fclose (wadfile);
 }
-#endif /*RIPENT_TEXTURE*/
 
 static void     WriteEntities(const char* const name)
 {
-#ifdef RIPENT_TEXTURE
 	char *bak_dentdata;
 	int bak_entdatasize;
-#endif
     char filename[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(filename, _MAX_PATH, "%s.ent", name);
-#else
-    safe_strncpy(filename, name, _MAX_PATH);
-    StripExtension(filename);
-    DefaultExtension(filename, ".ent");
-#endif
     _unlink(filename);
 
     {
 		if(g_parse)  // Added by Nem.
 		{
-#ifdef RIPENT_TEXTURE
 			bak_entdatasize = g_entdatasize;
 			bak_dentdata = (char *)malloc (g_entdatasize);
 			hlassume (bak_dentdata != NULL, assume_NoMemory);
 			memcpy (bak_dentdata, g_dentdata, g_entdatasize);
-#endif
 			ParseEntityData("  ", 2, "\r\n", 2, "", 0);
 		}
 
@@ -794,14 +722,12 @@ static void     WriteEntities(const char* const name)
 		Log("\nWriting %s.\n", filename);  // Added by Nem.
         SafeWrite(f, g_dentdata, g_entdatasize);
         fclose(f);
-#ifdef RIPENT_TEXTURE
 		if (g_parse)
 		{
 			g_entdatasize = bak_entdatasize;
 			memcpy (g_dentdata, bak_dentdata, bak_entdatasize);
 			free (bak_dentdata);
 		}
-#endif
     }
 }
 
@@ -809,13 +735,7 @@ static void     ReadEntities(const char* const name)
 {
     char filename[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(filename, _MAX_PATH, "%s.ent", name);
-#else
-    safe_strncpy(filename, name, _MAX_PATH);
-    StripExtension(filename);
-    DefaultExtension(filename, ".ent");
-#endif
 
     {
         FILE *f = SafeOpenRead(filename);
@@ -862,29 +782,17 @@ static void     Usage(void)
 	Banner();
 	Log("\n-= %s Options =-\n\n", g_Program);
 
-#ifdef ZHLT_CONSOLE
 	Log("    -console #      : Set to 0 to turn off the pop-up console (default is 1)\n");
-#endif
-#ifdef ZHLT_LANGFILE
 	Log("    -lang file      : localization file\n");
-#endif
 	Log("    -export         : Export entity data\n");
 	Log("    -import         : Import entity data\n\n");
 
 	Log("    -parse          : Parse and format entity data\n\n");
-#ifdef RIPENT_TEXTURE
 	Log("    -textureexport  : Export texture data\n");
 	Log("    -textureimport  : Import texture data\n");
 	Log("    -textureparse   : Parse and format texture data\n\n");
-#endif
-#ifdef ZHLT_64BIT_FIX
 	Log("    -writeextentfile : Create extent file for the map\n");
-#endif
-#ifdef ZHLT_EMBEDLIGHTMAP
-#ifdef RIPENT_TEXTURE
 	Log("    -deleteembeddedlightmaps : Delete textures created by hlrad\n");
-#endif
-#endif
 
     Log("    -texdata #      : Alter maximum texture memory limit (in kb)\n");
     Log("    -lightdata #    : Alter maximum lighting memory limit (in kb)\n");
@@ -934,7 +842,6 @@ static void     Settings()
     Log("max texture memory  [ %7d ] [ %7d ]\n", g_max_map_miptex, DEFAULT_MAX_MAP_MIPTEX);
 	Log("max lighting memory [ %7d ] [ %7d ]\n", g_max_map_lightdata, DEFAULT_MAX_MAP_LIGHTDATA);
 
-#ifdef RIPENT_TEXTURE
 	switch (g_mode)
 	{
 	case hl_import:
@@ -948,25 +855,12 @@ static void     Settings()
 		tmp = "N/A";
 		break;
 	}
-#else
-    switch (g_mode)
-    {
-    case hl_import:
-    default:
-        tmp = "Import";
-        break;
-    case hl_export:
-        tmp = "Export";
-        break;
-    }
-#endif
 
 	Log("\n");
 
     // RipEnt Specific Settings
 	Log("mode                [ %7s ] [ %7s ]\n", tmp, "N/A");
     Log("parse               [ %7s ] [ %7s ]\n", g_parse ? "on" : "off", DEFAULT_PARSE ? "on" : "off");
-#ifdef RIPENT_TEXTURE
 	switch (g_texturemode)
 	{
 	case hl_import:
@@ -982,15 +876,8 @@ static void     Settings()
 	}
 	Log("texture mode        [ %7s ] [ %7s ]\n", tmp, "N/A");
 	Log("texture parse       [ %7s ] [ %7s ]\n", g_textureparse ? "on" : "off", DEFAULT_TEXTUREPARSE ? "on" : "off");
-#endif
-#ifdef ZHLT_64BIT_FIX
 	Log("write extent file   [ %7s ] [ %7s ]\n", g_writeextentfile ? "on" : "off", DEFAULT_WRITEEXTENTFILE ? "on" : "off");
-#endif
-#ifdef ZHLT_EMBEDLIGHTMAP
-#ifdef RIPENT_TEXTURE
 	Log("delete rad textures [ %7s ] [ %7s ]\n", g_deleteembeddedlightmaps ? "on" : "off", DEFAULT_DELETEEMBEDDEDLIGHTMAPS ? "on" : "off");
-#endif
-#endif
 
     Log("\n\n");
 }
@@ -1010,7 +897,6 @@ int             main(int argc, char** argv)
 #ifdef RIPENT_PAUSE
 	atexit (&pause);
 #endif
-#ifdef ZHLT_PARAMFILE
 	int argcold = argc;
 	char ** argvold = argv;
 	{
@@ -1018,11 +904,8 @@ int             main(int argc, char** argv)
 		char ** argv;
 		ParseParamFile (argcold, argvold, argc, argv);
 		{
-#endif
-#ifdef ZHLT_CONSOLE
 	if (InitConsole (argc, argv) < 0)
 		Usage();
-#endif
     if (argc == 1)
     {
         Usage();
@@ -1034,7 +917,6 @@ int             main(int argc, char** argv)
         {
             g_mode = hl_import;
         }
-#ifdef ZHLT_CONSOLE
 		else if (!strcasecmp(argv[i], "-console"))
 		{
 #ifndef SYSTEM_WIN32
@@ -1045,7 +927,6 @@ int             main(int argc, char** argv)
 			else
 				Usage();
 		}
-#endif
         else if (!strcasecmp(argv[i], "-export"))
         {
             g_mode = hl_export;
@@ -1102,7 +983,6 @@ int             main(int argc, char** argv)
 			g_pause = true;
 		}
 #endif
-#ifdef RIPENT_TEXTURE
 		else if (!strcasecmp(argv[i], "-textureimport"))
 		{
 			g_texturemode = hl_import;
@@ -1115,22 +995,14 @@ int             main(int argc, char** argv)
 		{
 			g_textureparse = true;
 		}
-#endif
-#ifdef ZHLT_64BIT_FIX
 		else if (!strcasecmp(argv[i], "-writeextentfile"))
 		{
 			g_writeextentfile = true;
 		}
-#endif
-#ifdef ZHLT_EMBEDLIGHTMAP
-#ifdef RIPENT_TEXTURE
 		else if (!strcasecmp(argv[i], "-deleteembeddedlightmaps"))
 		{
 			g_deleteembeddedlightmaps = true;
 		}
-#endif
-#endif
-#ifdef ZHLT_LANGFILE
 		else if (!strcasecmp (argv[i], "-lang"))
 		{
 			if (i + 1 < argc)
@@ -1148,7 +1020,6 @@ int             main(int argc, char** argv)
 				Usage();
 			}
 		}
-#endif
 		else if (argv[i][0] == '-') //--vluzacn
 		{
 			Log("Unknown option: '%s'\n", argv[i]);
@@ -1157,25 +1028,12 @@ int             main(int argc, char** argv)
         else
         {
             safe_strncpy(g_Mapname, argv[i], _MAX_PATH);
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 			FlipSlashes(g_Mapname);
-#endif
             StripExtension(g_Mapname);
-#ifndef ZHLT_DEFAULTEXTENSION_FIX
-            DefaultExtension(g_Mapname, ".bsp");
-#endif
         }
     }
 
-#ifndef RIPENT_TEXTURE
-    if (g_mode == hl_undefined)
-    {
-        Log("Must specify either -import or -export\n"); //--vluzacn
-        Usage();
-    }
-#endif
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	char source[_MAX_PATH];
 	safe_snprintf(source, _MAX_PATH, "%s.bsp", g_Mapname);
     if (!q_exists(source))
@@ -1183,15 +1041,7 @@ int             main(int argc, char** argv)
         Log("bspfile '%s' does not exist\n", source); //--vluzacn
         Usage();
     }
-#else
-    if (!q_exists(g_Mapname))
-    {
-        Log("bspfile '%s' does not exist\n", g_Mapname); //--vluzacn
-        Usage();
-    }
-#endif
 
-#ifdef ZHLT_PARAMFILE
     LogStart(argcold, argvold);
 	{
 		int			 i;
@@ -1209,9 +1059,6 @@ int             main(int argc, char** argv)
 		}
 		Log("\n");
 	}
-#else
-    LogStart(argc, argv);
-#endif
 	atexit(LogEnd);
 
 	Settings();
@@ -1222,16 +1069,13 @@ int             main(int argc, char** argv)
     // BEGIN RipEnt
     start = I_FloatTime();
 
-#ifdef RIPENT_TEXTURE
 	ReadBSP(g_Mapname);
 	bool updatebsp = false;
-#ifdef ZHLT_EMBEDLIGHTMAP
 	if (g_deleteembeddedlightmaps)
 	{
 		DeleteEmbeddedLightmaps ();
 		updatebsp = true;
 	}
-#endif
 	switch (g_mode)
 	{
 	case hl_import:
@@ -1258,13 +1102,11 @@ int             main(int argc, char** argv)
 	}
     if (g_chart)
 	{
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
 		if (!CalcFaceExtents_test ())
 		{
 			Warning ("internal error: CalcFaceExtents_test failed.");
 		}
-#endif
 #endif
         PrintBSPFileSizes();
 	}
@@ -1272,58 +1114,12 @@ int             main(int argc, char** argv)
 	{
 		WriteBSP(g_Mapname);
 	}
-#else
-    switch (g_mode)
-    {
-    case hl_import:
-		ReadBSP(g_Mapname);
-        ReadEntities(g_Mapname);
-#ifdef ZHLT_CHART_AllocBlock
-		// moved here because the bsp data should not be referenced again after WriteBSPFile
-        if (g_chart)
-		{
-#ifdef ZHLT_64BIT_FIX
-#ifdef PLATFORM_CAN_CALC_EXTENT
-			if (!CalcFaceExtents_test ())
-			{
-				Warning ("internal error: CalcFaceExtents_test failed.");
-			}
-#endif
-#endif
-            PrintBSPFileSizes();
-		}
-#endif
-        WriteBSP(g_Mapname);
-        break;
-    case hl_export:
-		ReadBSP(g_Mapname);
-        WriteEntities(g_Mapname);
-        break;
-    }
-
-#ifndef ZHLT_CHART_AllocBlock
-    if (g_chart)
-	{
-#ifdef ZHLT_64BIT_FIX
-#ifdef PLATFORM_CAN_CALC_EXTENT
-		if (!CalcFaceExtents_test ())
-		{
-			Warning ("internal error: CalcFaceExtents_test failed.");
-		}
-#endif
-#endif
-        PrintBSPFileSizes();
-	}
-#endif
-#endif
 
     end = I_FloatTime();
     LogTimeElapsed(end - start);
     // END RipEnt
-#ifdef ZHLT_PARAMFILE
 		}
 	}
-#endif
 
     return 0;
 }

@@ -81,21 +81,15 @@ typedef enum
     assume_MAX_MAP_NODES,
     assume_COMPRESSVIS_OVERFLOW,
     assume_DECOMPRESSVIS_OVERFLOW,
-#ifdef ZHLT_MAX_MAP_LEAFS
 	assume_MAX_MAP_LEAFS,
-#endif
     // AJM: added in
     assume_TOOL_CANCEL,
     assume_GENERIC,
 	// KGP: added
 	assume_MAX_MAP_LIGHTING,
 	assume_MAX_INTERNAL_MAP_PLANES,
-#ifdef HLRAD_TEXTURE
 	assume_COULD_NOT_LOCATE_WAD,
-#endif
-#ifdef ZHLT_64BIT_FIX
 	assume_NO_EXTENT_FILE,
-#endif
 
     assume_last
 }

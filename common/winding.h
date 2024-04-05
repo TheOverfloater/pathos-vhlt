@@ -23,7 +23,6 @@
 #define	SIDE_BACK		1
 #define	SIDE_CROSS		-2
 
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 #ifdef HLBSP
 #ifndef DOUBLEVEC_T
 #error you must add -dDOUBLEVEC_T to the project!
@@ -39,7 +38,6 @@ typedef struct
 } dplane_t;
 extern dplane_t g_dplanes[MAX_INTERNAL_MAP_PLANES];
 #endif
-#endif
 class Winding
 {
 public:
@@ -53,9 +51,7 @@ public:
     void            getCenter(vec3_t& center) const;
     Winding*        Copy() const;
     void            Check(
-#ifdef ZHLT_WINDING_EPSILON
 		vec_t epsilon = ON_EPSILON
-#endif
 		) const;  // Developer check for validity
     bool            Valid() const;  // Runtime/user/normal check for validity
     void            addPoint(const vec3_t newpoint);
@@ -63,39 +59,25 @@ public:
 
     // Specialized Functions
     void            RemoveColinearPoints(
-#ifdef ZHLT_WINDING_EPSILON
 		vec_t epsilon = ON_EPSILON
-#endif
 		);
     bool            Clip(const dplane_t& split, bool keepon
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		); // For hlbsp
     void            Clip(const dplane_t& split, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
     void            Clip(const vec3_t normal, const vec_t dist, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
     bool            Chop(const vec3_t normal, const vec_t dist
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
     void            Divide(const dplane_t& split, Winding** front, Winding** back
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
     int             WindingOnPlaneSide(const vec3_t normal, const vec_t dist
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
 	void			CopyPoints(vec3_t *points, int &numpoints);
 
@@ -110,9 +92,7 @@ public:
 	Winding();										// Do nothing :)
 	Winding(vec3_t *points, UINT32 numpoints);		// Create from raw points
     Winding(const dface_t& face
-#ifdef ZHLT_WINDING_EPSILON
 		, vec_t epsilon = ON_EPSILON
-#endif
 		);
     Winding(const dplane_t& face);
     Winding(const vec3_t normal, const vec_t dist);

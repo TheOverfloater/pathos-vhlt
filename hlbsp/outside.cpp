@@ -25,11 +25,7 @@ static node_t*  PointInLeaf(node_t* node, const vec3_t point)
 {
     vec_t           d;
 
-#ifdef ZHLT_DETAILBRUSH
 	if (node->isportalleaf)
-#else
-    if (node->contents)
-#endif
     {
         //Log("PointInLeaf::node->contents == %i\n", node->contents);
         return node;
@@ -83,13 +79,8 @@ static void     MarkLeakTrail(portal_t* n2)
         return;
     }
 
-#ifdef HLBSP_MarkLeakTrail_FIX
     n1->winding->getCenter(p1);
     n2->winding->getCenter(p2);
-#else
-    n2->winding->getCenter(p1);
-    n1->winding->getCenter(p2);
-#endif
 
     // Linefile
     fprintf(linefile, "%f %f %f - %f %f %f\n", p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
@@ -115,7 +106,6 @@ static void     MarkLeakTrail(portal_t* n2)
 //      Returns true if an occupied leaf is reached
 //      If fill is false, just check, don't fill 
 // =====================================================================================
-#ifdef ZHLT_DETAILBRUSH
 static void FreeDetailNode_r (node_t *n)
 {
 	int i;
@@ -158,7 +148,6 @@ static void FillLeaf (node_t *l)
 	l->contents = CONTENTS_SOLID;
 	l->planenum = -1;
 }
-#endif
 static int      hit_occupied;
 static int      backdraw;
 static bool     RecursiveFillOutside(node_t* l, const bool fill)
@@ -167,9 +156,6 @@ static bool     RecursiveFillOutside(node_t* l, const bool fill)
     int             s;
 
     if ((l->contents == CONTENTS_SOLID) || (l->contents == CONTENTS_SKY) 
-#ifdef ZHLT_DETAIL
-        || (l->contents == CONTENTS_DETAIL)
-#endif
         )
 	{
         /*if (l->contents != CONTENTS_SOLID)
@@ -195,12 +181,7 @@ static bool     RecursiveFillOutside(node_t* l, const bool fill)
     // fill it and it's neighbors
     if (fill)
     {
-#ifdef ZHLT_DETAILBRUSH
 		FillLeaf (l);
-#else
-        l->contents = CONTENTS_SOLID;
-        l->planenum = -1;
-#endif
     }
     outleafs++;
 
@@ -226,7 +207,6 @@ static bool     RecursiveFillOutside(node_t* l, const bool fill)
 //  ClearOutFaces_r
 //      Removes unused nodes
 // =====================================================================================
-#ifdef ZHLT_DETAILBRUSH
 static void MarkFacesInside_r (node_t *node)
 {
 	if (node->planenum == -1)
@@ -243,14 +223,10 @@ static void MarkFacesInside_r (node_t *node)
 		MarkFacesInside_r (node->children[1]);
 	}
 }
-#endif
 static node_t*  ClearOutFaces_r(node_t* node)
 {
     face_t*         f;
     face_t*         fnext;
-#ifndef ZHLT_DETAILBRUSH
-    face_t**        fp;
-#endif
     portal_t*       p;
 
     // mark the node and all it's faces, so they
@@ -263,11 +239,7 @@ static node_t*  ClearOutFaces_r(node_t* node)
     }
 
     // go down the children
-#ifdef ZHLT_DETAILBRUSH
 	if (!node->isportalleaf)
-#else
-    if (node->planenum != -1)
-#endif
     {
         //
         // decision node
@@ -305,9 +277,7 @@ static node_t*  ClearOutFaces_r(node_t* node)
             {
                 node->contents = CONTENTS_SOLID;
                 node->planenum = -1;
-#ifdef ZHLT_DETAILBRUSH
 				node->isportalleaf = true;
-#endif
                 return node;
             }
 
@@ -350,26 +320,11 @@ static node_t*  ClearOutFaces_r(node_t* node)
             }
         }
 
-#ifdef ZHLT_DETAILBRUSH
 		MarkFacesInside_r (node);
-#else
-        // mark all of the faces to be drawn
-        for (fp = node->markfaces; *fp; fp++)
-        {
-            (*fp)->outputnumber = 0;
-        }
-#endif
 
         return node;
     }
 
-#ifndef ZHLT_DETAILBRUSH
-    // this was a filled in node, so free the markfaces
-    if (node->planenum != -1)
-    {
-        free(node->markfaces);
-    }
-#endif
 
     return node;
 }
@@ -491,10 +446,8 @@ node_t*         FillOutside(node_t* node, const bool leakfile, const unsigned hu
         Log("skipped\n");
         return node;
     }
-#ifdef HLBSP_REMOVEHULL2
 	if (hullnum == 2 && g_nohull2)
 		return node;
-#endif
 
     //
     // place markers for all entities so
@@ -621,13 +574,11 @@ node_t*         FillOutside(node_t* node, const bool leakfile, const unsigned hu
             
         return node;
     }
-#ifdef HLBSP_DELETELEAKFILE
 	if (leakfile && !ret)
 	{
 		unlink(g_linefilename);
 		unlink(g_pointfilename);
 	}
-#endif
 
     // now go back and fill things in
     valid++;
@@ -653,14 +604,9 @@ node_t*         FillOutside(node_t* node, const bool leakfile, const unsigned hu
     return node;
 }
 
-#ifdef HLBSP_FILL
 void			ResetMark_r (node_t* node)
 {
-#ifdef ZHLT_DETAILBRUSH
 	if (node->isportalleaf)
-#else
-	if (node->planenum == -1)
-#endif
 	{
 		if (node->contents == CONTENTS_SOLID || node->contents == CONTENTS_SKY)
 		{
@@ -693,19 +639,11 @@ void			MarkOccupied_r (node_t* node)
 }
 void			RemoveUnused_r (node_t* node)
 {
-#ifdef ZHLT_DETAILBRUSH
 	if (node->isportalleaf)
-#else
-	if (node->planenum == -1)
-#endif
 	{
 		if (node->empty == 1)
 		{
-#ifdef ZHLT_DETAILBRUSH
 			FillLeaf (node);
-#else
-			node->contents = CONTENTS_SOLID;
-#endif
 		}
 	}
 	else
@@ -736,4 +674,3 @@ void			FillInside (node_t* node)
 	}
 	RemoveUnused_r (node);
 }
-#endif

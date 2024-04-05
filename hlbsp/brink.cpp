@@ -1,6 +1,5 @@
 #include "bsp5.h"
 
-#ifdef HLBSP_BRINKHACK
 
 #include <list>
 #include <map>
@@ -280,9 +279,7 @@ typedef struct btreeedge_s
 
 	bool tmp_tested;
 	int tmp_side;
-#ifdef HLBSP_BRINKNOTUSEDBYLEAF_FIX
 	bool tmp_onleaf[2];
-#endif
 }
 btreeedge_t;
 
@@ -726,12 +723,10 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 				{
 					tp->tmp_side = SIDE_ON;
 				}
-#ifdef HLBSP_BRINKHACK_BUGFIX
 #if 0
 				// let's mess up something and see whether the code is fragile or robust
 				static int randcounter = 0;
 				if (randcounter++ % 8 == 0) tp->tmp_side = randcounter % 3;
-#endif
 #endif
 			}
 		}
@@ -762,27 +757,8 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 					te->tmp_side = SIDE_CROSS;
 				}
 			}
-#ifdef HLBSP_BRINKNOTUSEDBYLEAF_FIX
 			// The plane does not necessarily split the leaf into two, because of epsilon problem etc., and this will cause "Error: CollectBrinks_r: not leaf" on some maps.
 			// In addition, by the time of this step (split edges), the plane has not splitted the leaf yet, so splitting the brink leafs now will break the integrety of the entire geometry. (We want the four steps to be as independent on each other as possible, that is, the entire geometry remains valid after each step.)
-#else
-			if (!te->infinite)
-			{
-				if (te->tmp_side == SIDE_ON)
-				{
-					// since the plane splits the leaf into two, it must also split the brink into two
-					BrinkSplitClipnode (te->brink, plane, planenum, tl->clipnode, c0, c1);
-				}
-				else if (te->tmp_side == SIDE_FRONT)
-				{
-					BrinkReplaceClipnode (te->brink, tl->clipnode, c0);
-				}
-				else if (te->tmp_side == SIDE_BACK)
-				{
-					BrinkReplaceClipnode (te->brink, tl->clipnode, c1);
-				}
-			}
-#endif
 			if (te->tmp_side == SIDE_CROSS)
 			{
 				btreepoint_t *tp0 = GetPointFromEdge (te, false);
@@ -805,9 +781,6 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 					te0->brink = CopyBrink (te->brink);
 					VectorCopy (tpmid->v, te0->brink->start);
 					VectorCopy (tp0->v, te0->brink->stop);
-#ifndef HLBSP_BRINKNOTUSEDBYLEAF_FIX
-					BrinkReplaceClipnode (te0->brink, tl->clipnode, (tp0->tmp_side == SIDE_BACK? c1: c0));
-#endif
 				}
 				btreeedge_t *te1 = AllocTreeedge (numobjects, te->infinite);
 				SetEdgePoints (te1, tpmid, tp1);
@@ -818,9 +791,6 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 					te1->brink = CopyBrink (te->brink);
 					VectorCopy (tp1->v, te1->brink->start);
 					VectorCopy (tpmid->v, te1->brink->stop);
-#ifndef HLBSP_BRINKNOTUSEDBYLEAF_FIX
-					BrinkReplaceClipnode (te1->brink, tl->clipnode, (tp1->tmp_side == SIDE_BACK? c1: c0));
-#endif
 				}
 				btreeface_l::iterator fj;
 				while ((fj = te->faces->begin ()) != te->faces->end ())
@@ -957,9 +927,6 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 						hlassume (false, assume_first);
 					}
 					BrinkSplitClipnode (te->brink, tf->plane, tf->planenum, NULL, GetLeafFromFace (tf, tf->planeside)->clipnode, GetLeafFromFace (tf, !tf->planeside)->clipnode);
-#ifndef HLBSP_BRINKNOTUSEDBYLEAF_FIX
-					BrinkSplitClipnode (te->brink, plane, planenum, tl->clipnode, c0, c1);
-#endif
 				}
 				te->tmp_tested = true;
 				te->tmp_side = SIDE_ON;
@@ -1070,10 +1037,6 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 			}
 		}
 
-#ifndef HLBSP_BRINKHACK_BUGFIX
-		DeleteLeaf (numobjects, tl);
-#endif
-#ifdef HLBSP_BRINKNOTUSEDBYLEAF_FIX
 		btreeleaf_t *(frontback[2]) = {front, back};
 		for (int side = 0; side < 2; side++)
 		{
@@ -1140,10 +1103,7 @@ void SplitTreeLeaf (int &numobjects, btreeleaf_t *tl, const dplane_t *plane, int
 				}
 			}
 		}
-#endif
-#ifdef HLBSP_BRINKHACK_BUGFIX
 		DeleteLeaf (numobjects, tl);
-#endif
 	}
 }
 
@@ -1551,7 +1511,6 @@ void AnalyzeBrinks (bbrinkinfo_t *info)
 		bbrink_t *b = info->brinks[i];
 		if (b->numnodes <= 5) // quickly reject the most trivial brinks
 		{
-#ifdef HLBSP_BRINKNOTUSEDBYLEAF_FIX
 			if (b->numnodes != 3 && b->numnodes != 5)
 			{
 				PrintOnce ("AnalyzeBrinks: internal error 1");
@@ -1572,11 +1531,6 @@ void AnalyzeBrinks (bbrinkinfo_t *info)
 				countgood++;
 			}
 			continue;
-#else
-			hlassume (b->numnodes == 5, assume_first);
-			countgood++;
-			continue;
-#endif
 		}
 		
 		if (b->numnodes > 2 * MAXBRINKWEDGES - 1)
@@ -1670,23 +1624,19 @@ void AnalyzeBrinks (bbrinkinfo_t *info)
 			for (int side2 = 0; side2 < 2; side2++)
 			{
 				btreepoint_t *tp = GetPointFromEdge (b->edge, side2);
-#ifdef HLBSP_BRINKHACK_BUGFIX
 				if (tp->infinite)
 				{
 					continue;
 				}
-#endif
 				for (btreeedge_l::iterator ei = tp->edges->begin (); ei != tp->edges->end (); ei++)
 				{
 					for (btreeface_l::iterator fi = ei->e->faces->begin (); fi != ei->e->faces->end (); fi++)
 					{
-#ifdef HLBSP_BRINKHACK_BUGFIX
 						if (fi->f->infinite || GetLeafFromFace (fi->f, false)->infinite || GetLeafFromFace (fi->f, true)->infinite)
 						{
 							PrintOnce ("AnalyzeBrinks: internal error: an infinite object contains a finite object");
 							hlassume (false, assume_first);
 						}
-#endif
 						for (int side3 = 0; side3 < 2; side3++)
 						{
 							vec3_t normal;
@@ -1775,12 +1725,10 @@ void DeleteClipnodes (bbrinkinfo_t *info)
 {
 	for (int i = 0; i < info->numclipnodes; i++)
 	{
-#ifdef HLBSP_BRINKHACK_BUGFIX
 		if (!info->clipnodes[i].isleaf)
 		{
 			continue;
 		}
-#endif
 		bpartition_t *p;
 		while ((p = info->clipnodes[i].partitions) != NULL)
 		{
@@ -1880,19 +1828,15 @@ void *CreateBrinkinfo (const dclipnode_t *clipnodes, int headnode)
 	return info;
 }
 
-#ifdef HLBSP_MERGECLIPNODE
 extern int count_mergedclipnodes;
 typedef std::map< std::pair< int, std::pair< int, int > >, int > clipnodemap_t;
 inline clipnodemap_t::key_type MakeKey (const dclipnode_t &c)
 {
 	return std::make_pair (c.planenum, std::make_pair (c.children[0], c.children[1]));
 }
-#endif
 
 bool FixBrinks_r_r (const bclipnode_t *clipnode, const bpartition_t *p, bbrinklevel_e level, int &headnode_out, dclipnode_t *begin, dclipnode_t *end, dclipnode_t *&current
-#ifdef HLBSP_MERGECLIPNODE
 					, clipnodemap_t *outputmap
-#endif
 					)
 {
 	while (p && p->type > level)
@@ -1905,32 +1849,20 @@ bool FixBrinks_r_r (const bclipnode_t *clipnode, const bpartition_t *p, bbrinkle
 		return true;
 	}
 	dclipnode_t *cn;
-#ifdef HLBSP_MERGECLIPNODE
 	dclipnode_t tmpclipnode;
 	cn = &tmpclipnode;
 	dclipnode_t *c = current;
 	current++;
-#else
-	if (current >= end)
-	{
-		return false;
-	}
-	cn = current;
-	current++;
-#endif
 	cn->planenum = p->planenum;
 	cn->children[p->planeside] = p->content;
 	int r;
 	if (!FixBrinks_r_r (clipnode, p->next, level, r, begin, end, current
-#ifdef HLBSP_MERGECLIPNODE
 		, outputmap
-#endif
 		))
 	{
 		return false;
 	}
 	cn->children[!p->planeside] = r;
-#ifdef HLBSP_MERGECLIPNODE
 	clipnodemap_t::iterator output;
 	output = outputmap->find (MakeKey (*cn));
 	if (g_noclipnodemerge || output == outputmap->end ())
@@ -1953,57 +1885,38 @@ bool FixBrinks_r_r (const bclipnode_t *clipnode, const bpartition_t *p, bbrinkle
 		current = c;
 		headnode_out = output->second; // use the existing clipnode
 	}
-#else
-	headnode_out = cn - begin;
-#endif
 	return true;
 }
 
 bool FixBrinks_r (const bclipnode_t *clipnode, bbrinklevel_e level, int &headnode_out, dclipnode_t *begin, dclipnode_t *end, dclipnode_t *&current
-#ifdef HLBSP_MERGECLIPNODE
 				, clipnodemap_t *outputmap
-#endif
 				)
 {
 	if (clipnode->isleaf)
 	{
 		return FixBrinks_r_r (clipnode, clipnode->partitions, level, headnode_out, begin, end, current
-#ifdef HLBSP_MERGECLIPNODE
 							, outputmap
-#endif
 							);
 	}
 	else
 	{
 		dclipnode_t *cn;
-#ifdef HLBSP_MERGECLIPNODE
 		dclipnode_t tmpclipnode;
 		cn = &tmpclipnode;
 		dclipnode_t *c = current;
 		current++;
-#else
-		if (current >= end)
-		{
-			return false;
-		}
-		cn = current;
-		current++;
-#endif
 		cn->planenum = clipnode->planenum;
 		for (int k = 0; k < 2; k++)
 		{
 			int r;
 			if (!FixBrinks_r (clipnode->children[k], level, r, begin, end, current
-#ifdef HLBSP_MERGECLIPNODE
 				, outputmap
-#endif
 				))
 			{
 				return false;
 			}
 			cn->children[k] = r;
 		}
-#ifdef HLBSP_MERGECLIPNODE
 		clipnodemap_t::iterator output;
 		output = outputmap->find (MakeKey (*cn));
 		if (g_noclipnodemerge || output == outputmap->end ())
@@ -2026,9 +1939,6 @@ bool FixBrinks_r (const bclipnode_t *clipnode, bbrinklevel_e level, int &headnod
 			current = c;
 			headnode_out = output->second; // use existing clipnode
 		}
-#else
-		headnode_out = cn - begin;
-#endif
 		return true;
 	}
 }
@@ -2039,14 +1949,10 @@ bool FixBrinks (const void *brinkinfo, bbrinklevel_e level, int &headnode_out, d
 	dclipnode_t *begin = clipnodes_out;
 	dclipnode_t *end = &clipnodes_out[maxsize];
 	dclipnode_t *current = &clipnodes_out[size];
-#ifdef HLBSP_MERGECLIPNODE
 	clipnodemap_t outputmap;
-#endif
 	int r;
 	if (!FixBrinks_r (&info->clipnodes[0], level, r, begin, end, current
-#ifdef HLBSP_MERGECLIPNODE
 		, &outputmap
-#endif
 		))
 	{
 		return false;
@@ -2063,4 +1969,3 @@ void DeleteBrinkinfo (void *brinkinfo)
 	free (info);
 }
 
-#endif

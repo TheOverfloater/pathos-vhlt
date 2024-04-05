@@ -5,12 +5,7 @@
 //
 #include "qrad.h"
 
-#ifdef HLRAD_HULLU
 
-#ifndef HLRAD_TRANSPARENCY_FAST
-#define TRANS_LIST_GROWTH 64
-#define RAW_LIST_GROWTH 2048
-#endif
 
 typedef struct {
 	unsigned	p1;
@@ -37,11 +32,7 @@ const vec3_t vec3_one = {1.0,1.0,1.0};
 static unsigned AddTransparencyToDataList(const vec3_t trans)
 {
 	//Check if this value is in list already
-#ifdef ZHLT_64BIT_FIX
 	for(unsigned int i = 0; i < s_trans_count; i++)
-#else
-	for(int i = 0; i < s_trans_count; i++)
-#endif
 	{
 		if( VectorCompare( trans, s_trans_list[i] ) )
 		{
@@ -53,28 +44,17 @@ static unsigned AddTransparencyToDataList(const vec3_t trans)
 	while( s_trans_count >= s_max_trans_count )
 	{
 		unsigned int old_max_count = s_max_trans_count;
-#ifdef HLRAD_TRANSPARENCY_FAST
 		s_max_trans_count = qmax (64u, (unsigned int)((double)s_max_trans_count * 1.41));
-#else
-		s_max_trans_count += TRANS_LIST_GROWTH;
-#endif
-#ifdef ZHLT_64BIT_FIX
 		if (s_max_trans_count >= (unsigned int)INT_MAX)
 		{
 			Error ("AddTransparencyToDataList: array size exceeded INT_MAX");
 		}
-#endif
 		
 		s_trans_list = (vec3_t *)realloc( s_trans_list, sizeof(vec3_t) * s_max_trans_count );
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 		hlassume (s_trans_list != NULL, assume_NoMemory);
-#endif
 		
-#ifdef HLRAD_TRANSPARENCY_FAST
 		memset( &s_trans_list[old_max_count], 0, sizeof(vec3_t) * (s_max_trans_count - old_max_count) );
-#else
-		memset( &s_trans_list[old_max_count], 0, sizeof(vec3_t) * TRANS_LIST_GROWTH );
-#endif
 		
 		if( old_max_count == 0 )
 		{
@@ -102,28 +82,17 @@ void	AddTransparencyToRawArray(const unsigned p1, const unsigned p2, const vec3_
 	while( s_raw_count >= s_max_raw_count )
 	{
 		unsigned int old_max_count = s_max_raw_count;
-#ifdef HLRAD_TRANSPARENCY_FAST
 		s_max_raw_count = qmax (64u, (unsigned int)((double)s_max_raw_count * 1.41));
-#else
-		s_max_raw_count += RAW_LIST_GROWTH;
-#endif
-#ifdef ZHLT_64BIT_FIX
 		if (s_max_raw_count >= (unsigned int)INT_MAX)
 		{
 			Error ("AddTransparencyToRawArray: array size exceeded INT_MAX");
 		}
-#endif
 		
 		s_raw_list = (transList_t *)realloc( s_raw_list, sizeof(transList_t) * s_max_raw_count );
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 		hlassume (s_raw_list != NULL, assume_NoMemory);
-#endif
 		
-#ifdef HLRAD_TRANSPARENCY_FAST
 		memset( &s_raw_list[old_max_count], 0, sizeof(transList_t) * (s_max_raw_count - old_max_count) );
-#else
-		memset( &s_raw_list[old_max_count], 0, sizeof(transList_t) * RAW_LIST_GROWTH );
-#endif
 	}
 	
 	s_raw_list[s_raw_count].p1 = p1;
@@ -169,9 +138,8 @@ void	CreateFinalTransparencyArrays(const char *print_name)
 	//double sized (faster find function for sorted list)
 	s_sorted_count = s_raw_count * 2;
 	s_sorted_list = (transList_t *)malloc( sizeof(transList_t) * s_sorted_count );
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 	hlassume (s_sorted_list != NULL, assume_NoMemory);
-#endif
 	
 	//First half have p1>p2
 	for( unsigned int i = 0; i < s_raw_count; i++ )
@@ -191,11 +159,7 @@ void	CreateFinalTransparencyArrays(const char *print_name)
 	//need to sorted for fast search function
 	qsort( s_sorted_list, s_sorted_count, sizeof(transList_t), SortList );
 	
-#ifdef ZHLT_64BIT_FIX
 	size_t size = s_sorted_count * sizeof(transList_t) + s_max_trans_count * sizeof(vec3_t);
-#else
-	unsigned size = s_sorted_count * sizeof(transList_t) + s_max_trans_count * sizeof(vec3_t);
-#endif
 	if ( size > 1024 * 1024 )
         	Log("%-20s: %5.1f megs \n", print_name, (double)size / (1024.0 * 1024.0));
         else if ( size > 1024 )
@@ -305,15 +269,10 @@ void GetTransparency(const unsigned p1, const unsigned p2, vec3_t &trans, unsign
 }
 
 
-#endif /*HLRAD_HULLU*/
 
 
 
 
-#ifdef HLRAD_OPAQUE_STYLE_BOUNCE
-#ifndef HLRAD_TRANSPARENCY_FAST
-#define STYLE_LIST_GROWTH 2048
-#endif
 typedef struct {
 	unsigned	p1;
 	unsigned	p2;
@@ -333,28 +292,17 @@ void	AddStyleToStyleArray(const unsigned p1, const unsigned p2, const int style)
 	while( s_style_count >= s_max_style_count )
 	{
 		unsigned int old_max_count = s_max_style_count;
-#ifdef HLRAD_TRANSPARENCY_FAST
 		s_max_style_count = qmax (64u, (unsigned int)((double)s_max_style_count * 1.41));
-#else
-		s_max_style_count += STYLE_LIST_GROWTH;
-#endif
-#ifdef ZHLT_64BIT_FIX
 		if (s_max_style_count >= (unsigned int)INT_MAX)
 		{
 			Error ("AddStyleToStyleArray: array size exceeded INT_MAX");
 		}
-#endif
 		
 		s_style_list = (styleList_t *)realloc( s_style_list, sizeof(styleList_t) * s_max_style_count );
-#ifdef HLRAD_HLASSUMENOMEMORY
+
 		hlassume (s_style_list != NULL, assume_NoMemory);
-#endif
 		
-#ifdef HLRAD_TRANSPARENCY_FAST
 		memset( &s_style_list[old_max_count], 0, sizeof(styleList_t) * (s_max_style_count - old_max_count) );
-#else
-		memset( &s_style_list[old_max_count], 0, sizeof(styleList_t) * STYLE_LIST_GROWTH );
-#endif
 	}
 	
 	s_style_list[s_style_count].p1 = p1;
@@ -389,11 +337,7 @@ void	CreateFinalStyleArrays(const char *print_name)
 	//need to sorted for fast search function
 	qsort( s_style_list, s_style_count, sizeof(styleList_t), SortStyleList );
 	
-#ifdef ZHLT_64BIT_FIX
 	size_t size = s_max_style_count * sizeof(styleList_t);
-#else
-	unsigned size = s_max_style_count * sizeof(styleList_t);
-#endif
 	if ( size > 1024 * 1024 )
         	Log("%-20s: %5.1f megs \n", print_name, (double)size / (1024.0 * 1024.0));
         else if ( size > 1024 )
@@ -449,4 +393,3 @@ void GetStyle(const unsigned p1, const unsigned p2, int &style, unsigned int &ne
 	
 	next_index = s_style_count;
 }
-#endif

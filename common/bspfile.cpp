@@ -50,26 +50,17 @@ dnode_t         g_dnodes[MAX_MAP_NODES];
 int             g_dnodes_checksum;
 
 int             g_numtexinfo;
-#ifdef HLCSG_HLBSP_REDUCETEXTURE
-texinfo_t       g_texinfo[MAX_INTERNAL_MAP_TEXINFO];
-#else
+
 texinfo_t       g_texinfo[MAX_MAP_TEXINFO];
-#endif
 int             g_texinfo_checksum;
 
 int             g_numfaces;
 dface_t         g_dfaces[MAX_MAP_FACES];
 int             g_dfaces_checksum;
 
-#ifdef ZHLT_XASH2
-int             g_numclipnodes[MAX_MAP_HULLS - 1];
-dclipnode_t     g_dclipnodes[MAX_MAP_HULLS - 1][MAX_MAP_CLIPNODES];
-int             g_dclipnodes_checksum[MAX_MAP_HULLS - 1];
-#else
 int             g_numclipnodes;
 dclipnode_t     g_dclipnodes[MAX_MAP_CLIPNODES];
 int             g_dclipnodes_checksum;
-#endif
 
 int             g_numedges;
 dedge_t         g_dedges[MAX_MAP_EDGES];
@@ -165,19 +156,15 @@ void            DecompressVis(const byte* src, byte* const dest, const unsigned 
     byte*           out;
     int             row;
 
-#ifdef ZHLT_DecompressVis_FIX
 	row = (g_dmodels[0].visleafs + 7) >> 3; // same as the length used by VIS program in CompressVis
 	// The wrong size will cause DecompressVis to spend extremely long time once the source pointer runs into the invalid area in g_dvisdata (for example, in BuildFaceLights, some faces could hang for a few seconds), and sometimes to crash.
-#else
-    row = (g_numleafs + 7) >> 3;
-#endif
+
     out = dest;
 
     do
-    {
-#ifdef ZHLT_DecompressVis_FIX
+	{
 		hlassume (src - g_dvisdata < g_visdatasize, assume_DECOMPRESSVIS_OVERFLOW);
-#endif
+
         if (*src)
         {
             current_length++;
@@ -189,9 +176,8 @@ void            DecompressVis(const byte* src, byte* const dest, const unsigned 
             continue;
         }
 		
-#ifdef ZHLT_DecompressVis_FIX
 		hlassume (&src[1] - g_dvisdata < g_visdatasize, assume_DECOMPRESSVIS_OVERFLOW);
-#endif
+
         c = src[1];
         src += 2;
         while (c)
@@ -332,27 +318,12 @@ static void     SwapBSPFile(const bool todisk)
         g_dleafs[i].visofs = LittleLong(g_dleafs[i].visofs);
     }
 
-    //
-    // clipnodes
-    //
-#ifdef ZHLT_XASH2
-	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
-	{
-		for (i = 0; i < g_numclipnodes[hull - 1]; i++)
-		{
-			g_dclipnodes[hull - 1][i].planenum = LittleLong(g_dclipnodes[hull - 1][i].planenum);
-			g_dclipnodes[hull - 1][i].children[0] = LittleShort(g_dclipnodes[hull - 1][i].children[0]);
-			g_dclipnodes[hull - 1][i].children[1] = LittleShort(g_dclipnodes[hull - 1][i].children[1]);
-		}
-	}
-#else
     for (i = 0; i < g_numclipnodes; i++)
     {
         g_dclipnodes[i].planenum = LittleLong(g_dclipnodes[i].planenum);
         g_dclipnodes[i].children[0] = LittleLong(g_dclipnodes[i].children[0]);
         g_dclipnodes[i].children[1] = LittleLong(g_dclipnodes[i].children[1]);
     }
-#endif
 
     //
     // miptex
@@ -454,13 +425,15 @@ void            LoadBSPImage(dheader_t* const header)
         ((int*)header)[i] = LittleLong(((int*)header)[i]);
     }
 
-	if(header->id != PBSP_HEADER)
+	if (header->id != PBSP_HEADER)
+	{
 		Error("Not a valid Pathos BSP format");
+	}
 
-    if (header->version != PBSP_VERSION)
-    {
-        Error("BSP is version %i, not %i", header->version, PBSP_VERSION);
-    }
+	if (header->version != PBSP_VERSION)
+	{
+		Error("BSP is version %i, not %i", header->version, PBSP_VERSION);
+	}
 
     g_nummodels = CopyLump(LUMP_MODELS, g_dmodels, sizeof(dmodel_t), header);
     g_numvertexes = CopyLump(LUMP_VERTEXES, g_dvertexes, sizeof(dvertex_t), header);
@@ -468,24 +441,7 @@ void            LoadBSPImage(dheader_t* const header)
     g_numleafs = CopyLump(LUMP_LEAFS, g_dleafs, sizeof(dleaf_t), header);
     g_numnodes = CopyLump(LUMP_NODES, g_dnodes, sizeof(dnode_t), header);
     g_numtexinfo = CopyLump(LUMP_TEXINFO, g_texinfo, sizeof(texinfo_t), header);
-#ifdef ZHLT_XASH2
-	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
-	{
-		int lump;
-		switch (hull)
-		{
-		case 1: lump = LUMP_CLIPNODES; break;
-		case 2: lump = LUMP_CLIPNODES2; break;
-		case 3: lump = LUMP_CLIPNODES3; break;
-		default:
-			Error ("bad hull number %d", hull);
-			break;
-		}
-		g_numclipnodes[hull - 1] = CopyLump(lump, g_dclipnodes[hull - 1], sizeof(dclipnode_t), header);
-	}
-#else
     g_numclipnodes = CopyLump(LUMP_CLIPNODES, g_dclipnodes, sizeof(dclipnode_t), header);
-#endif
     g_numfaces = CopyLump(LUMP_FACES, g_dfaces, sizeof(dface_t), header);
     g_nummarksurfaces = CopyLump(LUMP_MARKSURFACES, g_dmarksurfaces, sizeof(g_dmarksurfaces[0]), header);
     g_numsurfedges = CopyLump(LUMP_SURFEDGES, g_dsurfedges, sizeof(g_dsurfedges[0]), header);
@@ -508,14 +464,7 @@ void            LoadBSPImage(dheader_t* const header)
     g_dleafs_checksum = FastChecksum(g_dleafs, g_numleafs * sizeof(g_dleafs[0]));
     g_dnodes_checksum = FastChecksum(g_dnodes, g_numnodes * sizeof(g_dnodes[0]));
     g_texinfo_checksum = FastChecksum(g_texinfo, g_numtexinfo * sizeof(g_texinfo[0]));
-#ifdef ZHLT_XASH2
-	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
-	{
-		g_dclipnodes_checksum[hull - 1] = FastChecksum(g_dclipnodes[hull - 1], g_numclipnodes[hull - 1] * sizeof(g_dclipnodes[hull - 1][0]));
-	}
-#else
     g_dclipnodes_checksum = FastChecksum(g_dclipnodes, g_numclipnodes * sizeof(g_dclipnodes[0]));
-#endif
     g_dfaces_checksum = FastChecksum(g_dfaces, g_numfaces * sizeof(g_dfaces[0]));
     g_dmarksurfaces_checksum = FastChecksum(g_dmarksurfaces, g_nummarksurfaces * sizeof(g_dmarksurfaces[0]));
     g_dsurfedges_checksum = FastChecksum(g_dsurfedges, g_numsurfedges * sizeof(g_dsurfedges[0]));
@@ -558,7 +507,7 @@ void            WriteBSPFile(const char* const filename)
     SwapBSPFile(true);
 
 	header->id = PBSP_HEADER;
-    header->version = LittleLong(PBSP_VERSION);
+	header->version = LittleLong(PBSP_VERSION);
 
     bspfile = SafeOpenWrite(filename);
     SafeWrite(bspfile, header, sizeof(dheader_t));         // overwritten later
@@ -570,24 +519,7 @@ void            WriteBSPFile(const char* const filename)
     AddLump(LUMP_NODES,     g_dnodes,       g_numnodes * sizeof(dnode_t),       header, bspfile);
     AddLump(LUMP_TEXINFO,   g_texinfo,      g_numtexinfo * sizeof(texinfo_t),   header, bspfile);
     AddLump(LUMP_FACES,     g_dfaces,       g_numfaces * sizeof(dface_t),       header, bspfile);
-#ifdef ZHLT_XASH2
-	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
-	{
-		int lump;
-		switch (hull)
-		{
-		case 1: lump = LUMP_CLIPNODES; break;
-		case 2: lump = LUMP_CLIPNODES2; break;
-		case 3: lump = LUMP_CLIPNODES3; break;
-		default:
-			Error ("bad hull number %d", hull);
-			break;
-		}
-		AddLump(lump, g_dclipnodes[hull - 1],   g_numclipnodes[hull - 1] * sizeof(dclipnode_t), header, bspfile);
-	}
-#else
     AddLump(LUMP_CLIPNODES, g_dclipnodes,   g_numclipnodes * sizeof(dclipnode_t), header, bspfile);
-#endif
 
     AddLump(LUMP_MARKSURFACES, g_dmarksurfaces, g_nummarksurfaces * sizeof(g_dmarksurfaces[0]), header, bspfile);
     AddLump(LUMP_SURFEDGES, g_dsurfedges,   g_numsurfedges * sizeof(g_dsurfedges[0]), header, bspfile);
@@ -605,7 +537,6 @@ void            WriteBSPFile(const char* const filename)
     fclose(bspfile);
 }
 
-#ifdef ZHLT_64BIT_FIX
 
 #ifdef PLATFORM_CAN_CALC_EXTENT
 // =====================================================================================
@@ -712,11 +643,7 @@ void GetFaceExtents (int facenum, int mins_out[2], int maxs_out[2])
 	mins[0] = mins[1] = 999999;
 	maxs[0] = maxs[1] = -99999;
 
-#ifdef ZHLT_EMBEDLIGHTMAP
 	tex = &g_texinfo[ParseTexinfoForFace (f)];
-#else
-	tex = &g_texinfo[f->texinfo];
-#endif
 
 	for (i = 0; i < f->numedges; i++)
 	{
@@ -857,11 +784,9 @@ void GetFaceExtents (int facenum, int mins_out[2], int maxs_out[2])
 }
 #endif
 
-#endif
 //
 // =====================================================================================
 //
-#ifdef ZHLT_CHART_AllocBlock
 const int BLOCK_WIDTH = 128;
 const int BLOCK_HEIGHT = 128;
 typedef struct lightmapblock_s
@@ -925,10 +850,8 @@ void DoAllocBlock (lightmapblock_t *blocks, int w, int h)
 }
 int CountBlocks ()
 {
-#ifdef ZHLT_64BIT_FIX
 #if !defined (PLATFORM_CAN_CALC_EXTENT) && !defined (HLRAD)
 	return -1; // otherwise GetFaceExtents will error
-#endif
 #endif
 	lightmapblock_t *blocks;
 	blocks = (lightmapblock_t *)malloc (sizeof (lightmapblock_t));
@@ -938,18 +861,10 @@ int CountBlocks ()
 	for (k = 0; k < g_numfaces; k++)
 	{
 		dface_t *f = &g_dfaces[k];
-#ifdef ZHLT_EMBEDLIGHTMAP
 		const char *texname =  GetTextureByNumber (ParseTexinfoForFace (f));
-#else
-		const char *texname =  GetTextureByNumber (f->texinfo);
-#endif
 		if (!strncmp (texname, "sky", 3) //sky, no lightmap allocation.
 			|| !strncmp (texname, "!", 1) || !strncasecmp (texname, "water", 5) || !strncasecmp (texname, "laser", 5) //water, no lightmap allocation.
-#ifdef ZHLT_EMBEDLIGHTMAP
 			|| (g_texinfo[ParseTexinfoForFace (f)].flags & TEX_SPECIAL) //aaatrigger, I don't know.
-#else
-			|| (g_texinfo[f->texinfo].flags & TEX_SPECIAL) //aaatrigger, I don't know.
-#endif
 			)
 		{
 			continue;
@@ -957,7 +872,6 @@ int CountBlocks ()
 		int extents[2];
 		vec3_t point;
 		{
-#ifdef ZHLT_64BIT_FIX
 			int bmins[2];
 			int bmaxs[2];
 			int i;
@@ -974,54 +888,6 @@ int CountBlocks ()
 				dvertex_t *v = &g_dvertexes[g_dedges[abs (e)].v[e >= 0? 0: 1]];
 				VectorCopy (v->point, point);
 			}
-#else
-			float mins[2], maxs[2];
-			int bmins[2], bmaxs[2];
-			texinfo_t *tex;
-			tex = &g_texinfo[f->texinfo];
-			mins[0] = mins[1] = 999999;
-			maxs[0] = maxs[1] = -99999;
-			VectorClear (point);
-			int i;
-			for (i = 0; i < f->numedges; i++)
-			{
-				int e;
-				dvertex_t *v;
-				int j;
-				e = g_dsurfedges[f->firstedge + i];
-				if (e >= 0)
-				{
-					v = &g_dvertexes[g_dedges[e].v[0]];
-				}
-				else
-				{
-					v = &g_dvertexes[g_dedges[-e].v[1]];
-				}
-				if (i == 0)
-				{
-					VectorCopy (v->point, point);
-				}
-				for (j = 0; j < 2; j++)
-				{
-					float val = v->point[0] * tex->vecs[j][0] + v->point[1] * tex->vecs[j][1]
-						+ v->point[2] * tex->vecs[j][2] + tex->vecs[j][3];
-					if (val < mins[j])
-					{
-						mins[j] = val;
-					}
-					if (val > maxs[j])
-					{
-						maxs[j] = val;
-					}
-				}
-			}
-			for (i = 0; i < 2; i++)
-			{
-				bmins[i] = floor (mins[i] / TEXTURE_STEP);
-				bmaxs[i] = ceil (maxs[i] / TEXTURE_STEP);
-				extents[i] = (bmaxs[i] - bmins[i]) * TEXTURE_STEP;
-			}
-#endif
 		}
 		if (extents[0] < 0 || extents[1] < 0 || extents[0] > qmax (512, MAX_SURFACE_EXTENT * TEXTURE_STEP) || extents[1] > qmax (512, MAX_SURFACE_EXTENT * TEXTURE_STEP))
 			// the default restriction from the engine is 512, but place 'max (512, MAX_SURFACE_EXTENT * TEXTURE_STEP)' here in case someone raise the limit
@@ -1044,8 +910,6 @@ int CountBlocks ()
 	}
 	return count;
 }
-#endif
-#ifdef ZHLT_CHART_WADFILES
 bool NoWadTextures ()
 {
 	// copied from loadtextures.cpp
@@ -1131,7 +995,6 @@ char *FindWadValue ()
 	}
 	return NULL;
 }
-#endif
 
 #define ENTRIES(a)		(sizeof(a)/sizeof(*(a)))
 #define ENTRYSIZE(a)	(sizeof(*(a)))
@@ -1144,11 +1007,7 @@ static int      ArrayUsage(const char* const szItem, const int items, const int 
 {
     float           percentage = maxitems ? items * 100.0 / maxitems : 0.0;
 
-#ifdef ZHLT_MAX_MAP_LEAFS
     Log("%-13s %7i/%-7i %8i/%-8i (%4.1f%%)\n", szItem, items, maxitems, items * itemsize, maxitems * itemsize, percentage);
-#else
-    Log("%-12s  %7i/%-7i  %7i/%-7i  (%4.1f%%)\n", szItem, items, maxitems, items * itemsize, maxitems * itemsize, percentage);
-#endif
 
     return items * itemsize;
 }
@@ -1161,11 +1020,7 @@ static int      GlobUsage(const char* const szItem, const int itemstorage, const
 {
     float           percentage = maxstorage ? itemstorage * 100.0 / maxstorage : 0.0;
 
-#ifdef ZHLT_MAX_MAP_LEAFS
     Log("%-13s    [variable]   %8i/%-8i (%4.1f%%)\n", szItem, itemstorage, maxstorage, percentage);
-#else
-    Log("%-12s     [variable]    %7i/%-7i  (%4.1f%%)\n", szItem, itemstorage, maxstorage, percentage);
-#endif
 
     return itemstorage;
 }
@@ -1178,14 +1033,10 @@ void            PrintBSPFileSizes()
 {
     int             numtextures = g_texdatasize ? ((dmiptexlump_t*)g_dtexdata)->nummiptex : 0;
     int             totalmemory = 0;
-#ifdef ZHLT_CHART_AllocBlock
 	int numallocblocks = CountBlocks ();
 	int maxallocblocks = 64;
-#endif
-#ifdef ZHLT_CHART_WADFILES
 	bool nowadtextures = NoWadTextures (); // We don't have this check at hlcsg, because only legacy compile tools don't empty "wad" value in "-nowadtextures" compiles.
 	char *wadvalue = FindWadValue ();
-#endif
 
     Log("\n");
     Log("Object names  Objects/Maxobjs  Memory / Maxmem  Fullness\n");
@@ -1195,31 +1046,12 @@ void            PrintBSPFileSizes()
     totalmemory += ArrayUsage("planes", g_numplanes, MAX_MAP_PLANES, ENTRYSIZE(g_dplanes));
     totalmemory += ArrayUsage("vertexes", g_numvertexes, ENTRIES(g_dvertexes), ENTRYSIZE(g_dvertexes));
     totalmemory += ArrayUsage("nodes", g_numnodes, ENTRIES(g_dnodes), ENTRYSIZE(g_dnodes));
-#ifdef HLCSG_HLBSP_REDUCETEXTURE
     totalmemory += ArrayUsage("texinfos", g_numtexinfo, MAX_MAP_TEXINFO, ENTRYSIZE(g_texinfo));
-#else
-    totalmemory += ArrayUsage("texinfos", g_numtexinfo, ENTRIES(g_texinfo), ENTRYSIZE(g_texinfo));
-#endif
     totalmemory += ArrayUsage("faces", g_numfaces, ENTRIES(g_dfaces), ENTRYSIZE(g_dfaces));
-#ifdef ZHLT_WARNWORLDFACES
 	totalmemory += ArrayUsage("* worldfaces", (g_nummodels > 0? g_dmodels[0].numfaces: 0), MAX_MAP_WORLDFACES, 0);
-#endif
-#ifdef ZHLT_XASH2
-	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
-	{
-		char buffer[32];
-		sprintf (buffer, "clipnodes%d", hull);
-		totalmemory += ArrayUsage(buffer, g_numclipnodes[hull - 1], ENTRIES(g_dclipnodes[hull - 1]), ENTRYSIZE(g_dclipnodes[hull - 1]));
-	}
-#else
     totalmemory += ArrayUsage("clipnodes", g_numclipnodes, ENTRIES(g_dclipnodes), ENTRYSIZE(g_dclipnodes));
-#endif
-#ifdef ZHLT_MAX_MAP_LEAFS
     totalmemory += ArrayUsage("leaves", g_numleafs, MAX_MAP_LEAFS, ENTRYSIZE(g_dleafs));
     totalmemory += ArrayUsage("* worldleaves", (g_nummodels > 0? g_dmodels[0].visleafs: 0), MAX_MAP_LEAFS_ENGINE, 0);
-#else
-    totalmemory += ArrayUsage("leaves", g_numleafs, ENTRIES(g_dleafs), ENTRYSIZE(g_dleafs));
-#endif
     totalmemory += ArrayUsage("marksurfaces", g_nummarksurfaces, ENTRIES(g_dmarksurfaces), ENTRYSIZE(g_dmarksurfaces));
     totalmemory += ArrayUsage("surfedges", g_numsurfedges, ENTRIES(g_dsurfedges), ENTRYSIZE(g_dsurfedges));
     totalmemory += ArrayUsage("edges", g_numedges, ENTRIES(g_dedges), ENTRYSIZE(g_dedges));
@@ -1228,25 +1060,18 @@ void            PrintBSPFileSizes()
     totalmemory += GlobUsage("lightdata", g_lightdatasize, g_max_map_lightdata);
     totalmemory += GlobUsage("visdata", g_visdatasize, sizeof(g_dvisdata));
     totalmemory += GlobUsage("entdata", g_entdatasize, sizeof(g_dentdata));
-#ifdef ZHLT_CHART_AllocBlock
-#ifdef ZHLT_64BIT_FIX
 	if (numallocblocks == -1)
 	{
 		Log ("* AllocBlock    [ not available to the " PLATFORM_VERSIONSTRING " version ]\n");
 	}
 	else
 	{
-#endif
 	totalmemory += ArrayUsage ("* AllocBlock", numallocblocks, maxallocblocks, 0);
-#ifdef ZHLT_64BIT_FIX
 	}
-#endif
-#endif
 
     Log("%i textures referenced\n", numtextures);
 
     Log("=== Total BSP file data space used: %d bytes ===\n", totalmemory);
-#ifdef ZHLT_CHART_WADFILES
 	if (nowadtextures)
 	{
 		Log ("Wad files required to run the map: (None)\n");
@@ -1263,11 +1088,9 @@ void            PrintBSPFileSizes()
 	{
 		free (wadvalue);
 	}
-#endif
 }
 
 
-#ifdef ZHLT_EMBEDLIGHTMAP
 // =====================================================================================
 //  ParseImplicitTexinfoFromTexture
 //      purpose: get the actual texinfo for a face. the tools shouldn't directly use f->texinfo after embedlightmap is done
@@ -1463,7 +1286,6 @@ void DeleteEmbeddedLightmaps ()
 }
 
 
-#endif
 // =====================================================================================
 //  ParseEpair
 //      entity key/value pairs
@@ -1494,10 +1316,8 @@ epair_t*        ParseEpair()
  * ================
  */
 
-#ifdef ZHLT_INFO_COMPILE_PARAMETERS
 // AJM: each tool should have its own version of GetParamsFromEnt which parseentity calls
 extern void     GetParamsFromEnt(entity_t* mapent);
-#endif
 
 bool            ParseEntity()
 {
@@ -1537,34 +1357,25 @@ bool            ParseEntity()
         mapent->epairs = e;
     }
 
-#ifdef ZHLT_INFO_COMPILE_PARAMETERS // AJM
     if (!strcmp(ValueForKey(mapent, "classname"), "info_compile_parameters"))
     {
         Log("Map entity info_compile_parameters detected, using compile settings\n");
         GetParamsFromEnt(mapent);
     }
-#endif
-#ifdef ZHLT_ENTITY_LIGHTSURFACE
 	// ugly code
 	if (!strncmp(ValueForKey (mapent, "classname"), "light", 5) && *ValueForKey (mapent, "_tex"))
 	{
 		SetKeyValue (mapent, "convertto", ValueForKey (mapent, "classname"));
 		SetKeyValue (mapent, "classname", "light_surface");
 	}
-#endif
-#ifdef ZHLT_ENTITY_LIGHTSHADOW
 	if (!strcmp (ValueForKey (mapent, "convertfrom"), "light_shadow")
-	#ifdef ZHLT_ENTITY_LIGHTBOUNCE
 		|| !strcmp (ValueForKey (mapent, "convertfrom"), "light_bounce")
-	#endif
 		)
 	{
 		SetKeyValue (mapent, "convertto", ValueForKey (mapent, "classname"));
 		SetKeyValue (mapent, "classname", ValueForKey (mapent, "convertfrom"));
 		SetKeyValue (mapent, "convertfrom", "");
 	}
-#endif
-#ifdef ZHLT_ENTITY_INFOSUNLIGHT
 	if (!strcmp (ValueForKey (mapent, "classname"), "light_environment") &&
 		!strcmp (ValueForKey (mapent, "convertfrom"), "info_sunlight"))
 	{
@@ -1581,7 +1392,6 @@ bool            ParseEntity()
 	{
 		SetKeyValue (mapent, "classname", "info_sunlight");
 	}
-#endif
 
     return true;
 }
@@ -1604,7 +1414,6 @@ void            ParseEntities()
 //  UnparseEntities
 //      Generates the dentdata string from all the entities
 // =====================================================================================
-#ifdef ZHLT_ENTITY_INFOSUNLIGHT
 int anglesforvector (float angles[3], const float vector[3])
 {
 	float z = vector[2], r = sqrt (vector[0] * vector[0] + vector[1] * vector[1]);
@@ -1654,7 +1463,6 @@ int anglesforvector (float angles[3], const float vector[3])
 	angles[2] = 0;
 	return 0;
 }
-#endif
 void            UnparseEntities()
 {
     char*           buf;
@@ -1667,7 +1475,6 @@ void            UnparseEntities()
     end = buf;
     *end = 0;
 
-#ifdef ZHLT_ENTITY_INFOSUNLIGHT
 	for (i = 0; i < g_numentities; i++)
 	{
 		entity_t *mapent = &g_entities[i];
@@ -1714,15 +1521,11 @@ void            UnparseEntities()
 			}
 		}
 	}
-#endif
-#ifdef ZHLT_ENTITY_LIGHTSHADOW
     for (i = 0; i < g_numentities; i++)
 	{
 		entity_t *mapent = &g_entities[i];
 		if (!strcmp (ValueForKey (mapent, "classname"), "light_shadow")
-	#ifdef ZHLT_ENTITY_LIGHTBOUNCE
 			|| !strcmp (ValueForKey (mapent, "classname"), "light_bounce")
-	#endif
 			)
 		{
 			SetKeyValue (mapent, "convertfrom", ValueForKey (mapent, "classname"));
@@ -1730,8 +1533,6 @@ void            UnparseEntities()
 			SetKeyValue (mapent, "convertto", "");
 		}
 	}
-#endif
-#ifdef ZHLT_ENTITY_LIGHTSURFACE
 	// ugly code
 	for (i = 0; i < g_numentities; i++)
 	{
@@ -1758,8 +1559,6 @@ void            UnparseEntities()
 			SetKeyValue (mapent, "convertto", "");
 		}
 	}
-#endif
-#ifdef HLCSG_OPTIMIZELIGHTENTITY
 #ifdef HLCSG
 	extern bool g_nolightopt;
 	if (!g_nolightopt)
@@ -1804,7 +1603,6 @@ void            UnparseEntities()
 		free (lightneedcompare);
 	}
 #endif
-#endif
     for (i = 0; i < g_numentities; i++)
     {
         ep = g_entities[i].epairs;
@@ -1837,7 +1635,6 @@ void            UnparseEntities()
 //  SetKeyValue
 //      makes a keyvalue
 // =====================================================================================
-#ifdef ZHLT_DELETEKEY
 void			DeleteKey(entity_t* ent, const char* const key)
 {
 	epair_t **pep;
@@ -1854,30 +1651,22 @@ void			DeleteKey(entity_t* ent, const char* const key)
 		}
 	}
 }
-#endif
 void            SetKeyValue(entity_t* ent, const char* const key, const char* const value)
 {
     epair_t*        ep;
 
-#ifdef ZHLT_DELETEKEY
 	if (!value[0])
 	{
 		DeleteKey (ent, key);
 		return;
 	}
-#endif
     for (ep = ent->epairs; ep; ep = ep->next)
     {
         if (!strcmp(ep->key, key))
         {
-#ifdef ZHLT_DELETEKEY
 			char *value2 = strdup (value);
 			Free (ep->value);
 			ep->value = value2;
-#else
-            Free(ep->value);
-            ep->value = strdup(value);
-#endif
             return;
         }
     }
@@ -1983,15 +1772,11 @@ void CDECL      dtexdata_free()
 //      Touchy function, can fail with a page fault if all the data isnt kosher 
 //      (i.e. map was compiled with missing textures)
 // =====================================================================================
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 static char emptystring[1] = {'\0'};
-#endif
 char*           GetTextureByNumber(int texturenumber)
 {
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 	if (texturenumber == -1)
 		return emptystring;
-#endif
     texinfo_t*      info;
     miptex_t*       miptex;
     int             ofs;

@@ -10,11 +10,9 @@
 */
 
 #include "vis.h"
-#ifdef ZHLT_LANGFILE
 #ifdef SYSTEM_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#endif
 #endif
 
 #ifdef ZHLT_NETVIS
@@ -33,20 +31,11 @@ unsigned        g_portalleafs = 0;
 portal_t*       g_portals;
 
 leaf_t*         g_leafs;
-#ifdef ZHLT_DETAILBRUSH
 int				*g_leafstarts;
 int				*g_leafcounts;
 int				g_leafcount_all;
-#endif
 
 // AJM: MVD
-#ifdef HLVIS_MAXDIST
-#ifndef HLVIS_MAXDIST_NEW
-byte*			g_mightsee;
-visblocker_t    g_visblockers[MAX_VISBLOCKERS];
-int		        g_numvisblockers = 0;
-#endif
-#endif
 //
 
 static byte*    vismap;
@@ -65,22 +54,15 @@ bool            g_estimate = DEFAULT_ESTIMATE;
 bool            g_chart = DEFAULT_CHART;
 bool            g_info = DEFAULT_INFO;
 
-#ifdef HLVIS_MAXDIST
 // AJM: MVD
 unsigned int	g_maxdistance = DEFAULT_MAXDISTANCE_RANGE;
 //bool			g_postcompile = DEFAULT_POST_COMPILE;
 //
-#endif
-#ifdef HLVIS_OVERVIEW
 const int		g_overview_max = MAX_MAP_ENTITIES;
 overview_t		g_overview[g_overview_max];
 int				g_overview_count = 0;
 leafinfo_t*		g_leafinfos = NULL;
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-char*           g_progressfile = DEFAULT_PROGRESSFILE; // "-progressfile path"
-#endif
 
 static int      totalvis = 0;
 
@@ -119,7 +101,6 @@ unsigned long   g_bsp_size = 0;             // Server variable
 unsigned long   g_prt_size = 0;             // Server variable
 #endif
 
-#ifdef ZHLT_INFO_COMPILE_PARAMETERS
 // AJM: addded in
 // =====================================================================================
 //  GetParamsFromEnt
@@ -206,7 +187,6 @@ void            GetParamsFromEnt(entity_t* mapent)
     ///////////////////
     Log("\n");
 }
-#endif
 
 // =====================================================================================
 //  PlaneFromWinding
@@ -237,11 +217,7 @@ static winding_t* NewWinding(const int points)
         Error("NewWinding: %i points > MAX_POINTS_ON_WINDING", points);
     }
 
-#ifdef ZHLT_64BIT_FIX
     size = (int)(intptr_t)((winding_t*)0)->points[points];
-#else
-    size = (int)((winding_t*)0)->points[points];
-#endif
     w = (winding_t*)calloc(1, size);
 
     return w;
@@ -418,64 +394,8 @@ static portal_t* GetNextPortal()
 #endif
 }
 
-#ifdef HLVIS_MAXDIST
 
-#ifndef ZHLT_DETAILBRUSH
-// AJM: MVD
-// =====================================================================================
-//  DecompressAll
-// =====================================================================================
-void			DecompressAll(void)
-{
-	int i;
-	byte *dest;
 
-	for(i = 0; i < g_portalleafs; i++)
-	{
-		dest = g_uncompressed + i * g_bitbytes;
-
-		DecompressVis((const unsigned char*)(g_dvisdata + (byte)g_dleafs[i + 1].visofs), dest, g_bitbytes);
-	}
-}
-
-// AJM: MVD
-// =====================================================================================
-//  CompressAll
-// =====================================================================================
-void			CompressAll(void)
-{
-	int i, x = 0;
-	byte *dest;
-	byte *src;
-	byte	compressed[MAX_MAP_LEAFS / 8];
-
-	vismap_p = vismap;
-	
-	for(i = 0; i < g_portalleafs; i++)
-	{
-		memset(&compressed, 0, sizeof(compressed));
-
-		src = g_uncompressed + i * g_bitbytes;
-		
-		// Compress all leafs into global compression buffer
-		x = CompressVis(src, g_bitbytes, compressed, sizeof(compressed));
-
-		dest = vismap_p;
-		vismap_p += x;
-
-		if (vismap_p > vismap_end)
-		{
-	        Error("Vismap expansion overflow");
-	    }
-	
-	    g_dleafs[i + 1].visofs = dest - vismap;            // leaf 0 is a common solid
-
-	    memcpy(dest, compressed, x);
-	}
-}
-#endif
-
-#endif // HLVIS_MAXDIST
 
 // =====================================================================================
 //  LeafThread
@@ -643,7 +563,6 @@ static void     LeafFlow(const int leafnum)
 
     outbuffer[offset] |= bit;
 
-#ifdef HLVIS_OVERVIEW
 	if (g_leafinfos[leafnum].isoverviewpoint)
 	{
 		for (i = 0; i < g_portalleafs; i++)
@@ -651,7 +570,6 @@ static void     LeafFlow(const int leafnum)
 			outbuffer[i >> 3] |= (1 << (i & 7));
 		}
 	}
-#ifdef HLVIS_SKYBOXMODEL
 	for (i = 0; i < g_portalleafs; i++)
 	{
 		if (g_leafinfos[i].isskyboxpoint)
@@ -659,8 +577,6 @@ static void     LeafFlow(const int leafnum)
 			outbuffer[i >> 3] |= (1 << (i & 7));
 		}
 	}
-#endif
-#endif
     numvis = 0;
     for (i = 0; i < g_portalleafs; i++)
     {
@@ -676,7 +592,6 @@ static void     LeafFlow(const int leafnum)
     Verbose("leaf %4i : %4i visible\n", leafnum, numvis);
     totalvis += numvis;
 
-#ifdef ZHLT_DETAILBRUSH
 	byte buffer2[MAX_MAP_LEAFS / 8];
 	int diskbytes = (g_leafcount_all + 7) >> 3;
 	memset (buffer2, 0, diskbytes);
@@ -695,9 +610,6 @@ static void     LeafFlow(const int leafnum)
 		}
 	}
 	i = CompressVis (buffer2, diskbytes, compressed, sizeof (compressed));
-#else
-    i = CompressVis(outbuffer, g_bitbytes, compressed, sizeof(compressed));
-#endif
 
     dest = vismap_p;
     vismap_p += i;
@@ -707,14 +619,10 @@ static void     LeafFlow(const int leafnum)
         Error("Vismap expansion overflow");
     }
 
-#ifdef ZHLT_DETAILBRUSH
 	for (j = 0; j < g_leafcounts[leafnum]; j++)
 	{
 		g_dleafs[g_leafstarts[leafnum] + j + 1].visofs = dest - vismap;
 	}
-#else
-    g_dleafs[leafnum + 1].visofs = dest - vismap;            // leaf 0 is a common solid
-#endif
 
     memcpy(dest, compressed, i);
 }
@@ -770,20 +678,12 @@ static void     CalcVis()
             if (percent && (percent != lastpercent) && ((percent % 10) == 0))
             {
                 lastpercent = percent;
-#ifdef ZHLT_CONSOLE
 				PrintConsole
-#else
-                printf
-#endif
 					("%d%%....", percent);
             }
             BasePortalVis(x);
         }
-#ifdef ZHLT_CONSOLE
 		PrintConsole
-#else
-        printf
-#endif
 			("\n");
     }
     else
@@ -822,127 +722,6 @@ static void     CalcVis()
 
 #ifndef ZHLT_NETVIS
 
-#ifdef HLVIS_MAXDIST
-#ifndef HLVIS_MAXDIST_NEW
-// AJM: MVD
-// =====================================================================================
-//  GetVisBlock
-// =====================================================================================
-visblocker_t *GetVisBlock(char *name)
-{
-	int i;
-	visblocker_t *v;
-
-	for(i = 0, v = &g_visblockers[0]; i < g_numvisblockers; i++, v++)
-	{
-		if(!strcmp(name, v->name))
-			return v;
-	}
-
-	return NULL;
-}
-
-// AJM: MVD
-// =====================================================================================
-//  InitVisBlock
-// =====================================================================================
-static void InitVisBlock(void)
-{
-	char visfile[_MAX_PATH];
-	int i;
-	int x = 0;
-	int num_blocks;
-	int num_sides;
-
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
-	safe_snprintf(visfile, _MAX_PATH, "%s.vis", g_Mapname);
-#else
-	strcpy(visfile, g_Mapname);
-	DefaultExtension(visfile, ".vis");
-#endif
-
-	if(!q_exists(visfile))
-		return;
-
-	FILE *fp = fopen(visfile, "r");
-
-	if(!fp)
-		return;
-
-	while(!feof(fp))
-	{
-		fscanf(fp, "%s\n", g_visblockers[x].name);
-
-		fscanf(fp, "%d\n", &num_blocks);
-		
-		for(i = 0; i < num_blocks; i++)
-		{
-			fscanf(fp, "%s\n", g_visblockers[x].blocknames[i]);
-		}
-
-		g_visblockers[x].numnames = num_blocks;
-
-		fscanf(fp, "%d\n", &num_sides);
-
-		for(i = 0; i < num_sides; i++)
-		{
-			fscanf(fp, "%f %f %f %f\n", &g_visblockers[x].planes[i].normal[0],
-										&g_visblockers[x].planes[i].normal[1],
-										&g_visblockers[x].planes[i].normal[2],
-										&g_visblockers[x].planes[i].dist);
-		}
-
-		g_visblockers[x].numplanes = num_sides;
-		g_visblockers[x].numleafs = 0;
-
-		x++;
-	}
-
-	g_numvisblockers = x;
-}
-
-// AJM: MVD
-// =====================================================================================
-//  SetupVisBlockLeafs
-//      Set up the leafs for the visblocker
-// =====================================================================================
-static void		SetupVisBlockLeafs(void)
-{
-	int i, j, k, l, q;
-	visblocker_t *v;
-	leaf_t *leaf;
-	portal_t *p;
-	plane_t *plane;
-	float dist;
-
-	for(i = 0, v = &g_visblockers[0]; i < g_numvisblockers; i++, v++)
-	{
-		for(j = 0, leaf = &g_leafs[0]; j < g_portalleafs; j++, leaf++)
-		{
-			for(q = 0, p = leaf->portals[0]; q < leaf->numportals; q++, p++)
-			{
-				for(k = 0; k < p->winding->numpoints; k++)
-				{
-					for(l = 0, plane = &v->planes[0]; l < v->numplanes; l++, plane++)
-					{
-						dist = DotProduct(p->winding->points[k], plane->normal) - plane->dist;
-	
-						if(dist > ON_EPSILON)
-							goto PostLoop;
-					}
-				}
-			}
-
-PostLoop:
-			if(q != leaf->numportals)
-				continue;
-
-			// If we reach this point, then the portal is completely inside the visblocker
-			v->blockleafs[v->numleafs++] = j;
-		}
-	}
-}
-#endif
 
 // AJM: MVD
 // =====================================================================================
@@ -968,26 +747,7 @@ void		SaveVisData(const char *filename)
 	fclose(fp);
 }
 
-#ifndef HLVIS_MAXDIST_NEW
-// AJM: MVD
-// =====================================================================================
-//  ResetPortalStatus
-//      FIX: Used to reset p->status to stat_none; now it justs frees p->visbits
-// =====================================================================================
-void		ResetPortalStatus(void)
-{
-	int i;
-	portal_t* p = g_portals;
 
-	for(i = 0; i < g_numportals * 2; i++, p++)
-	{
-		//p->status = stat_none;
-		free(p->visbits);
-	}
-}
-#endif
-
-#endif // HLVIS_MAXDIST
 
 
 // AJM UNDONE HLVIS_MAXDIST THIS!!!!!!!!!!!!!
@@ -1001,12 +761,7 @@ static void     CalcVis()
     unsigned        i;
 	char visdatafile[_MAX_PATH];
 
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 	safe_snprintf(visdatafile, _MAX_PATH, "%s.vdt", g_Mapname);
-#else
-	strcpy(visdatafile, g_Mapname);
-	DefaultExtension(visdatafile, ".vdt");
-#endif
 
 	// Remove this file
 	unlink(visdatafile);
@@ -1074,10 +829,6 @@ static void     CalcVis()
 			    LeafFlow(i);
 			}
 
-#ifndef HLVIS_MAXDIST_NEW
-			// FIX: Used to reset p->status to stat_none; now it justs frees p->visbits
-			ResetPortalStatus();
-#endif
 
 			Log("average maxdistance leafs visible: %i\n", totalvis / g_portalleafs);
 		}
@@ -1137,20 +888,15 @@ static void     LoadPortals(char* portal_image)
     // each file portal is split into two memory portals
     g_portals = (portal_t*)calloc(2 * g_numportals, sizeof(portal_t));
     g_leafs = (leaf_t*)calloc(g_portalleafs, sizeof(leaf_t));
-#ifdef HLVIS_OVERVIEW
 	g_leafinfos = (leafinfo_t*)calloc(g_portalleafs, sizeof(leafinfo_t));
-#endif
-#ifdef ZHLT_DETAILBRUSH
 	g_leafcounts = (int*)calloc(g_portalleafs, sizeof(int));
 	g_leafstarts = (int*)calloc(g_portalleafs, sizeof(int));
-#endif
 
     originalvismapsize = g_portalleafs * ((g_portalleafs + 7) / 8);
 
     vismap = vismap_p = g_dvisdata;
     vismap_end = vismap + MAX_MAP_VISIBILITY;
 
-#ifdef ZHLT_DETAILBRUSH
 	if (g_portalleafs > MAX_MAP_LEAFS)
 	{ // this may cause hlvis to overflow, because numportalleafs can be larger than g_numleafs in some special cases
 		Error ("Too many portalleafs (g_portalleafs(%d) > MAX_MAP_LEAFS(%d)).", g_portalleafs, MAX_MAP_LEAFS);
@@ -1173,20 +919,13 @@ static void     LoadPortals(char* portal_image)
 	{ // internal error (this should never happen)
 		Error ("Corrupted leaf mapping (g_leafcount_all(%d) != g_dmodels[0].visleafs(%d)).", g_leafcount_all, g_dmodels[0].visleafs);
 	}
-#endif
-#ifdef HLVIS_OVERVIEW
 	for (i = 0; i < g_portalleafs; i++)
 	{
 		for (j = 0; j < g_overview_count; j++)
 		{
-#ifdef ZHLT_DETAILBRUSH
 			int d = g_overview[j].visleafnum - g_leafstarts[i];
 			if (0 <= d && d < g_leafcounts[i])
-#else
-			if (g_overview[j].visleafnum == i)
-#endif
 			{
-#ifdef HLVIS_SKYBOXMODEL
 				if (g_overview[j].reverse)
 				{
 					g_leafinfos[i].isskyboxpoint = true;
@@ -1195,13 +934,9 @@ static void     LoadPortals(char* portal_image)
 				{
 					g_leafinfos[i].isoverviewpoint = true;
 				}
-#else
-				g_leafinfos[i].isoverviewpoint = true;
-#endif
 			}
 		}
 	}
-#endif
     for (i = 0, p = g_portals; i < g_numportals; i++)
     {
         unsigned rval = 0;
@@ -1366,12 +1101,8 @@ static void     Usage()
     Banner();
 
     Log("\n-= %s Options =-\n\n", g_Program);
-#ifdef ZHLT_CONSOLE
 	Log("    -console #      : Set to 0 to turn off the pop-up console (default is 1)\n");
-#endif
-#ifdef ZHLT_LANGFILE
 	Log("    -lang file      : localization file\n");
-#endif
     Log("    -full           : Full vis\n");
     Log("    -fast           : Fast vis\n\n");
 #ifdef ZHLT_NETVIS
@@ -1389,15 +1120,10 @@ static void     Usage()
 #ifdef SYSTEM_WIN32
     Log("    -estimate       : display estimated time during compile\n");
 #endif
-#ifdef ZHLT_PROGRESSFILE // AJM
-    Log("    -progressfile path  : specify the path to a file for progress estimate output\n");
-#endif
 #ifdef SYSTEM_POSIX
     Log("    -noestimate     : do not display continuous compile time estimates\n");
 #endif
-#ifdef HLVIS_MAXDIST // AJM: MVD
 	Log("    -maxdistance #  : Alter the maximum distance for visibility\n");
-#endif
     Log("    -verbose        : compile with verbose messages\n");
     Log("    -noinfo         : Do not show tool configuration information\n");
     Log("    -dev #          : compile with developer message\n\n");
@@ -1449,10 +1175,8 @@ static void     Settings()
     Log("estimate            [ %7s ] [ %7s ]\n", g_estimate ? "on" : "off", DEFAULT_ESTIMATE ? "on" : "off");
     Log("max texture memory  [ %7d ] [ %7d ]\n", g_max_map_miptex, DEFAULT_MAX_MAP_MIPTEX);
 
-#ifdef HLVIS_MAXDIST // AJM: MVD
     Log("max vis distance    [ %7d ] [ %7d ]\n", g_maxdistance, DEFAULT_MAXDISTANCE_RANGE);
 	//Log("max dist only       [ %7s ] [ %7s ]\n", g_postcompile ? "on" : "off", DEFAULT_POST_COMPILE ? "on" : "off");
-#endif
 
     switch (g_threadpriority)
     {
@@ -1490,7 +1214,6 @@ static void     Settings()
     Log("\n\n");
 }
 
-#ifdef HLVIS_OVERVIEW
 int        VisLeafnumForPoint(const vec3_t point)
 {
     int             nodenum;
@@ -1516,7 +1239,6 @@ int        VisLeafnumForPoint(const vec3_t point)
 
     return -nodenum - 2;
 }
-#endif
 // =====================================================================================
 //  main
 // =====================================================================================
@@ -1534,7 +1256,6 @@ int             main(const int argc, char** argv)
     g_Program = "hlvis";
 #endif
 
-#ifdef ZHLT_PARAMFILE
 	int argcold = argc;
 	char ** argvold = argv;
 	{
@@ -1542,11 +1263,8 @@ int             main(const int argc, char** argv)
 		char ** argv;
 		ParseParamFile (argcold, argvold, argc, argv);
 		{
-#endif
-#ifdef ZHLT_CONSOLE
 	if (InitConsole (argc, argv) < 0)
 		Usage();
-#endif
     if (argc == 1)
     {
         Usage();
@@ -1571,7 +1289,6 @@ int             main(const int argc, char** argv)
             }
         }
 
-#ifdef ZHLT_CONSOLE
 		else if (!strcasecmp(argv[i], "-console"))
 		{
 #ifndef SYSTEM_WIN32
@@ -1582,7 +1299,6 @@ int             main(const int argc, char** argv)
 			else
 				Usage();
 		}
-#endif
 #ifdef SYSTEM_WIN32
         else if (!strcasecmp(argv[i], "-estimate"))
         {
@@ -1725,22 +1441,7 @@ int             main(const int argc, char** argv)
             }
         }
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-        else if (!strcasecmp(argv[i], "-progressfile"))
-        {
-            if (i + 1 < argc)	//added "1" .--vluzacn
-            {
-                g_progressfile = argv[++i];
-            }
-            else
-            {
-            	Log("Error: -progressfile: expected path to progress file following parameter\n");
-                Usage();
-            }
-        }
-#endif
         
-#ifdef HLVIS_MAXDIST
         // AJM: MVD
 		else if(!strcasecmp(argv[i], "-maxdistance"))
 		{
@@ -1757,8 +1458,6 @@ int             main(const int argc, char** argv)
 		{
 			g_postcompile = true;
 		}*/
-#endif
-#ifdef ZHLT_LANGFILE
 		else if (!strcasecmp (argv[i], "-lang"))
 		{
 			if (i + 1 < argc)
@@ -1776,7 +1475,6 @@ int             main(const int argc, char** argv)
 				Usage();
 			}
 		}
-#endif
 
         else if (argv[i][0] == '-')
         {
@@ -1856,7 +1554,6 @@ int             main(const int argc, char** argv)
     atexit(CloseLog);
     ThreadSetDefault();
     ThreadSetPriority(g_threadpriority);
-#ifdef ZHLT_PARAMFILE
     LogStart(argcold, argvold);
 	{
 		int			 i;
@@ -1874,9 +1571,6 @@ int             main(const int argc, char** argv)
 		}
 		Log("\n");
 	}
-#else
-    LogStart(argc, argv);
-#endif
 
 #ifdef ZHLT_NETVIS
     if (g_vismode == VIS_MODE_CLIENT)
@@ -1892,10 +1586,8 @@ int             main(const int argc, char** argv)
 
     CheckForErrorLog();
 	
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
 	hlassume (CalcFaceExtents_test (), assume_first);
-#endif
 #endif
     dtexdata_init();
     atexit(dtexdata_free);
@@ -1976,7 +1668,6 @@ int             main(const int argc, char** argv)
 
     LoadBSPFile(source);
     ParseEntities();
-#ifdef HLVIS_OVERVIEW
 	{
 		int i;
 		for (i = 0; i < g_numentities; i++)
@@ -1989,15 +1680,12 @@ int             main(const int argc, char** argv)
 					GetVectorForKey (&g_entities[i], "origin", p);
 					VectorCopy (p, g_overview[g_overview_count].origin);
 					g_overview[g_overview_count].visleafnum = VisLeafnumForPoint (p);
-#ifdef HLVIS_SKYBOXMODEL
 					g_overview[g_overview_count].reverse = IntForKey (&g_entities[i], "reverse");
-#endif
 					g_overview_count++;
 				}
 			}
 		}
 	}
-#endif
     LoadPortalsByFilename(portalfile);
 
 #   if ZHLT_ZONES
@@ -2073,10 +1761,8 @@ int             main(const int argc, char** argv)
     // END VIS
 
 #endif // ZHLT_NETVIS
-#ifdef ZHLT_PARAMFILE
 		}
 	}
-#endif
 
     return 0;
 }

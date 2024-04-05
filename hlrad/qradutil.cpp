@@ -2,7 +2,6 @@
 
 static dplane_t backplanes[MAX_MAP_PLANES];
 
-#ifdef HLRAD_HuntForWorld_EDGE_FIX
 dleaf_t*		PointInLeaf_Worst_r(int nodenum, const vec3_t point)
 {
 	vec_t			dist;
@@ -35,13 +34,9 @@ dleaf_t*		PointInLeaf_Worst_r(int nodenum, const vec3_t point)
 				return result[0];
 			if (result[1]->contents == CONTENTS_SKY)
 				return result[1];
-#ifdef HLRAD_WATERBLOCKLIGHT
 			if (result[0]->contents == result[1]->contents)
 				return result[0];
 			return g_dleafs;
-#else
-			return result[0];
-#endif
 		}
 	}
 
@@ -51,7 +46,6 @@ dleaf_t*		PointInLeaf_Worst(const vec3_t point)
 {
 	return PointInLeaf_Worst_r(0, point);
 }
-#endif
 dleaf_t*        PointInLeaf(const vec3_t point)
 {
     int             nodenum;
@@ -162,24 +156,7 @@ void getAdjustedPlaneFromFaceNumber(unsigned int faceNumber, dplane_t* plane)
 // Will modify the plane with the new dist
 void            TranslatePlane(dplane_t* plane, const vec_t* delta)
 {
-#ifdef HLRAD_MATH_VL
 	plane->dist += DotProduct (plane->normal, delta);
-#else
-    vec3_t          proj;
-    vec_t           magnitude;
-
-    ProjectionPoint(delta, plane->normal, proj);
-    magnitude = VectorLength(proj);
-
-    if (DotProduct(plane->normal, delta) > 0)              //if zero, magnitude will be zero.
-    {
-        plane->dist += magnitude;
-    }
-    else
-    {
-        plane->dist -= magnitude;
-    }
-#endif
 }
 
 // HuntForWorld will never return CONTENTS_SKY or CONTENTS_SOLID leafs
@@ -200,12 +177,6 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
 
     dplane_t        new_plane = *plane;
 
-#ifndef HLRAD_HuntForWorld_FIX
-    if (hunt_scale < 0.1)
-    {
-        hunt_scale = 0.1;
-    }
-#endif
 
     scales[0] = 0.0;
     scales[1] = -hunt_scale;
@@ -216,18 +187,8 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
 
     TranslatePlane(&new_plane, plane_offset);
 
-#ifndef HLRAD_HuntForWorld_FIX
-    if (!hunt_size)
-    {
-        hunt_size = DEFAULT_HUNT_SIZE;
-    }
-#endif
 
-#ifdef HLRAD_HuntForWorld_FIX
 	for (a = 0; a < hunt_size; a++)
-#else
-    for (a = 1; a < hunt_size; a++)
-#endif
     {
         for (x = 0; x < 3; x++)
         {
@@ -237,13 +198,11 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
                 current_point[1] = original_point[1] + (scales[y % 3] * a);
                 for (z = 0; z < 3; z++)
                 {
-#ifdef HLRAD_HuntForWorld_FIX
 					if (a == 0)
 					{
 						if (x || y || z)
 							continue;
 					}
-#endif
                     vec3_t          delta;
                     vec_t           dist;
 
@@ -251,13 +210,8 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
 
                     SnapToPlane(&new_plane, current_point, hunt_offset);
                     VectorSubtract(current_point, original_point, delta);
-#ifdef HLRAD_MATH_VL
                     dist = DotProduct(delta, delta);
-#else
-                    dist = VectorLength(delta);
-#endif
 
-#ifdef HLRAD_OPAQUE_BLOCK
 					{
 						int x;
 						for (x = 0; x < g_opaque_face_count; x++)
@@ -268,23 +222,16 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
 						if (x < g_opaque_face_count)
 							continue;
 					}
-#endif
                     if (dist < best_dist)
                     {
-#ifdef HLRAD_HuntForWorld_EDGE_FIX
                         if ((leaf = PointInLeaf_Worst(current_point)) != g_dleafs)
-#else
-                        if ((leaf = PointInLeaf(current_point)) != g_dleafs)
-#endif
                         {
                             if ((leaf->contents != CONTENTS_SKY) && (leaf->contents != CONTENTS_SOLID))
                             {
                                 if (x || y || z)
                                 {
                                     //dist = best_dist;
-#ifdef HLRAD_HuntForWorld_FIX
 									best_dist = dist;
-#endif
                                     best_leaf = leaf;
                                     VectorCopy(current_point, best_point);
                                     continue;
@@ -309,7 +256,6 @@ dleaf_t*        HuntForWorld(vec_t* point, const vec_t* plane_offset, const dpla
     VectorCopy(best_point, point);
     return best_leaf;
 }
-#ifdef HLRAD_GROWSAMPLE
 
 // ApplyMatrix: (x y z 1)T -> matrix * (x y z 1)T
 void ApplyMatrix (const matrix_t &m, const vec3_t in, vec3_t &out)
@@ -472,9 +418,7 @@ bool InvertMatrix (const matrix_t &m, matrix_t &m_inverse)
 typedef struct
 {
 	bool valid;
-#ifdef HLRAD_AVOIDWALLBLEED
 	bool nudged;
-#endif
 	vec_t best_s; // FindNearestPosition will return this value
 	vec_t best_t;
 	vec3_t pos; // with DEFAULT_HUNT_OFFSET
@@ -540,12 +484,8 @@ static bool IsPositionValid (positionmap_t *map, const vec3_t &pos_st, vec3_t &p
 	{
 		// if the sample has gone beyond face boundaries, be careful that it hasn't passed a wall
 		vec3_t test;
-#ifdef HLRAD_HULLU
 		vec3_t transparency;
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
 		int opaquestyle;
-#endif
 
 		VectorCopy (pos, test);
 		snap_to_winding_noedge (*map->facewindingwithoffset, map->faceplanewithoffset, test, DEFAULT_EDGE_WIDTH, 4 * DEFAULT_EDGE_WIDTH);
@@ -561,16 +501,10 @@ static bool IsPositionValid (positionmap_t *map, const vec3_t &pos_st, vec3_t &p
 		}
 
 		if (TestSegmentAgainstOpaqueList (pos, test
-#ifdef HLRAD_HULLU
 				, transparency
-#endif
-#ifdef HLRAD_OPAQUE_STYLE
 				, opaquestyle
-#endif
 				) == true
-#ifdef HLRAD_OPAQUE_STYLE
 			|| opaquestyle != -1
-#endif
 			)
 		{
 			return false;
@@ -601,9 +535,7 @@ static void CalcSinglePosition (positionmap_t *map, int is, int it)
 	VectorScale (v_t,  1, clipplanes[2].normal); clipplanes[2].dist =  tmin;
 	VectorScale (v_t, -1, clipplanes[3].normal); clipplanes[3].dist = -tmax;
 
-#ifdef HLRAD_AVOIDWALLBLEED
 	p->nudged = true; // it's nudged unless it can get its position directly from its s,t
-#endif
 	zone = new Winding (*map->texwinding);
 	for (int x = 0; x < 4 && zone->m_NumPoints > 0; x++)
 	{
@@ -632,9 +564,7 @@ static void CalcSinglePosition (positionmap_t *map, int is, int it)
 			if (IsPositionValid (map, test_st, p->pos))
 			{
 				p->valid = true;
-#ifdef HLRAD_AVOIDWALLBLEED
 				p->nudged = false;
-#endif
 				p->best_s = test_st[0];
 				p->best_t = test_st[1];
 			}
@@ -652,9 +582,7 @@ static void CalcSinglePosition (positionmap_t *map, int is, int it)
 		}
 
 		if (!p->valid
-#ifdef HLRAD_FASTMODE
 			&& !g_fastmode
-#endif
 			)
 		{
 			const int numnudges = 12;
@@ -770,12 +698,10 @@ void FindFacePositions (int facenum)
 		}
 	}
 	density = 3.0;
-#ifdef HLRAD_FASTMODE
 	if (g_fastmode)
 	{
 		density = 1.0;
 	}
-#endif
 	map->step[0] = (vec_t)TEXTURE_STEP / density;
 	map->step[1] = (vec_t)TEXTURE_STEP / density;
 	map->step[2] = 1.0;
@@ -817,7 +743,6 @@ void FindFacePositions (int facenum)
 
 void FreePositionMaps ()
 {
-#ifdef HLRAD_DEBUG_DRAWPOINTS
 	if (g_drawsample)
 	{
 		char name[_MAX_PATH+20];
@@ -859,7 +784,6 @@ void FreePositionMaps ()
 		else
 			Log ("Error.\n");
 	}
-#endif
 	for (int facenum = 0; facenum < g_numfaces; facenum++)
 	{
 		positionmap_t *map = &g_face_positions[facenum];
@@ -879,9 +803,7 @@ void FreePositionMaps ()
 }
 
 bool FindNearestPosition (int facenum, const Winding *texwinding, const dplane_t &texplane, vec_t s, vec_t t, vec3_t &pos, vec_t *best_s, vec_t *best_t, vec_t *dist
-#ifdef HLRAD_AVOIDWALLBLEED
 							, bool *nudged
-#endif
 							)
 {
 	positionmap_t *map;
@@ -920,9 +842,7 @@ bool FindNearestPosition (int facenum, const Winding *texwinding, const dplane_t
 		ismax = qmin (ismax, map->w - 1);
 
 		found = false;
-#ifdef HLRAD_AVOIDWALLBLEED
 		bool best_nudged = true;
-#endif
 		for (it = itmin; it <= itmax; it++)
 		{
 			for (is = ismin; is <= ismax; is++)
@@ -944,20 +864,16 @@ bool FindNearestPosition (int facenum, const Winding *texwinding, const dplane_t
 				d = VectorLength (v);
 
 				if (!found || 
-#ifdef HLRAD_AVOIDWALLBLEED
 					!p->nudged && best_nudged ||
 					p->nudged == best_nudged
 						&&
-#endif
 						d < best_dist - 2 * ON_EPSILON)
 				{
 					found = true;
 					best_is = is;
 					best_it = it;
 					best_dist = d;
-#ifdef HLRAD_AVOIDWALLBLEED
 					best_nudged = p->nudged;
-#endif
 				}
 			}
 		}
@@ -971,15 +887,11 @@ bool FindNearestPosition (int facenum, const Winding *texwinding, const dplane_t
 			*best_s = p->best_s;
 			*best_t = p->best_t;
 			*dist = 0.0;
-#ifdef HLRAD_AVOIDWALLBLEED
 			*nudged = p->nudged;
-#endif
 			return true;
 		}
 	}
-#ifdef HLRAD_AVOIDWALLBLEED
 	*nudged = true;
-#endif
 
 	itmin = map->h;
 	itmax = -1;
@@ -1048,4 +960,3 @@ bool FindNearestPosition (int facenum, const Winding *texwinding, const dplane_t
 }
 
 
-#endif

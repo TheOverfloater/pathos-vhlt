@@ -29,16 +29,12 @@
 #include "log.h"
 #include "filelib.h"
 
-#ifdef ZHLT_CONSOLE
 #ifdef SYSTEM_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
-#endif
 
-#ifdef ZHLT_LANGFILE
 #include "scriplib.h"
-#endif
 
 char*           g_Program = "Uninitialized variable ::g_Program";
 char            g_Mapname[_MAX_PATH] = "Uninitialized variable ::g_Mapname";
@@ -53,17 +49,13 @@ unsigned long   g_nextclientid = 0;
 static FILE*    CompileLog = NULL;
 static bool     fatal = false;
 
-#ifdef ZHLT_CONSOLE
 bool twice = false;
 bool useconsole = false;
 FILE *conout = NULL;
-#endif
 
-#ifdef ZHLT_LANGFILE
 int				g_lang_count = 0;
 const int		g_lang_max = 1024;
 char*			g_lang[g_lang_max][2];
-#endif
 
 ////////
 
@@ -100,21 +92,12 @@ void            ResetTmpFiles()
         safe_snprintf(filename, _MAX_PATH, "%s.lin", g_Mapname);
         _unlink(filename);
 
-#ifndef HLCSG_ONLYENTS_NOWADCHANGE
-        safe_snprintf(filename, _MAX_PATH, "%s.wic", g_Mapname);
-        _unlink(filename);
-#endif
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 
         safe_snprintf(filename, _MAX_PATH, "%s.hsz", g_Mapname);
         _unlink(filename);
-#endif
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 
         safe_snprintf(filename, _MAX_PATH, "%s.pln", g_Mapname);
         _unlink(filename);
-#endif
-#ifdef ZHLT_DETAILBRUSH
 
 		safe_snprintf(filename, _MAX_PATH, "%s.b0", g_Mapname);
 		_unlink(filename);
@@ -127,22 +110,12 @@ void            ResetTmpFiles()
 
 		safe_snprintf(filename, _MAX_PATH, "%s.b3", g_Mapname);
 		_unlink(filename);
-#endif
-#ifdef ZHLT_NOWADDIR
 
 		safe_snprintf(filename, _MAX_PATH, "%s.wa_", g_Mapname);
 		_unlink(filename);
-#endif
-#ifdef ZHLT_64BIT_FIX
 
 		safe_snprintf(filename, _MAX_PATH, "%s.ext", g_Mapname);
 		_unlink(filename);
-#endif
-#ifdef ZHLT_XASH
-
-		safe_snprintf(filename, _MAX_PATH, "%s.dlit", g_Mapname);
-		_unlink(filename);
-#endif
     }
 }
 
@@ -206,23 +179,13 @@ void            LogError(const char* const message)
         }
         else
         {
-#ifdef ZHLT_LANGFILE
             fprintf(stderr, Localize ("ERROR: Could not open error logfile %s"), logfilename);
-#else
-            fprintf(stderr, "ERROR: Could not open error logfile %s", logfilename);
-#endif
             fflush(stderr);
-#ifdef ZHLT_CONSOLE
 			if (twice)
 			{
-#ifdef ZHLT_LANGFILE
 				fprintf (conout, Localize ("ERROR: Could not open error logfile %s"), logfilename);
-#else
-				fprintf (conout, "ERROR: Could not open error logfile %s", logfilename);
-#endif
 				fflush (conout);
 			}
-#endif
         }
     }
 }
@@ -269,23 +232,13 @@ void CDECL      OpenLog(const int clientid)
 
         if (!CompileLog)
         {
-#ifdef ZHLT_LANGFILE
             fprintf(stderr, Localize ("ERROR: Could not open logfile %s"), logfilename);
-#else
-            fprintf(stderr, "ERROR: Could not open logfile %s", logfilename);
-#endif
             fflush(stderr);
-#ifdef ZHLT_CONSOLE
 			if (twice)
 			{
-#ifdef ZHLT_LANGFILE
 				fprintf (conout, Localize ("ERROR: Could not open logfile %s"), logfilename);
-#else
-				fprintf (conout, "ERROR: Could not open logfile %s", logfilename);
-#endif
 				fflush (conout);
 			}
-#endif
         }
     }
 }
@@ -350,13 +303,11 @@ void            WriteLog(const char* const message)
 
     fprintf(stdout, "%s", message); //fprintf(stdout, message); //--vluzacn
     fflush(stdout);
-#ifdef ZHLT_CONSOLE
 	if (twice)
 	{
 		fprintf (conout, "%s", message);
 		fflush (conout);
 	}
-#endif
 }
 
 // =====================================================================================
@@ -402,18 +353,10 @@ void CDECL FORMAT_PRINTF(1,2)      Error(const char* const error, ...)
 #endif*/
 
     va_start(argptr, error);
-#ifdef ZHLT_LANGFILE
     vsnprintf(message, MAX_ERROR, Localize (error), argptr);
-#else
-    vsnprintf(message, MAX_ERROR, error, argptr);
-#endif
     va_end(argptr);
 
-#ifdef ZHLT_LANGFILE
     safe_snprintf(message2, MAX_MESSAGE, "%s%s\n", Localize ("Error: "), message);
-#else
-    safe_snprintf(message2, MAX_MESSAGE, "Error: %s\n", message);
-#endif
     WriteLog(message2);
     LogError(message2);
 
@@ -435,18 +378,10 @@ void CDECL FORMAT_PRINTF(2,3)      Fatal(assume_msgs msgid, const char* const wa
     va_list         argptr;
 
     va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
     vsnprintf(message, MAX_WARNING, Localize (warning), argptr);
-#else
-    vsnprintf(message, MAX_WARNING, warning, argptr);
-#endif
     va_end(argptr);
 
-#ifdef ZHLT_LANGFILE
     safe_snprintf(message2, MAX_MESSAGE, "%s%s\n", Localize ("Error: "), message);
-#else
-    safe_snprintf(message2, MAX_MESSAGE, "Error: %s\n", message);
-#endif
     WriteLog(message2);
     LogError(message2);
 
@@ -454,11 +389,7 @@ void CDECL FORMAT_PRINTF(2,3)      Fatal(assume_msgs msgid, const char* const wa
         char            message[MAX_MESSAGE];
         const MessageTable_t* msg = GetAssume(msgid);
 
-#ifdef ZHLT_LANGFILE
         safe_snprintf(message, MAX_MESSAGE, "%s\n%s%s\n%s%s\n", Localize (msg->title), Localize ("Description: "), Localize (msg->text), Localize ("Howto Fix: "), Localize (msg->howto));
-#else
-        safe_snprintf(message, MAX_MESSAGE, "%s\nDescription: %s\nHowto Fix: %s\n", msg->title, msg->text, msg->howto);
-#endif
         PrintOnce(message);
     }
 
@@ -483,18 +414,10 @@ void CDECL FORMAT_PRINTF(1,2)      PrintOnce(const char* const warning, ...)
     count++;
 
     va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
     vsnprintf(message, MAX_WARNING, Localize (warning), argptr);
-#else
-    vsnprintf(message, MAX_WARNING, warning, argptr);
-#endif
     va_end(argptr);
 
-#ifdef ZHLT_LANGFILE
     safe_snprintf(message2, MAX_MESSAGE, "%s%s\n", Localize ("Error: "), message);
-#else
-    safe_snprintf(message2, MAX_MESSAGE, "Error: %s\n", message);
-#endif
     WriteLog(message2);
     LogError(message2);
 }
@@ -512,18 +435,10 @@ void CDECL FORMAT_PRINTF(1,2)      Warning(const char* const warning, ...)
     va_list         argptr;
 
     va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
     vsnprintf(message, MAX_WARNING, Localize (warning), argptr);
-#else
-    vsnprintf(message, MAX_WARNING, warning, argptr);
-#endif
     va_end(argptr);
 
-#ifdef ZHLT_LANGFILE
     safe_snprintf(message2, MAX_MESSAGE, "%s%s\n", Localize ("Warning: "), message);
-#else
-    safe_snprintf(message2, MAX_MESSAGE, "Warning: %s\n", message);
-#endif
     WriteLog(message2);
 }
 
@@ -540,11 +455,7 @@ void CDECL FORMAT_PRINTF(1,2)      Verbose(const char* const warning, ...)
         va_list         argptr;
 
         va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
         vsnprintf(message, MAX_MESSAGE, Localize (warning), argptr);
-#else
-        vsnprintf(message, MAX_MESSAGE, warning, argptr);
-#endif
         va_end(argptr);
 
         WriteLog(message);
@@ -564,11 +475,7 @@ void CDECL FORMAT_PRINTF(2,3)      Developer(developer_level_t level, const char
         va_list         argptr;
 
         va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
         vsnprintf(message, MAX_MESSAGE, Localize (warning), argptr);
-#else
-        vsnprintf(message, MAX_MESSAGE, warning, argptr);
-#endif
         va_end(argptr);
 
         WriteLog(message);
@@ -625,11 +532,7 @@ void CDECL FORMAT_PRINTF(1,2)      Log(const char* const warning, ...)
     va_list         argptr;
 
     va_start(argptr, warning);
-#ifdef ZHLT_LANGFILE
     vsnprintf(message, MAX_MESSAGE, Localize (warning), argptr);
-#else
-    vsnprintf(message, MAX_MESSAGE, warning, argptr);
-#endif
     va_end(argptr);
 
     WriteLog(message);
@@ -663,20 +566,10 @@ static void     LogArgs(int argc, char** argv)
 void            Banner()
 {
     Log("%s " ZHLT_VERSIONSTRING " " HACK_VERSIONSTRING
-#ifdef ZHLT_64BIT_FIX
 #ifndef VERSION_32BIT
 		" " PLATFORM_VERSIONSTRING
 #endif
-#endif
 		" (%s)\n", g_Program, __DATE__);
-    //Log("BUGGY %s (built: %s)\nUse at own risk.\n", g_Program, __DATE__);
-#ifdef ZHLT_XASH2
-	Log (" - special edition for Xash with change in bsp format\n");
-#else
-#ifdef ZHLT_XASH
-	Log(" - special edition for Xash\n");
-#endif
-#endif
 
     Log("Zoner's Half-Life Compilation Tools -- Custom Build\n"
         "Based on code modifications by Sean 'Zoner' Cavanaugh\n"
@@ -715,11 +608,7 @@ void            hlassume(bool exp, assume_msgs msgid)
         char            message[MAX_MESSAGE];
         const MessageTable_t* msg = GetAssume(msgid);
 
-#ifdef ZHLT_LANGFILE
         safe_snprintf(message, MAX_MESSAGE, "%s\n%s%s\n%s%s\n", Localize (msg->title), Localize ("Description: "), Localize (msg->text), Localize ("Howto Fix: "), Localize (msg->howto));
-#else
-        safe_snprintf(message, MAX_MESSAGE, "%s\nDescription: %s\nHowto Fix: %s\n", msg->title, msg->text, msg->howto);
-#endif
         Error(message);
     }
 }
@@ -771,7 +660,6 @@ void LogTimeElapsed(float elapsed_time)
     }
 }
 
-#ifdef ZHLT_CONSOLE
 #ifdef SYSTEM_WIN32
 void wait ()
 {
@@ -849,9 +737,7 @@ void CDECL FORMAT_PRINTF(1,2) PrintConsole(const char* const warning, ...)
 		fprintf (stdout, "%s", message);
 	}
 }
-#endif
 
-#ifdef ZHLT_LANGFILE
 int loadlangfileline (char *line, int n, FILE *f)
 {
 	int i = 0, c = 0;
@@ -956,4 +842,3 @@ void LoadLangFile (const char *name, const char *programpath)
 	fclose (f);
 	Log ("Localization file: '%s'\n", filepath);
 }
-#endif

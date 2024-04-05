@@ -22,7 +22,6 @@
 
 */
 
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 vec3_t          g_hull_size[NUM_HULLS][2] = 
 {
     {// 0x0x0
@@ -41,11 +40,8 @@ vec3_t          g_hull_size[NUM_HULLS][2] =
         {-16, -16, -18},    {16, 16, 18}
     }                                                     
 };
-#endif
 static FILE*    polyfiles[NUM_HULLS];
-#ifdef ZHLT_DETAILBRUSH
 static FILE*    brushfiles[NUM_HULLS];
-#endif
 int             g_hullnum = 0;
 
 static face_t*  validfaces[MAX_INTERNAL_MAP_PLANES];
@@ -54,23 +50,15 @@ char            g_bspfilename[_MAX_PATH];
 char            g_pointfilename[_MAX_PATH];
 char            g_linefilename[_MAX_PATH];
 char            g_portfilename[_MAX_PATH];
-#ifdef ZHLT_64BIT_FIX
 char			g_extentfilename[_MAX_PATH];
-#endif
 
 // command line flags
 bool			g_noopt = DEFAULT_NOOPT;		// don't optimize BSP on write
-#ifdef HLBSP_MERGECLIPNODE
 bool			g_noclipnodemerge = DEFAULT_NOCLIPNODEMERGE;
-#endif
 bool            g_nofill = DEFAULT_NOFILL;      // dont fill "-nofill"
-#ifdef HLBSP_FILL
 bool			g_noinsidefill = DEFAULT_NOINSIDEFILL;
-#endif
 bool            g_notjunc = DEFAULT_NOTJUNC;
-#ifdef HLBSP_BRINKHACK
 bool			g_nobrink = DEFAULT_NOBRINK;
-#endif
 bool            g_noclip = DEFAULT_NOCLIP;      // no clipping hull "-noclip"
 bool            g_chart = DEFAULT_CHART;        // print out chart? "-chart"
 bool            g_estimate = DEFAULT_ESTIMATE;  // estimate mode "-estimate"
@@ -79,32 +67,17 @@ bool            g_bLeakOnly = DEFAULT_LEAKONLY; // leakonly mode "-leakonly"
 bool            g_bLeaked = false;
 int             g_subdivide_size = DEFAULT_SUBDIVIDE_SIZE;
 
-#ifdef ZHLT_NULLTEX // AJM
 bool            g_bUseNullTex = DEFAULT_NULLTEX; // "-nonulltex"
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-bool            g_bDetailBrushes = DEFAULT_DETAIL; // "-nodetail"
-#endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-char*           g_progressfile = DEFAULT_PROGRESSFILE; // "-progressfile path"
-#endif
 
-#ifdef HLBSP_REMOVEHULL2
 bool g_nohull2 = false;
-#endif
 
-#ifdef HLBSP_VIEWPORTAL
 bool g_viewportal = false;
-#endif
 
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 dplane_t g_dplanes[MAX_INTERNAL_MAP_PLANES];
-#endif
 
 
-#ifdef ZHLT_INFO_COMPILE_PARAMETERS// AJM
 // =====================================================================================
 //  GetParamsFromEnt
 //      this function is called from parseentity when it encounters the
@@ -209,7 +182,6 @@ void            GetParamsFromEnt(entity_t* mapent)
     //////////////////
     Verbose("\n");
 }
-#endif
 
 // =====================================================================================
 //  Extract File stuff (ExtractFile | ExtractFilePath | ExtractFileBase)
@@ -236,12 +208,8 @@ face_t*         NewFaceFromFace(const face_t* const in)
     newf->texturenum = in->texturenum;
     newf->original = in->original;
     newf->contents = in->contents;
-#ifdef HLBSP_NewFaceFromFace_FIX
 	newf->facestyle = in->facestyle;
-#endif
-#ifdef ZHLT_DETAILBRUSH
 	newf->detaillevel = in->detaillevel;
-#endif
 
     return newf;
 }
@@ -294,7 +262,6 @@ static void     SplitFaceTmp(face_t* in, const dplane_t* const split, face_t** f
     sides[i] = sides[0];
     dists[i] = dists[0];
 
-#ifdef HLBSP_SPLITFACE_FIX
 	if (!counts[0] && !counts[1])
 	{
 		if (in->detaillevel)
@@ -335,7 +302,6 @@ static void     SplitFaceTmp(face_t* in, const dplane_t* const split, face_t** f
 		}
 		return;
 	}
-#endif
     if (!counts[0])
     {
         *front = NULL;
@@ -418,7 +384,6 @@ static void     SplitFaceTmp(face_t* in, const dplane_t* const split, face_t** f
     {
         Error("SplitFace: numpoints > MAXEDGES");
     }
-#ifdef HLBSP_REMOVECOLINEARPOINTS
 	{
 		Winding *wd = new Winding (newf->numpoints);
 		int x;
@@ -457,7 +422,6 @@ static void     SplitFaceTmp(face_t* in, const dplane_t* const split, face_t** f
 			*front = NULL;
 		}
 	}
-#endif
 }
 
 // =====================================================================================
@@ -541,7 +505,6 @@ void            FreePortal(portal_t* p) // consider: inline
 }
 
 
-#ifdef ZHLT_DETAILBRUSH
 side_t *AllocSide ()
 {
 	side_t *s;
@@ -708,7 +671,6 @@ void SplitBrush (brush_t *in, const dplane_t *split, brush_t **front, brush_t **
 	return;
 }
 
-#ifdef HLBSP_DETAILBRUSH_CULL
 brush_t *BrushFromBox (const vec3_t mins, const vec3_t maxs)
 {
 	brush_t *b = AllocBrush ();
@@ -748,9 +710,7 @@ void CalcBrushBounds (const brush_t *b, vec3_t &mins, vec3_t &maxs)
 		VectorCompareMaximum (maxs, windingmaxs, maxs);
 	}
 }
-#endif
 
-#endif
 // =====================================================================================
 //  AllocNode
 //      blah
@@ -836,9 +796,7 @@ static surfchain_t* SurflistFromValidFaces()
         n->next = sc->surfaces;
         sc->surfaces = n;
         ClearBounds(n->mins, n->maxs);
-#ifdef ZHLT_DETAILBRUSH
 		n->detaillevel = -1;
-#endif
         n->planenum = i;
 
         n->faces = NULL;
@@ -848,12 +806,10 @@ static surfchain_t* SurflistFromValidFaces()
             f->next = n->faces;
             n->faces = f;
             AddFaceToBounds(f, n->mins, n->maxs);
-#ifdef ZHLT_DETAILBRUSH
 			if (n->detaillevel == -1 || f->detaillevel < n->detaillevel)
 			{
 				n->detaillevel = f->detaillevel;
 			}
-#endif
         }
         for (f = validfaces[i + 1]; f; f = next)
         {
@@ -861,12 +817,10 @@ static surfchain_t* SurflistFromValidFaces()
             f->next = n->faces;
             n->faces = f;
             AddFaceToBounds(f, n->mins, n->maxs);
-#ifdef ZHLT_DETAILBRUSH
 			if (n->detaillevel == -1 || f->detaillevel < n->detaillevel)
 			{
 				n->detaillevel = f->detaillevel;
 			}
-#endif
         }
 
         AddPointToBounds(n->mins, sc->mins, sc->maxs);
@@ -883,48 +837,25 @@ static surfchain_t* SurflistFromValidFaces()
     return sc;
 }
 
-#ifdef ZHLT_NULLTEX// AJM
 // =====================================================================================
 //  CheckFaceForNull
 //      Returns true if the passed face is facetype null
 // =====================================================================================
 bool            CheckFaceForNull(const face_t* const f)
 {
-#ifdef HLBSP_SKY_SOLID
 	if (f->contents == CONTENTS_SKY)
     {
 		const char *name = GetTextureByNumber (f->texturenum);
         if (strncasecmp(name, "sky", 3)) // for env_rain
 			return true;
     }
-#endif
     // null faces are only of facetype face_null if we are using null texture stripping
     if (g_bUseNullTex)
     {
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 		const char *name = GetTextureByNumber (f->texturenum);
 		if (!strncasecmp(name, "null", 4))
 			return true;
 		return false;
-#else
-        texinfo_t*      info;
-        miptex_t*       miptex;
-        int             ofs;
-
-        info = &g_texinfo[f->texturenum];
-        ofs = ((dmiptexlump_t*)g_dtexdata)->dataofs[info->miptex];
-        miptex = (miptex_t*)(&g_dtexdata[ofs]);
-
-        if (!strcasecmp(miptex->name, "null"))
-            return true;
-	#ifdef HLCSG_CUSTOMHULL
-        else if (!strncasecmp(miptex->name, "null", 4))
-            return true;
-	#else
-        else
-            return false;
-	#endif
-#endif
     }
     else // otherwise, under normal cases, null textured faces should be facetype face_normal
     {
@@ -936,49 +867,17 @@ bool            CheckFaceForNull(const face_t* const f)
 // =====================================================================================
 bool            CheckFaceForEnv_Sky(const face_t* const f)
 {
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 	const char *name = GetTextureByNumber (f->texturenum);
 	if (!strncasecmp (name, "env_sky", 7))
 		return true;
 	return false;
-#else
-        texinfo_t*      info;
-        miptex_t*       miptex;
-        int             ofs;
-
-        info = &g_texinfo[f->texturenum];
-        ofs = ((dmiptexlump_t*)g_dtexdata)->dataofs[info->miptex];
-        miptex = (miptex_t*)(&g_dtexdata[ofs]);
-
-        if (!strcasecmp(miptex->name, "env_sky"))
-            return true;
-        else
-            return false;
-#endif
 }
 // =====================================================================================
 
 
 
 
-#endif
 
-#ifdef ZHLT_DETAIL
-// =====================================================================================
-//  CheckFaceForDetail
-//      Returns true if the passed face is part of a detail brush
-// =====================================================================================
-bool            CheckFaceForDetail(const face_t* const f)
-{
-    if (f->contents == CONTENTS_DETAIL)
-    {
-        //Log("CheckFaceForDetail:: got a detail face");
-        return true;
-    }
-
-    return false;
-}
-#endif
 
 // =====================================================================================
 //  CheckFaceForHint
@@ -986,29 +885,10 @@ bool            CheckFaceForDetail(const face_t* const f)
 // =====================================================================================
 bool            CheckFaceForHint(const face_t* const f)
 {
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 	const char *name = GetTextureByNumber (f->texturenum);
 	if (!strncasecmp (name, "hint", 4))
 		return true;
 	return false;
-#else
-    texinfo_t*      info;
-    miptex_t*       miptex;
-    int             ofs;
-
-    info = &g_texinfo[f->texturenum];
-    ofs = ((dmiptexlump_t *)g_dtexdata)->dataofs[info->miptex];
-    miptex = (miptex_t *)(&g_dtexdata[ofs]);
-
-    if (!strcasecmp(miptex->name, "hint"))
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-#endif
 }
 
 // =====================================================================================
@@ -1017,32 +897,12 @@ bool            CheckFaceForHint(const face_t* const f)
 // =====================================================================================
 bool            CheckFaceForSkip(const face_t* const f)
 {
-#ifdef HLCSG_HLBSP_VOIDTEXINFO
 	const char *name = GetTextureByNumber (f->texturenum);
 	if (!strncasecmp (name, "skip", 4))
 		return true;
 	return false;
-#else
-    texinfo_t*      info;
-    miptex_t*       miptex;
-    int             ofs;
-
-    info = &g_texinfo[f->texturenum];
-    ofs = ((dmiptexlump_t*)g_dtexdata)->dataofs[info->miptex];
-    miptex = (miptex_t*)(&g_dtexdata[ofs]);
-
-    if (!strcasecmp(miptex->name, "skip"))
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-#endif
 }
 
-#ifdef HLCSG_HLBSP_SOLIDHINT
 bool CheckFaceForDiscardable (const face_t *f)
 {
 	const char *name = GetTextureByNumber (f->texturenum);
@@ -1051,7 +911,6 @@ bool CheckFaceForDiscardable (const face_t *f)
 	return false;
 }
 
-#endif
 // =====================================================================================
 //  SetFaceType
 // =====================================================================================
@@ -1065,18 +924,14 @@ static          facestyle_e SetFaceType(face_t* f)
     {
         f->facestyle = face_skip;
     }
-#ifdef ZHLT_NULLTEX         // AJM
     else if (CheckFaceForNull(f))
     {
         f->facestyle = face_null;
     }
-#endif
-#ifdef HLCSG_HLBSP_SOLIDHINT
 	else if (CheckFaceForDiscardable (f))
 	{
 		f->facestyle = face_discardable;
 	}
-#endif
 
 // =====================================================================================
 //Cpt_Andrew - Env_Sky Check
@@ -1089,13 +944,6 @@ static          facestyle_e SetFaceType(face_t* f)
 // =====================================================================================
 
 
-#ifdef ZHLT_DETAIL
-    else if (CheckFaceForDetail(f))
-    {
-        //Log("SetFaceType::detail face\n");
-        f->facestyle = face_detail;
-    }
-#endif
     else
     {
         f->facestyle = face_normal;
@@ -1109,47 +957,31 @@ static          facestyle_e SetFaceType(face_t* f)
 static surfchain_t* ReadSurfs(FILE* file)
 {
     int             r;
-#ifdef ZHLT_DETAILBRUSH
 	int				detaillevel;
-#endif
     int             planenum, g_texinfo, contents, numpoints;
     face_t*         f;
     int             i;
     double          v[3];
     int             line = 0;
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 	double			inaccuracy, inaccuracy_count = 0.0, inaccuracy_total = 0.0, inaccuracy_max = 0.0;
-#endif
 
     // read in the polygons
     while (1)
     {
-#ifdef HLBSP_REMOVEHULL2
 		if (file == polyfiles[2] && g_nohull2)
 			break;
-#endif
         line++;
-#ifdef ZHLT_DETAILBRUSH
         r = fscanf(file, "%i %i %i %i %i\n", &detaillevel, &planenum, &g_texinfo, &contents, &numpoints);
-#else
-        r = fscanf(file, "%i %i %i %i\n", &planenum, &g_texinfo, &contents, &numpoints);
-#endif
         if (r == 0 || r == -1)
         {
             return NULL;
         }
         if (planenum == -1)                                // end of model
         {
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 			Developer (DEVELOPER_LEVEL_MEGASPAM, "inaccuracy: average %.8f max %.8f\n", inaccuracy_total / inaccuracy_count, inaccuracy_max);
-#endif
             break;
         }
-#ifdef ZHLT_DETAILBRUSH
 		if (r != 5)
-#else
-        if (r != 4)
-#endif
         {
             Error("ReadSurfs (line %i): scanf failure", line);
         }
@@ -1165,12 +997,10 @@ static surfchain_t* ReadSurfs(FILE* file)
         {
             Error("ReadSurfs (line %i): %i > g_numtexinfo", line, g_texinfo);
         }
-#ifdef ZHLT_DETAILBRUSH
 		if (detaillevel < 0)
 		{
 			Error("ReadSurfs (line %i): detaillevel %i < 0", line, detaillevel);
 		}
-#endif
 
         if (!strcasecmp(GetTextureByNumber(g_texinfo), "skip"))
         {
@@ -1191,9 +1021,7 @@ static surfchain_t* ReadSurfs(FILE* file)
         }
 
         f = AllocFace();
-#ifdef ZHLT_DETAILBRUSH
 		f->detaillevel = detaillevel;
-#endif
         f->planenum = planenum;
         f->texturenum = g_texinfo;
         f->contents = contents;
@@ -1212,7 +1040,6 @@ static surfchain_t* ReadSurfs(FILE* file)
                 Error("::ReadSurfs (face_normal), fscanf of points failed at line %i", line);
             }
             VectorCopy(v, f->pts[i]);
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 			 if (DEVELOPER_LEVEL_MEGASPAM <= g_developer)
 			 {
 				const dplane_t *plane = &g_dplanes[f->planenum];
@@ -1221,23 +1048,19 @@ static surfchain_t* ReadSurfs(FILE* file)
 				inaccuracy_total += inaccuracy;
 				inaccuracy_max = qmax (inaccuracy, inaccuracy_max);
 			}
-#endif
         }
         fscanf(file, "\n");
     }
 
     return SurflistFromValidFaces();
 }
-#ifdef ZHLT_DETAILBRUSH
 static brush_t *ReadBrushes (FILE *file)
 {
 	brush_t *brushes = NULL;
 	while (1)
 	{
-#ifdef HLBSP_REMOVEHULL2
 		if (file == brushfiles[2] && g_nohull2)
 			break;
-#endif
 		int r;
 		int brushinfo;
 		r = fscanf (file, "%i\n", &brushinfo);
@@ -1297,7 +1120,6 @@ static brush_t *ReadBrushes (FILE *file)
 	}
 	return brushes;
 }
-#endif
 
 
 // =====================================================================================
@@ -1306,9 +1128,7 @@ static brush_t *ReadBrushes (FILE *file)
 static bool     ProcessModel()
 {
     surfchain_t*    surfs;
-#ifdef ZHLT_DETAILBRUSH
 	brush_t			*detailbrushes;
-#endif
     node_t*         nodes;
     dmodel_t*       model;
     int             startleafs;
@@ -1317,9 +1137,7 @@ static bool     ProcessModel()
 
     if (!surfs)
         return false;                                      // all models are done
-#ifdef ZHLT_DETAILBRUSH
 	detailbrushes = ReadBrushes (brushfiles[0]);
-#endif
 
     hlassume(g_nummodels < MAX_MAP_MODELS, assume_MAX_MAP_MODELS);
 
@@ -1331,7 +1149,6 @@ static bool     ProcessModel()
 //    Log("ProcessModel: %i (%i f)\n", modnum, model->numfaces);
 
 	g_hullnum = 0; //vluzacn
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	VectorFill (model->mins, 99999);
 	VectorFill (model->maxs, -99999);
 	{
@@ -1362,26 +1179,18 @@ static bool     ProcessModel()
 			}
 		}
 	}
-#else
-    VectorCopy(surfs->mins, model->mins);
-    VectorCopy(surfs->maxs, model->maxs);
-#endif
 
     // SolidBSP generates a node tree
     nodes = SolidBSP(surfs,
-#ifdef ZHLT_DETAILBRUSH
 		detailbrushes,
-#endif
 		modnum==0);
 
     // build all the portals in the bsp tree
     // some portals are solid polygons, and some are paths to other leafs
     if (g_nummodels == 1 && !g_nofill)                       // assume non-world bmodels are simple
     {
-#ifdef HLBSP_FILL
 		if (!g_noinsidefill)
 			FillInside (nodes);
-#endif
         nodes = FillOutside(nodes, (g_bLeaked != true), 0);                  // make a leakfile if bad
     }
 
@@ -1395,7 +1204,6 @@ static bool     ProcessModel()
     // emit the faces for the bsp file
     model->headnode[0] = g_numnodes;
     model->firstface = g_numfaces;
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	bool novisiblebrushes = false;
 	// model->headnode[0]<0 will crash HL, so must split it.
 	if (nodes->planenum == -1)
@@ -1409,11 +1217,9 @@ static bool     ProcessModel()
 		nodes->children[0] = AllocNode ();
 		nodes->children[0]->planenum = -1;
 		nodes->children[0]->contents = CONTENTS_EMPTY;
-#ifdef ZHLT_DETAILBRUSH
 		nodes->children[0]->isdetail = false;
 		nodes->children[0]->isportalleaf = true;
 		nodes->children[0]->iscontentsdetail = false;
-#endif
 		nodes->children[0]->faces = NULL;
 		nodes->children[0]->markfaces = (face_t**)calloc (1, sizeof(face_t*));
 		VectorFill (nodes->children[0]->mins, 0);
@@ -1421,26 +1227,21 @@ static bool     ProcessModel()
 		nodes->children[1] = AllocNode ();
 		nodes->children[1]->planenum = -1;
 		nodes->children[1]->contents = CONTENTS_EMPTY;
-#ifdef ZHLT_DETAILBRUSH
 		nodes->children[1]->isdetail = false;
 		nodes->children[1]->isportalleaf = true;
 		nodes->children[1]->iscontentsdetail = false;
-#endif
 		nodes->children[1]->faces = NULL;
 		nodes->children[1]->markfaces = (face_t**)calloc (1, sizeof(face_t*));
 		VectorFill (nodes->children[1]->mins, 0);
 		VectorFill (nodes->children[1]->maxs, 0);
 		nodes->contents = 0;
-#ifdef ZHLT_DETAILBRUSH
 		nodes->isdetail = false;
 		nodes->isportalleaf = false;
-#endif
 		nodes->faces = NULL;
 		nodes->markfaces = NULL;
 		VectorFill (nodes->mins, 0);
 		VectorFill (nodes->maxs, 0);
 	}
-#endif
     WriteDrawNodes(nodes);
     model->numfaces = g_numfaces - model->firstface;
     model->visleafs = g_numleafs - startleafs;
@@ -1455,21 +1256,14 @@ static bool     ProcessModel()
 		model->headnode[1] = CONTENTS_EMPTY;
 		model->headnode[2] = CONTENTS_EMPTY;
 		model->headnode[3] = CONTENTS_EMPTY;
-#if defined (HLCSG_HLBSP_CUSTOMBOUNDINGBOX) || defined (HLCSG_HLBSP_ALLOWEMPTYENTITY)
 		goto skipclip;
-#else
-        return true;
-#endif
     }
 
     // the clipping hulls are simpler
     for (g_hullnum = 1; g_hullnum < NUM_HULLS; g_hullnum++)
     {
         surfs = ReadSurfs(polyfiles[g_hullnum]);
-#ifdef ZHLT_DETAILBRUSH
 		detailbrushes = ReadBrushes (brushfiles[g_hullnum]);
-#endif
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 		{
 			int hullnum = g_hullnum;
 			if (surfs->mins[0] > surfs->maxs[0])
@@ -1499,11 +1293,8 @@ static bool     ProcessModel()
 				}
 			}
 		}
-#endif
         nodes = SolidBSP(surfs,
-#ifdef ZHLT_DETAILBRUSH
 			detailbrushes, 
-#endif
 			modnum==0);
         if (g_nummodels == 1 && !g_nofill)                   // assume non-world bmodels are simple
         {
@@ -1522,19 +1313,12 @@ static bool     ProcessModel()
 		}
 		else
 		{
-#ifdef ZHLT_XASH2
-	        model->headnode[g_hullnum] = g_numclipnodes[g_hullnum - 1];
-#else
 	        model->headnode[g_hullnum] = g_numclipnodes;
-#endif
 		    WriteClipNodes(nodes);
 		}
     }
-#if defined (HLCSG_HLBSP_CUSTOMBOUNDINGBOX) || defined (HLCSG_HLBSP_ALLOWEMPTYENTITY)
 	skipclip:
-#endif
 
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
 	{
 		entity_t *ent;
 		ent = EntityForModel (modnum);
@@ -1550,8 +1334,6 @@ static bool     ProcessModel()
 			}
 		}
 	}
-#endif
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	Developer (DEVELOPER_LEVEL_MESSAGE, "model %d - mins=(%g,%g,%g) maxs=(%g,%g,%g)\n", modnum,
 		model->mins[0], model->mins[1], model->mins[2], model->maxs[0], model->maxs[1], model->maxs[2]);
 	if (model->mins[0] > model->maxs[0])
@@ -1583,7 +1365,6 @@ static bool     ProcessModel()
 			(ent? ValueForKey (ent, "targetname"): "unknown"), 
 			model->mins[0], model->mins[1], model->mins[2], model->maxs[0], model->maxs[1], model->maxs[2]);
 	}
-#endif
     return true;
 }
 
@@ -1595,28 +1376,18 @@ static void     Usage()
     Banner();
 
     Log("\n-= %s Options =-\n\n", g_Program);
-#ifdef ZHLT_CONSOLE
 	Log("    -console #     : Set to 0 to turn off the pop-up console (default is 1)\n");
-#endif
-#ifdef ZHLT_LANGFILE
 	Log("    -lang file     : localization file\n");
-#endif
     Log("    -leakonly      : Run BSP only enough to check for LEAKs\n");
     Log("    -subdivide #   : Sets the face subdivide size\n");
     Log("    -maxnodesize # : Sets the maximum portal node size\n\n");
     Log("    -notjunc       : Don't break edges on t-junctions     (not for final runs)\n");
-#ifdef HLBSP_BRINKHACK
 	Log("    -nobrink       : Don't smooth brinks                  (not for final runs)\n");
-#endif
     Log("    -noclip        : Don't process the clipping hull      (not for final runs)\n");
     Log("    -nofill        : Don't fill outside (will mask LEAKs) (not for final runs)\n");
-#ifdef HLBSP_FILL
 	Log("    -noinsidefill  : Don't fill empty spaces\n");
-#endif
 	Log("    -noopt         : Don't optimize planes on BSP write   (not for final runs)\n");
-#ifdef HLBSP_MERGECLIPNODE
 	Log("    -noclipnodemerge: Don't optimize clipnodes\n");
-#endif
     Log("    -texdata #     : Alter maximum texture memory limit (in kb)\n");
     Log("    -lightdata #   : Alter maximum lighting memory limit (in kb)\n");
     Log("    -chart         : display bsp statitics\n");
@@ -1626,28 +1397,16 @@ static void     Usage()
 #ifdef SYSTEM_WIN32
     Log("    -estimate      : display estimated time during compile\n");
 #endif
-#ifdef ZHLT_PROGRESSFILE // AJM
-    Log("    -progressfile path  : specify the path to a file for progress estimate output\n");
-#endif
 #ifdef SYSTEM_POSIX
     Log("    -noestimate    : do not display continuous compile time estimates\n");
 #endif
 
-#ifdef ZHLT_NULLTEX         // AJM
     Log("    -nonulltex     : Don't strip NULL faces\n");
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-    Log("    -nodetail      : don't handle detail brushes\n");
-#endif
 
-#ifdef HLBSP_REMOVEHULL2
 	Log("    -nohull2       : Don't generate hull 2 (the clipping hull for large monsters and pushables)\n");
-#endif
 
-#ifdef HLBSP_VIEWPORTAL
 	Log("    -viewportal    : Show portal boundaries in 'mapname_portal.pts' file\n");
-#endif
 
     Log("    -verbose       : compile with verbose messages\n");
     Log("    -noinfo        : Do not show tool configuration information\n");
@@ -1706,30 +1465,17 @@ static void     Settings()
     // HLBSP Specific Settings
     Log("noclip              [ %7s ] [ %7s ]\n", g_noclip ? "on" : "off", DEFAULT_NOCLIP ? "on" : "off");
     Log("nofill              [ %7s ] [ %7s ]\n", g_nofill ? "on" : "off", DEFAULT_NOFILL ? "on" : "off");
-#ifdef HLBSP_FILL
 	Log("noinsidefill        [ %7s ] [ %7s ]\n", g_noinsidefill ? "on" : "off", DEFAULT_NOINSIDEFILL ? "on" : "off");
-#endif
 	Log("noopt               [ %7s ] [ %7s ]\n", g_noopt ? "on" : "off", DEFAULT_NOOPT ? "on" : "off");
-#ifdef HLBSP_MERGECLIPNODE
 	Log("no clipnode merging [ %7s ] [ %7s ]\n", g_noclipnodemerge? "on": "off", DEFAULT_NOCLIPNODEMERGE? "on": "off");
-#endif
-#ifdef ZHLT_NULLTEX // AJM
     Log("null tex. stripping [ %7s ] [ %7s ]\n", g_bUseNullTex ? "on" : "off", DEFAULT_NULLTEX ? "on" : "off" );
-#endif
-#ifdef ZHLT_DETAIL // AJM
-    Log("detail brushes      [ %7s ] [ %7s ]\n", g_bDetailBrushes ? "on" : "off", DEFAULT_DETAIL ? "on" : "off" );
-#endif
     Log("notjunc             [ %7s ] [ %7s ]\n", g_notjunc ? "on" : "off", DEFAULT_NOTJUNC ? "on" : "off");
-#ifdef HLBSP_BRINKHACK
 	Log("nobrink             [ %7s ] [ %7s ]\n", g_nobrink? "on": "off", DEFAULT_NOBRINK? "on": "off");
-#endif
     Log("subdivide size      [ %7d ] [ %7d ] (Min %d) (Max %d)\n",
         g_subdivide_size, DEFAULT_SUBDIVIDE_SIZE, MIN_SUBDIVIDE_SIZE, MAX_SUBDIVIDE_SIZE);
     Log("max node size       [ %7d ] [ %7d ] (Min %d) (Max %d)\n",
         g_maxnode_size, DEFAULT_MAXNODE_SIZE, MIN_MAXNODE_SIZE, MAX_MAXNODE_SIZE);
-#ifdef HLBSP_REMOVEHULL2
 	Log("remove hull 2       [ %7s ] [ %7s ]\n", g_nohull2? "on": "off", "off");
-#endif
     Log("\n\n");
 }
 
@@ -1751,10 +1497,8 @@ static void     ProcessFile(const char* const filename)
     safe_snprintf(g_linefilename, _MAX_PATH, "%s.lin", filename);
     unlink(g_linefilename);
 
-#ifdef ZHLT_64BIT_FIX
 	safe_snprintf (g_extentfilename, _MAX_PATH, "%s.ext", filename);
 	unlink (g_extentfilename);
-#endif
     // open the hull files
     for (i = 0; i < NUM_HULLS; i++)
     {
@@ -1764,14 +1508,11 @@ static void     ProcessFile(const char* const filename)
 
         if (!polyfiles[i])
             Error("Can't open %s", name);
-#ifdef ZHLT_DETAILBRUSH
 		sprintf(name, "%s.b%i", filename, i);
 		brushfiles[i] = fopen(name, "r");
 		if (!brushfiles[i])
 			Error("Can't open %s", name);
-#endif
     }
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	{
 		FILE			*f;
 		char			name[_MAX_PATH];
@@ -1803,7 +1544,6 @@ static void     ProcessFile(const char* const filename)
 			fclose (f);
 		}
 	}
-#endif
 
     // load the output of csg
     safe_snprintf(g_bspfilename, _MAX_PATH, "%s.bsp", filename);
@@ -1812,7 +1552,6 @@ static void     ProcessFile(const char* const filename)
 
     Settings(); // AJM: moved here due to info_compile_parameters entity
 
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 	{
 		char name[_MAX_PATH];
 		safe_snprintf (name, _MAX_PATH, "%s.pln", filename);
@@ -1843,7 +1582,6 @@ static void     ProcessFile(const char* const filename)
 			fclose (planefile);
 		}
 	}
-#endif
     // init the tables to be shared by all models
     BeginBSPFile();
 
@@ -1853,7 +1591,6 @@ static void     ProcessFile(const char* const filename)
 
     // write the updated bsp file out
     FinishBSPFile();
-#ifdef HLBSP_DELETETEMPFILES
 
 	// Because the bsp file has been updated, these polyfiles are no longer valid.
     for (i = 0; i < NUM_HULLS; i++)
@@ -1862,22 +1599,15 @@ static void     ProcessFile(const char* const filename)
 		fclose (polyfiles[i]);
 		polyfiles[i] = NULL;
 		unlink (name);
-#ifdef ZHLT_DETAILBRUSH
 		sprintf(name, "%s.b%i", filename, i);
 		fclose (brushfiles[i]);
 		brushfiles[i] = NULL;
 		unlink (name);
-#endif
     }
-#ifdef HLCSG_HLBSP_ALLOWEMPTYENTITY
 	safe_snprintf (name, _MAX_PATH, "%s.hsz", filename);
 	unlink (name);
-#endif
-#ifdef HLCSG_HLBSP_DOUBLEPLANE
 	safe_snprintf (name, _MAX_PATH, "%s.pln", filename);
 	unlink (name);
-#endif
-#endif
 }
 
 // =====================================================================================
@@ -1891,7 +1621,6 @@ int             main(const int argc, char** argv)
 
     g_Program = "hlbsp";
 
-#ifdef ZHLT_PARAMFILE
 	int argcold = argc;
 	char ** argvold = argv;
 	{
@@ -1899,11 +1628,8 @@ int             main(const int argc, char** argv)
 		char ** argv;
 		ParseParamFile (argcold, argvold, argc, argv);
 		{
-#endif
-#ifdef ZHLT_CONSOLE
 	if (InitConsole (argc, argv) < 0)
 		Usage();
-#endif
     // if we dont have any command line argvars, print out usage and die
     if (argc == 1)
         Usage();
@@ -1928,7 +1654,6 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
-#ifdef ZHLT_CONSOLE
 		else if (!strcasecmp(argv[i], "-console"))
 		{
 #ifndef SYSTEM_WIN32
@@ -1939,17 +1664,14 @@ int             main(const int argc, char** argv)
 			else
 				Usage();
 		}
-#endif
         else if (!strcasecmp(argv[i], "-notjunc"))
         {
             g_notjunc = true;
         }
-#ifdef HLBSP_BRINKHACK
 		else if (!strcasecmp (argv[i], "-nobrink"))
 		{
 			g_nobrink = true;
 		}
-#endif
         else if (!strcasecmp(argv[i], "-noclip"))
         {
             g_noclip = true;
@@ -1958,12 +1680,10 @@ int             main(const int argc, char** argv)
         {
             g_nofill = true;
         }
-#ifdef HLBSP_FILL
         else if (!strcasecmp(argv[i], "-noinsidefill"))
         {
             g_noinsidefill = true;
         }
-#endif
 
 #ifdef SYSTEM_WIN32
         else if (!strcasecmp(argv[i], "-estimate"))
@@ -1993,20 +1713,6 @@ int             main(const int argc, char** argv)
         }
 #endif
 
-#ifdef ZHLT_PROGRESSFILE // AJM
-        else if (!strcasecmp(argv[i], "-progressfile"))
-        {
-            if (i + 1 < argc)	//added "1" .--vluzacn
-            {
-                g_progressfile = argv[++i];
-            }
-            else
-            {
-            	Log("Error: -progressfile: expected path to progress file following parameter\n");
-                Usage();
-            }
-        }
-#endif
 
         else if (!strcasecmp(argv[i], "-dev"))
         {
@@ -2048,37 +1754,25 @@ int             main(const int argc, char** argv)
             g_log = false;
         }
 
-#ifdef ZHLT_NULLTEX // AJM
         else if (!strcasecmp(argv[i], "-nonulltex"))
         {
             g_bUseNullTex = false;
         }
-#endif
 
-#ifdef ZHLT_DETAIL // AJM
-        else if (!strcasecmp(argv[i], "-nodetail"))
-        {
-            g_bDetailBrushes = false;
-        }
-#endif
 
-#ifdef HLBSP_REMOVEHULL2
 		else if (!strcasecmp (argv[i], "-nohull2"))
 		{
 			g_nohull2 = true;
 		}
-#endif
 
 		else if (!strcasecmp(argv[i], "-noopt"))
 		{
 			g_noopt = true;
 		}
-#ifdef HLBSP_MERGECLIPNODE
 		else if (!strcasecmp (argv[i], "-noclipnodemerge"))
 		{
 			g_noclipnodemerge = true;
 		}
-#endif
         else if (!strcasecmp(argv[i], "-subdivide"))
         {
             if (i + 1 < argc)	//added "1" .--vluzacn
@@ -2129,12 +1823,10 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
-#ifdef HLBSP_VIEWPORTAL
 		else if (!strcasecmp (argv[i], "-viewportal"))
 		{
 			g_viewportal = true;
 		}
-#endif
         else if (!strcasecmp(argv[i], "-texdata"))
         {
             if (i + 1 < argc)	//added "1" .--vluzacn
@@ -2167,7 +1859,6 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
-#ifdef ZHLT_LANGFILE
 		else if (!strcasecmp (argv[i], "-lang"))
 		{
 			if (i + 1 < argc)
@@ -2185,7 +1876,6 @@ int             main(const int argc, char** argv)
 				Usage();
 			}
 		}
-#endif
         else if (argv[i][0] == '-')
         {
             Log("Unknown option \"%s\"\n", argv[i]);
@@ -2201,13 +1891,6 @@ int             main(const int argc, char** argv)
             Usage();
         }
     }
-#ifdef HLBSP_SUBDIVIDE_INMID
-	if (g_subdivide_size % TEXTURE_STEP != 0)
-	{
-		Warning ("Subdivide size must be a multiple of %d", (int)TEXTURE_STEP);
-		g_subdivide_size = TEXTURE_STEP * (g_subdivide_size / TEXTURE_STEP);
-	}
-#endif
 
     if (!mapname_from_arg)
     {
@@ -2222,7 +1905,6 @@ int             main(const int argc, char** argv)
     atexit(CloseLog);
     ThreadSetDefault();
     ThreadSetPriority(g_threadpriority);
-#ifdef ZHLT_PARAMFILE
     LogStart(argcold, argvold);
 	{
 		int			 i;
@@ -2240,16 +1922,11 @@ int             main(const int argc, char** argv)
 		}
 		Log("\n");
 	}
-#else
-    LogStart(argc, argv);
-#endif
 
     CheckForErrorLog();
 
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
 	hlassume (CalcFaceExtents_test (), assume_first);
-#endif
 #endif
     dtexdata_init();
     atexit(dtexdata_free);
@@ -2258,16 +1935,9 @@ int             main(const int argc, char** argv)
 
     // Load the .void files for allowable entities in the void
     {
-#ifndef ZHLT_DEFAULTEXTENSION_FIX
-        char            g_source[_MAX_PATH];
-#endif
         char            strSystemEntitiesVoidFile[_MAX_PATH];
         char            strMapEntitiesVoidFile[_MAX_PATH];
 
-#ifndef ZHLT_DEFAULTEXTENSION_FIX
-        safe_strncpy(g_source, mapname_from_arg, _MAX_PATH);
-        StripExtension(g_source);
-#endif
 
         // try looking in the current directory
         safe_strncpy(strSystemEntitiesVoidFile, ENTITIES_VOID, _MAX_PATH);
@@ -2285,12 +1955,7 @@ int             main(const int argc, char** argv)
         }
 
         // Set the optional level specific lights filename
-#ifdef ZHLT_DEFAULTEXTENSION_FIX
 		safe_snprintf(strMapEntitiesVoidFile, _MAX_PATH, "%s" ENTITIES_VOID_EXT, g_Mapname);
-#else
-        safe_strncpy(strMapEntitiesVoidFile, g_source, _MAX_PATH);
-        DefaultExtension(strMapEntitiesVoidFile, ENTITIES_VOID_EXT);
-#endif
 
         LoadAllowableOutsideList(strSystemEntitiesVoidFile);    // default entities.void
         if (*strMapEntitiesVoidFile)
@@ -2310,9 +1975,7 @@ int             main(const int argc, char** argv)
 
     FreeAllowableOutsideList();
 
-#ifdef ZHLT_PARAMFILE
 		}
 	}
-#endif
     return 0;
 }
