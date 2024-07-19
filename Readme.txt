@@ -1,0 +1,1 @@
+To make this project compile, move it under "Pathos Engine/Pathos/sources/codersc/utils/".

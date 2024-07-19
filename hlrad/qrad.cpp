@@ -3959,7 +3959,7 @@ int             main(const int argc, char** argv)
 		else if (!strcasecmp(argv[i], "-daylightreturnmode"))
 		{
 			g_daylightreturnmode = true;
-			}
+		}
 		else if (!strcasecmp(argv[i], "-bumpmaps"))
 		{
 			g_bumpmaps = true;

@@ -1765,15 +1765,19 @@ void            CreateDirectLights()
 
 			if (!strcmp(name, "light_environment"))
 			{
-				pLight = ValueForKey(e, "_light");
-				if (pLight)
+				int value = IntForKey(e, "nightmode");
+				if (value != 1)
 				{
-					int ir, ig, ib;
-					argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-					Log("Discarded light_environment with color %d %d %d due to -nightmode.\n", ir, ig, ib);
-				}
+					pLight = ValueForKey(e, "_light");
+					if (pLight)
+					{
+						int ir, ig, ib;
+						argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
+						Log("Discarded light_environment with color %d %d %d due to -nightmode.\n", ir, ig, ib);
+					}
 
-				continue;
+					continue;
+				}
 			}
 		}
 		else if (g_daylightreturnmode)
@@ -1804,14 +1808,18 @@ void            CreateDirectLights()
 				continue;
 
 			if (!strcmp(name, "light_environment")
-				&& IntForKey(e, "daylightreturn") == 1)
+				&& (IntForKey(e, "daylightreturn") == 1
+					|| IntForKey(e, "nightmode") == 1))
 			{
 				pLight = ValueForKey(e, "_light");
 				if (pLight)
 				{
 					int ir, ig, ib;
 					argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-					Log("Discarded light_environment with color %d %d %d due to being set to only work in -daylightreturnmode.\n", ir, ig, ib);
+					if(IntForKey(e, "daylightreturn") == 1)
+						Log("Discarded light_environment with color %d %d %d due to being set to only work in -daylightreturnmode.\n", ir, ig, ib);
+					else
+						Log("Discarded light_environment with color %d %d %d due to being set to only work in -nightmode.\n", ir, ig, ib);
 				}
 
 				continue;
@@ -2319,17 +2327,30 @@ void            CreateDirectLights()
 			const char *classname = ValueForKey (e, "classname");
 			if (!strcmp (classname, "light_environment"))
 			{
-				if (!g_nightmode)
+				if (g_nightmode)
 				{
-					if (g_daylightreturnmode && IntForKey(e, "daylightreturn") == 1 || !g_daylightreturnmode && IntForKey(e, "daylightreturn") != 1)
+					if (IntForKey(e, "nightmode") == 1)
+						countlightenvironment++;
+				}
+				else if (g_daylightreturnmode)
+				{
+					if(IntForKey(e, "daylightreturn") == 1)
+						countlightenvironment++;
+				}
+				else
+				{
+					if (IntForKey(e, "daylightreturn") != 1
+						&& IntForKey(e, "nightmode") != 1)
 						countlightenvironment++;
 				}
 			}
+
 			if (!strcmp (classname, "info_sunlight"))
 			{
 				countinfosunlight++;
 			}
 		}
+
 		if (countlightenvironment > 1 && countinfosunlight == 0)
 		{
 			// because the map is lit by more than one light_environments, but the game can only recognize one of them when setting sv_skycolor and sv_skyvec.
