@@ -25,6 +25,18 @@ int             g_lightdatasize;
 byte*           g_dlightdata;
 int             g_dlightdata_checksum;
 
+int             g_lightdatasize_ambient;
+byte*           g_dlightdata_ambient;
+int             g_dlightdata_ambient_checksum;
+
+int             g_lightdatasize_diffuse;
+byte*           g_dlightdata_diffuse;
+int             g_dlightdata_diffuse_checksum;
+
+int             g_lightdatasize_vectors;
+byte*           g_dlightdata_vectors;
+int             g_dlightdata_vectors_checksum;
+
 int             g_texdatasize;
 byte*           g_dtexdata;                                  // (dmiptexlump_t)
 int             g_dtexdata_checksum;
@@ -390,9 +402,16 @@ static int      CopyLump(int lump, void* dest, int size, const dheader_t* const 
 	
 	//special handling for tex and lightdata to keep things from exploding - KGP
 	if(lump == LUMP_TEXTURES && dest == (void*)g_dtexdata)
-	{ hlassume(g_max_map_miptex > length,assume_MAX_MAP_MIPTEX); }
-	else if(lump == LUMP_LIGHTING && dest == (void*)g_dlightdata)
-	{ hlassume(g_max_map_lightdata > length,assume_MAX_MAP_LIGHTING); }
+	{ 
+		hlassume(g_max_map_miptex > length,assume_MAX_MAP_MIPTEX); 
+	}
+	else if(lump == LUMP_LIGHTING && dest == (void*)g_dlightdata
+		|| lump == LUMP_LIGHTING_AMBIENT && dest == (void*)g_dlightdata_ambient
+		|| lump == LUMP_LIGHTING_DIFFUSE && dest == (void*)g_dlightdata_diffuse
+		|| lump == LUMP_LIGHTING_VECTORS && dest == (void*)g_dlightdata_vectors)
+	{ 
+		hlassume(g_max_map_lightdata > length,assume_MAX_MAP_LIGHTING); 
+	}
 
     memcpy(dest, (byte*) header + ofs, length);
 
@@ -451,6 +470,15 @@ void            LoadBSPImage(dheader_t* const header)
     g_lightdatasize = CopyLump(LUMP_LIGHTING, g_dlightdata, 1, header);
     g_entdatasize = CopyLump(LUMP_ENTITIES, g_dentdata, 1, header);
 
+	if(header->lumps[LUMP_LIGHTING_AMBIENT].filelen)
+		CopyLump(LUMP_LIGHTING_AMBIENT, g_dlightdata_ambient, 1, header);
+
+	if(header->lumps[LUMP_LIGHTING_DIFFUSE].filelen)
+		CopyLump(LUMP_LIGHTING_DIFFUSE, g_dlightdata_diffuse, 1, header);
+
+	if(header->lumps[LUMP_LIGHTING_VECTORS].filelen)
+		CopyLump(LUMP_LIGHTING_VECTORS, g_dlightdata_vectors, 1, header);
+
     Free(header);                                          // everything has been copied out
 
     //
@@ -473,6 +501,15 @@ void            LoadBSPImage(dheader_t* const header)
     g_dvisdata_checksum = FastChecksum(g_dvisdata, g_visdatasize * sizeof(g_dvisdata[0]));
     g_dlightdata_checksum = FastChecksum(g_dlightdata, g_lightdatasize * sizeof(g_dlightdata[0]));
     g_dentdata_checksum = FastChecksum(g_dentdata, g_entdatasize * sizeof(g_dentdata[0]));
+
+	if(g_dlightdata_ambient)
+		g_dlightdata_ambient_checksum = FastChecksum(g_dlightdata_ambient, g_lightdatasize * sizeof(g_dlightdata_ambient[0]));
+
+	if(g_dlightdata_diffuse)
+		g_dlightdata_diffuse_checksum = FastChecksum(g_dlightdata_diffuse, g_lightdatasize * sizeof(g_dlightdata_diffuse[0]));
+
+	if(g_dlightdata_vectors)
+		g_dlightdata_vectors_checksum = FastChecksum(g_dlightdata_vectors, g_lightdatasize * sizeof(g_dlightdata_vectors[0]));
 }
 
 //
@@ -530,6 +567,15 @@ void            WriteBSPFile(const char* const filename)
     AddLump(LUMP_VISIBILITY,g_dvisdata,     g_visdatasize,                      header, bspfile);
     AddLump(LUMP_ENTITIES,  g_dentdata,     g_entdatasize,                      header, bspfile);
     AddLump(LUMP_TEXTURES,  g_dtexdata,     g_texdatasize,                      header, bspfile);
+
+	if(g_dlightdata_ambient)
+		AddLump(LUMP_LIGHTING_AMBIENT,  g_dlightdata_ambient,   g_lightdatasize, header, bspfile);
+
+	if(g_dlightdata_diffuse)
+		AddLump(LUMP_LIGHTING_DIFFUSE,  g_dlightdata_diffuse,   g_lightdatasize, header, bspfile);
+
+	if(g_dlightdata_vectors)
+		AddLump(LUMP_LIGHTING_VECTORS,  g_dlightdata_vectors,   g_lightdatasize, header, bspfile);
 
     fseek(bspfile, 0, SEEK_SET);
     SafeWrite(bspfile, header, sizeof(dheader_t));
@@ -1757,6 +1803,12 @@ void            dtexdata_init()
     hlassume(g_dtexdata != NULL, assume_NoMemory);
 	g_dlightdata = (byte*)AllocBlock(g_max_map_lightdata);
 	hlassume(g_dlightdata != NULL, assume_NoMemory);
+	g_dlightdata_ambient = (byte*)AllocBlock(g_max_map_lightdata);
+	hlassume(g_dlightdata_ambient != NULL, assume_NoMemory);
+	g_dlightdata_diffuse = (byte*)AllocBlock(g_max_map_lightdata);
+	hlassume(g_dlightdata_diffuse != NULL, assume_NoMemory);
+	g_dlightdata_vectors = (byte*)AllocBlock(g_max_map_lightdata);
+	hlassume(g_dlightdata_vectors != NULL, assume_NoMemory);
 }
 
 void CDECL      dtexdata_free()
@@ -1765,6 +1817,12 @@ void CDECL      dtexdata_free()
     g_dtexdata = NULL;
 	FreeBlock(g_dlightdata);
 	g_dlightdata = NULL;
+	FreeBlock(g_dlightdata_ambient);
+	g_dlightdata_ambient = NULL;
+	FreeBlock(g_dlightdata_diffuse);
+	g_dlightdata_diffuse = NULL;
+	FreeBlock(g_dlightdata_vectors);
+	g_dlightdata_vectors = NULL;
 }
 
 // =====================================================================================

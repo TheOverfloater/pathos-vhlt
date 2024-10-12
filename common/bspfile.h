@@ -79,7 +79,7 @@
 //=============================================================================
 
 #define PBSP_HEADER						(('P'<<24)+('S'<<16)+('B'<<8)+'P')
-#define PBSP_VERSION					1
+#define PBSP_VERSION					2
 
 #define TOOLVERSION 2
 
@@ -95,22 +95,25 @@ typedef struct
 }
 lump_t;
 
-#define LUMP_ENTITIES      0
-#define LUMP_PLANES        1
-#define LUMP_TEXTURES      2
-#define LUMP_VERTEXES      3
-#define LUMP_VISIBILITY    4
-#define LUMP_NODES         5
-#define LUMP_TEXINFO       6
-#define LUMP_FACES         7
-#define LUMP_LIGHTING      8
-#define LUMP_CLIPNODES     9
-#define LUMP_LEAFS        10
-#define LUMP_MARKSURFACES 11
-#define LUMP_EDGES        12
-#define LUMP_SURFEDGES    13
-#define LUMP_MODELS       14
-#define HEADER_LUMPS      15
+#define LUMP_ENTITIES           0
+#define LUMP_PLANES             1
+#define LUMP_TEXTURES           2
+#define LUMP_VERTEXES           3
+#define LUMP_VISIBILITY         4
+#define LUMP_NODES              5
+#define LUMP_TEXINFO            6
+#define LUMP_FACES              7
+#define LUMP_LIGHTING           8
+#define LUMP_LIGHTING_AMBIENT   9
+#define LUMP_LIGHTING_DIFFUSE   10
+#define LUMP_LIGHTING_VECTORS   11
+#define LUMP_CLIPNODES          12
+#define LUMP_LEAFS              13
+#define LUMP_MARKSURFACES       14
+#define LUMP_EDGES              15
+#define LUMP_SURFEDGES          16
+#define LUMP_MODELS             17
+#define HEADER_LUMPS            18
 
 typedef struct
 {
@@ -126,6 +129,7 @@ typedef struct
 {
     int				id;
     int             version;
+    long long       flags;
     lump_t          lumps[HEADER_LUMPS];
 }
 dheader_t;
@@ -234,6 +238,8 @@ typedef struct
     int             firstedge;                             // we must support > 64k edges
     int           numedges;
     int           texinfo;
+    float         samplescale;
+    int           smoothgroupbits;
 
     // lighting info
     byte            styles[MAXLIGHTMAPS];
@@ -285,6 +291,15 @@ extern int      g_dvisdata_checksum;
 extern int      g_lightdatasize;
 extern byte*    g_dlightdata;
 extern int      g_dlightdata_checksum;
+
+extern byte*    g_dlightdata_ambient;
+extern int      g_dlightdata_ambient_checksum;
+
+extern byte*    g_dlightdata_diffuse;
+extern int      g_dlightdata_diffuse_checksum;
+
+extern byte*    g_dlightdata_vectors;
+extern int      g_dlightdata_vectors_checksum;
 
 extern int      g_texdatasize;
 extern byte*    g_dtexdata;                                  // (dmiptexlump_t)

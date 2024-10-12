@@ -309,6 +309,8 @@ static void     WriteFace(face_t* f)
 	df->side = f->planenum & 1;
     df->firstedge = g_numsurfedges;
     df->numedges = f->numpoints;
+	df->smoothgroupbits = 0; // Nothing for now
+	df->samplescale = 1.0;
 
 	df->texinfo = WriteTexinfo (f->texturenum);
 

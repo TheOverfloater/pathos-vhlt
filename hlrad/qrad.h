@@ -67,6 +67,15 @@
 #define DEFAULT_SMOOTHING2_VALUE	-1.0
 #define DEFAULT_INCREMENTAL         false
 
+enum lightmap_layers_t
+{
+	LIGHTMAP_LAYER_DEFAULT = 0,
+	LIGHTMAP_LAYER_VECTORS,
+	LIGHTMAP_LAYER_AMBIENT,
+	LIGHTMAP_LAYER_DIFFUSE,
+
+	NB_LIGHTMAP_LAYERS
+};
 
 // ------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -147,18 +156,6 @@ extern bool ExportALDData(ald_datatype_t type);
 	#define DEFAULT_EMBEDLIGHTMAP_GAMMA 1.05
 	#define DEFAULT_EMBEDLIGHTMAP_RESOLUTION 1
 	#define DEFAULT_TEXLIGHTGAP 0.0
-
-enum {
-	DEFAULT_STYLE = 0,
-	BUMP_BASELIGHT_STYLE = 61,
-	BUMP_ADDLIGHT_STYLE = 62,
-	BUMP_LIGHTVECS_STYLE = 63,
-
-	DEFAULT_MAP = 0,
-	BUMP_BASELIGHT_MAP = 1,
-	BUMP_ADDLIGHT_MAP = 3,
-	BUMP_LIGHTVECS_MAP = 2,
-};
 
 #ifdef SYSTEM_WIN32
 #define DEFAULT_ESTIMATE    false

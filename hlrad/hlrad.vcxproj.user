@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>-rgbtransfers -nightmode -chart -blur 1.0 -smooth 150 -smooth2 60 -notexscale -minlight 1 -estimate rn_everglast09bb</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-bumpmaps -chart -blur 1.0 -smooth 150 -smooth2 60 -notexscale -minlight 1 -daylightreturnmode -estimate entitytest1</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerWorkingDirectory>..\..\..\..\compile</LocalDebuggerWorkingDirectory>
   </PropertyGroup>

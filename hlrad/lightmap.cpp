@@ -271,11 +271,10 @@ void            PairEdges()
     f = g_dfaces;
     for (i = 0; i < g_numfaces; i++, f++)
     {
+		// special textures don't have lightmaps
 		if (g_texinfo[f->texinfo].flags & TEX_SPECIAL)
-		{
-			// special textures don't have lightmaps
 			continue;
-		}
+
         for (j = 0; j < f->numedges; j++)
         {
             k = g_dsurfedges[f->firstedge + j];
@@ -294,15 +293,18 @@ void            PairEdges()
                 e->faces[0] = f;
             }
 
-            if (e->faces[0] && e->faces[1]) {
+            if (e->faces[0] && e->faces[1]) 
+			{
 				// determine if coplanar
 				if (e->faces[0]->planenum == e->faces[1]->planenum
-					&& e->faces[0]->side == e->faces[1]->side
-					) {
-						e->coplanar = true;
-						VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
-						e->cos_normals_angle = 1.0;
-				} else {
+					&& e->faces[0]->side == e->faces[1]->side) 
+				{
+					e->coplanar = true;
+					VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
+					e->cos_normals_angle = 1.0;
+				} 
+				else 
+				{
                     // see if they fall into a "smoothing group" based on angle of the normals
                     vec3_t          normals[2];
 
@@ -316,13 +318,11 @@ void            PairEdges()
 					int m1 = g_texinfo[e->faces[1]->texinfo].miptex;
 					smoothvalue = qmax (g_smoothvalues[m0], g_smoothvalues[m1]);
 					if (m0 != m1)
-					{
 						smoothvalue = qmax (smoothvalue, g_smoothing_threshold_2);
-					}
+
 					if (smoothvalue >= 1.0 - NORMAL_EPSILON)
-					{
 						smoothvalue = 2.0;
-					}
+
                     if (e->cos_normals_angle > (1.0 - NORMAL_EPSILON))
                     {
                         e->coplanar = true;
@@ -342,21 +342,22 @@ void            PairEdges()
 					e->coplanar = false;
 					VectorClear (e->interface_normal);
 				}
+
+				int miptex0, miptex1;
+				miptex0 = g_texinfo[e->faces[0]->texinfo].miptex;
+				miptex1 = g_texinfo[e->faces[1]->texinfo].miptex;
+				if (fabs (g_lightingconeinfo[miptex0][0] - g_lightingconeinfo[miptex1][0]) > NORMAL_EPSILON ||
+					fabs (g_lightingconeinfo[miptex0][1] - g_lightingconeinfo[miptex1][1]) > NORMAL_EPSILON )
 				{
-					int miptex0, miptex1;
-					miptex0 = g_texinfo[e->faces[0]->texinfo].miptex;
-					miptex1 = g_texinfo[e->faces[1]->texinfo].miptex;
-					if (fabs (g_lightingconeinfo[miptex0][0] - g_lightingconeinfo[miptex1][0]) > NORMAL_EPSILON ||
-						fabs (g_lightingconeinfo[miptex0][1] - g_lightingconeinfo[miptex1][1]) > NORMAL_EPSILON )
-					{
-						e->coplanar = false;
-						VectorClear (e->interface_normal);
-					}
+					e->coplanar = false;
+					VectorClear (e->interface_normal);
 				}
+
 				if (!VectorCompare(e->interface_normal, vec3_origin))
 				{
 					e->smooth = true;
 				}
+
 				if (e->smooth)
 				{
 					// compute the matrix in advance
@@ -373,6 +374,7 @@ void            PairEdges()
             }
         }
     }
+
 	{
 		int edgeabs, edgeabsnext;
 		int edgeend, edgeendnext;
@@ -387,6 +389,7 @@ void            PairEdges()
 			e = &g_edgeshare[edgeabs];
 			if (!e->smooth)
 				continue;
+
 			VectorCopy(e->interface_normal, edgenormal);
 			if (g_dedges[edgeabs].v[0] == g_dedges[edgeabs].v[1])
 			{
@@ -403,6 +406,7 @@ void            PairEdges()
 				const dplane_t *p1 = getPlaneFromFace (e->faces[1]);
 				intersecttest_t *test0 = CreateIntersectTest (p0, e->faces[0] - g_dfaces);
 				intersecttest_t *test1 = CreateIntersectTest (p1, e->faces[1] - g_dfaces);
+
 				for (edgeend = 0; edgeend < 2; edgeend++)
 				{
 					vec3_t errorpos;
@@ -420,18 +424,22 @@ void            PairEdges()
 							fcurrent = fnext;
 							r = AddFaceForVertexNormal (edgeabsnext, edgeabsnext, edgeendnext, edgeendnext, fcurrent, fnext, angle, normal);
 							count++;
+
 							if (r == -1)
 							{
 								Developer (DEVELOPER_LEVEL_WARNING, "PairEdges: face edges mislink at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2]);
 								break;
 							}
+
 							if (count >= 100)
 							{
 								Developer (DEVELOPER_LEVEL_WARNING, "PairEdges: faces mislink at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2]);
 								break;
 							}
+
 							if (DotProduct (normal, p0->normal) <= NORMAL_EPSILON || DotProduct(normal, p1->normal) <= NORMAL_EPSILON)
 								break;
+
 							vec_t smoothvalue;
 							int m0 = g_texinfo[f->texinfo].miptex;
 							int m1 = g_texinfo[fcurrent->texinfo].miptex;
@@ -440,18 +448,22 @@ void            PairEdges()
 							{
 								smoothvalue = qmax (smoothvalue, g_smoothing_threshold_2);
 							}
+
 							if (smoothvalue >= 1.0 - NORMAL_EPSILON)
 							{
 								smoothvalue = 2.0;
 							}
+
 							if (DotProduct (edgenormal, normal) < qmax (smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON))
 								break;
+
 							if (fcurrent != e->faces[0] && fcurrent != e->faces[1] &&
 								(TestFaceIntersect (test0, fcurrent - g_dfaces) || TestFaceIntersect (test1, fcurrent - g_dfaces)))
 							{
 								Developer (DEVELOPER_LEVEL_WARNING, "Overlapping faces around corner (%f,%f,%f)\n", errorpos[0], errorpos[1], errorpos[2]);
 								break;
 							}
+
 							angles += angle;
 							VectorMA(normals, angle, normal, normals);
 							{
@@ -476,6 +488,7 @@ void            PairEdges()
 									e->vertex_facelist[edgeend] = l;
 								}
 							}
+
 							if (r != 0 || fnext == f)
 								break;
 						}
@@ -492,9 +505,11 @@ void            PairEdges()
 						VectorCopy(normals, e->vertex_normal[edgeend]);
 					}
 				}
+
 				FreeIntersectTest (test0);
 				FreeIntersectTest (test1);
 			}
+
 			if (e->coplanar)
 			{
 				if (!VectorCompare (e->vertex_normal[0], e->interface_normal) || !VectorCompare (e->vertex_normal[1], e->interface_normal))
@@ -551,6 +566,10 @@ typedef struct
 	int				*lmcache_wallflags; // wallflag_t
 	int				lmcachewidth;
 	int				lmcacheheight;
+
+	vec3_t			(*lmcache_ambient)[ALLSTYLES];
+	vec3_t			(*lmcache_diffuse)[ALLSTYLES];
+	vec3_t			(*lmcache_lightvectors)[ALLSTYLES];
 }
 lightinfo_t;
 
@@ -668,6 +687,7 @@ static void     CalcFaceExtents(lightinfo_t* l)
 			Error( "Bad surface extents (%d x %d)\nCheck the file ZHLTProblems.html for a detailed explanation of this problem", l->texsize[0], l->texsize[1]);
 		}
 	}
+
 	// allocate sample light cache
 	{
 		if (g_extra
@@ -693,6 +713,18 @@ static void     CalcFaceExtents(lightinfo_t* l)
 		l->surfpt_position = (vec3_t *)malloc (MAX_SINGLEMAP * sizeof (vec3_t));
 		l->surfpt_surface = (int *)malloc (MAX_SINGLEMAP * sizeof (int));
 		hlassume (l->surfpt_position != NULL && l->surfpt_surface != NULL, assume_NoMemory);
+
+		if(g_bumpmaps)
+		{
+			l->lmcache_ambient = (vec3_t (*)[ALLSTYLES])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+			hlassume (l->lmcache_ambient != NULL, assume_NoMemory);
+
+			l->lmcache_diffuse = (vec3_t (*)[ALLSTYLES])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+			hlassume (l->lmcache_diffuse != NULL, assume_NoMemory);
+
+			l->lmcache_lightvectors = (vec3_t (*)[ALLSTYLES])malloc (l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+			hlassume (l->lmcache_lightvectors != NULL, assume_NoMemory);
+		}
 	}
 }
 
@@ -1592,6 +1624,9 @@ typedef struct
 {
     vec3_t          pos;
     vec3_t          light;
+	vec3_t			light_ambient;
+	vec3_t			light_diffuse;
+	vec3_t			light_vector;
 	int				surface; // this sample can grow into another face
 }
 sample_t;
@@ -1859,15 +1894,6 @@ void            CreateDirectLights()
 					numstyles++;
 				}
 			}
-			continue;
-		}
-
-		if (g_bumpmaps && style)
-		{
-			const char* pstrname = ValueForKey(e, "targetname");
-			if (pstrname)
-				Log("Warning: light %s with style %d is deleted because of '-bumpmaps'\n", pstrname, style);
-
 			continue;
 		}
 
@@ -2551,7 +2577,7 @@ void BuildDiffuseNormals ()
 	free (triangles);
 }
 
-static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, const byte* const pvs, const vec3_t normal, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* ptexlightgap_textoworld, bool bumpinfopass)
+static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec3_t normal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass)
 {
 	vec3_t			add_one_ambient, add_one_diffuse;
 	vec3_t          delta, delta_bump;
@@ -2630,25 +2656,18 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 
 					VectorScale(l->intensity, dot * l->sunnormalweights[j], add_one);
 					VectorMultiply(add_one, transparency, add_one);
-					// add to the total brightness of this sample
-					if (!g_bumpmaps)
-					{
-						style = l->style;
-						if (opaquestyle != -1)
-						{
-							if (style == 0 || style == opaquestyle)
-								style = opaquestyle;
-							else
-								continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-						}
 
-						VectorAdd(padds[style], add_one, padds[style]);
-					}
-					else
+					style = l->style;
+					if (opaquestyle != -1)
 					{
-						// All lights contribute to default in this case
-						VectorAdd(padds[DEFAULT_STYLE], add_one, padds[DEFAULT_STYLE]);
+						if (style == 0 || style == opaquestyle)
+							style = opaquestyle;
+						else
+							continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
 					}
+
+					if (!bumpinfopass)
+						VectorAdd(padds[style], add_one, padds[style]);
 				}
 
 				if (g_bumpmaps)
@@ -2661,7 +2680,7 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 					{
 						// Contribution comes from correlation between
 						// the gathered light vector and the light direction
-						float dotn = qmax(0, DotProduct(direction, delta_bump));
+						float dotn = qmax(0, DotProduct(pdirections[style], delta_bump));
 
 						// Calculate the lighting for ambient and diffuse
 						VectorScale(l->intensity, dotn * l->sunnormalweights[j], add_one_diffuse);
@@ -2672,20 +2691,21 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 						VectorMultiply(add_one_ambient, transparency, add_one_ambient);
 
 						// Add it to the collection
-						VectorAdd(padds[BUMP_ADDLIGHT_STYLE], add_one_diffuse, padds[BUMP_ADDLIGHT_STYLE]);
-						VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one_ambient, padds[BUMP_BASELIGHT_STYLE]);
+						VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
+						VectorMA(padds_ambient[style], normalfactor, add_one_ambient, padds_ambient[style]);
 					}
 					else
 					{
 						// Add lightdir to the collected direction based on strength
 						float maxlight = VectorAvg(add_one);
 						VectorScale(delta_bump, maxlight, delta_bump);
-						VectorAdd(direction, delta_bump, direction);
+						VectorAdd(pdirections[style], delta_bump, pdirections[style]);
 					}
 				}
 			} // (loop over the normals)
 		}
 		while (0);
+
 		do // add sky light
 		{
 			// check step
@@ -2738,30 +2758,26 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 
 				VectorScale(sky_intensity, dot, add_one);
 				VectorMultiply(add_one, transparency, add_one);
+
+				style = l->style;
+				if (opaquestyle != -1)
+				{
+					if (style == 0 || style == opaquestyle)
+						style = opaquestyle;
+					else
+						continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+				}
+
 				// add to the total brightness of this sample
 				if (!bumpinfopass)
 				{
-					if (!g_bumpmaps)
-					{
-						style = l->style;
-						if (opaquestyle != -1)
-						{
-							if (style == 0 || style == opaquestyle)
-								style = opaquestyle;
-							else
-								continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-						}
-						VectorAdd(padds[style], add_one, padds[style]);
-					}
-					else
-					{
-						VectorAdd(padds[DEFAULT_STYLE], add_one, padds[DEFAULT_STYLE]);
-					}
-				}
-				else
+					// Add to the specified style
+					VectorAdd(padds[style], add_one, padds[style]);
+				} 
+				else if(g_bumpmaps)
 				{
 					// Contribute to baselight only
-					VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one, padds[BUMP_BASELIGHT_STYLE]);
+					VectorAdd(padds_ambient[style], add_one, padds_ambient[style]);
 				}
 			} // (loop over the normals)
 		}
@@ -2930,6 +2946,7 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 
 				if (!bumpinfopass)
 					VectorScale(l->intensity, ratio, add);
+
 				break;
 			}
 
@@ -2986,6 +3003,20 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 			VectorMultiply(add, transparency, add);
 		}
 
+		// add to the total brightness of this sample
+		style = l->style;
+		if (opaquestyle != -1)
+		{
+			if (style == 0 || style == opaquestyle)
+				style = opaquestyle;
+			else
+				return; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+		}
+
+		// Add to base only if not in bump info pass
+		if(!bumpinfopass)
+			VectorAdd(padds[style], add, padds[style]);
+
 		// Special calculations
 		if (g_bumpmaps)
 		{
@@ -2997,7 +3028,7 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 			{
 				// Contribution comes from correlation between
 				// the gathered light vector and the light direction
-				float dotn = pow(qmax(0, DotProduct(direction, delta_bump)), 16);
+				float dotn = pow(qmax(0, DotProduct(pdirections[style], delta_bump)), 16);
 				ratio_bump = qmax(0, ratio_bump);
 
 				// Calculate the lighting for ambient and diffuse
@@ -3009,38 +3040,21 @@ static void     AddLight(directlight_t* l, vec3_t& direction, const vec3_t pos, 
 				//VectorMultiply(add_one_ambient, transparency, add_one_ambient);
 
 				// Add it to the collection
-				VectorAdd(padds[BUMP_ADDLIGHT_STYLE], add_one_diffuse, padds[BUMP_ADDLIGHT_STYLE]);
-				VectorAdd(padds[BUMP_BASELIGHT_STYLE], add_one_ambient, padds[BUMP_BASELIGHT_STYLE]);
+				VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
+				VectorMA(padds_ambient[style], normalfactor, add_one_ambient, padds_ambient[style]);
 			}
 			else
 			{
 				// Add lightdir to the collected direction based on strength
 				float maxlight = VectorAvg(add);
 				VectorScale(delta_bump, maxlight, delta_bump);
-				VectorAdd(direction, delta_bump, direction);
-
-				// Contribute to default lightmap
-				VectorAdd(padds[DEFAULT_STYLE], add, padds[DEFAULT_STYLE]);
+				VectorAdd(pdirections[style], delta_bump, pdirections[style]);
 			}
-		}
-		else
-		{
-			// add to the total brightness of this sample
-			style = l->style;
-			if (opaquestyle != -1)
-			{
-				if (style == 0 || style == opaquestyle)
-					style = opaquestyle;
-				else
-					return; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-			}
-
-			VectorAdd(padds[style], add, padds[style]);
 		}
     }
 }
 
-static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample, byte* styles, int step, int miptex, int texlightgap_surfacenum)
+static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, const vec3_t basenormal, vec3_t* sample, vec3_t* sample_ambient, vec3_t* sample_diffuse, vec3_t* sample_lightvectors, byte* styles, int step, int miptex, int texlightgap_surfacenum)
 {
 	int             i;
 	int             style_index;
@@ -3050,8 +3064,17 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 	vec3_t			adds[ALLSTYLES];
 	memset(adds, 0, ALLSTYLES * sizeof(vec3_t));
 
-	vec3_t direction;
-	VectorClear(direction);
+	vec3_t			adds_ambient[ALLSTYLES];
+	memset(adds_ambient, 0, ALLSTYLES * sizeof(vec3_t));
+
+	vec3_t			adds_diffuse[ALLSTYLES];
+	memset(adds_diffuse, 0, ALLSTYLES * sizeof(vec3_t));
+
+	vec3_t			adds_lightvectors[ALLSTYLES];
+	memset(adds_lightvectors, 0, ALLSTYLES * sizeof(vec3_t));
+
+	vec3_t directions[ALLSTYLES];
+	memset(directions, 0, ALLSTYLES * sizeof(vec3_t));
 
 	// calculates textoworld
 	{
@@ -3076,6 +3099,10 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 		}
 	}
 
+	// Determine difference to surface normal
+	Float normalfactor = DotProduct(normal, basenormal);
+	normalfactor = 1.0;
+
 	//
 	// First step - Calculate regular lighting
 	// For Bump maps - Get combined light vector to all lights hitting this surface
@@ -3090,7 +3117,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				for (; l; l = l->next)
 				{
 					// Add in this light
-					AddLight(l, direction, pos, pvs, normal, styles, step, miptex, texlightgap_surfacenum, adds, texlightgap_textoworld, false);
+					AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, false);
 				}
 			}
 		}
@@ -3102,7 +3129,8 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 	if (g_bumpmaps)
 	{
 		// Normalize the lightdir
-		VectorNormalize(direction);
+		for(i = 0; i < ALLSTYLES; i++)
+			VectorNormalize(directions[i]);
 
 		for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
 		{
@@ -3112,63 +3140,64 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
 				{
 					for (; l; l = l->next)
-						AddLight(l, direction, pos, pvs, normal, styles, step, miptex, texlightgap_surfacenum, adds, texlightgap_textoworld, true);
+						AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, true);
 				}
 			}
 		}
-
-		// Add the light vector to the sample
-		VectorCopy(direction, sample[BUMP_LIGHTVECS_STYLE]);
-
-		// Add values to final
-		VectorAdd(sample[DEFAULT_STYLE], adds[DEFAULT_STYLE], sample[DEFAULT_STYLE]);
-		VectorAdd(sample[BUMP_ADDLIGHT_STYLE], adds[BUMP_ADDLIGHT_STYLE], sample[BUMP_ADDLIGHT_STYLE]);
-		VectorAdd(sample[BUMP_BASELIGHT_STYLE], adds[BUMP_BASELIGHT_STYLE], sample[BUMP_BASELIGHT_STYLE]);
 	}
-	else
+
+	for (style = 0; style < ALLSTYLES; ++style)
 	{
-		for (style = 0; style < ALLSTYLES; ++style)
+		if (VectorMaximum(adds[style]) > g_corings[style] * 0.1)
 		{
-			if (VectorMaximum(adds[style]) > g_corings[style] * 0.1)
+			for (style_index = 0; style_index < ALLSTYLES; style_index++)
 			{
-				for (style_index = 0; style_index < ALLSTYLES; style_index++)
+				if (styles[style_index] == style || styles[style_index] == 255)
 				{
-					if (styles[style_index] == style || styles[style_index] == 255)
-					{
-						break;
-					}
+					break;
 				}
-
-				if (style_index == ALLSTYLES) // shouldn't happen
-				{
-					if (++stylewarningcount >= stylewarningnext)
-					{
-						stylewarningnext = stylewarningcount * 2;
-						Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
-						Warning(" total %d warnings for too many styles", stylewarningcount);
-					}
-					return;
-				}
-
-				if (styles[style_index] == 255)
-				{
-					styles[style_index] = style;
-				}
-
-				VectorAdd(sample[style_index], adds[style], sample[style_index]);
 			}
-			else
+
+			if (style_index == ALLSTYLES) // shouldn't happen
 			{
+				if (++stylewarningcount >= stylewarningnext)
+				{
+					stylewarningnext = stylewarningcount * 2;
+					Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
+					Warning(" total %d warnings for too many styles", stylewarningcount);
+				}
+				return;
+			}
+
+			if (styles[style_index] == 255)
+			{
+				styles[style_index] = style;
+			}
+
+			// Contribute to default lightdata
+			VectorAdd(sample[style_index], adds[style], sample[style_index]);
+
+			if(sample_lightvectors && sample_diffuse && sample_ambient)
+			{
+				// Add the light vector to the sample
+				VectorCopy(directions[style], sample_lightvectors[style_index]);
+
+				// Add values to final
+				VectorAdd(sample_diffuse[style_index], adds_diffuse[style], sample_diffuse[style_index]);
+				VectorAdd(sample_ambient[style_index], adds_ambient[style], sample_ambient[style_index]);
+			}
+		}
+		else
+		{
+			if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+			{
+				ThreadLock();
 				if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
 				{
-					ThreadLock();
-					if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
-					{
-						g_maxdiscardedlight = VectorMaximum(adds[style]);
-						VectorCopy(pos, g_maxdiscardedpos);
-					}
-					ThreadUnlock();
+					g_maxdiscardedlight = VectorMaximum(adds[style]);
+					VectorCopy(pos, g_maxdiscardedpos);
 				}
+				ThreadUnlock();
 			}
 		}
 	}
@@ -3462,6 +3491,22 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 	facenum = l->surfnum;
 	memset (l->lmcache, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
 
+	if(g_bumpmaps)
+	{
+		if(l->lmcache_ambient)
+			memset (l->lmcache_ambient, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+
+		if(l->lmcache_diffuse)
+			memset (l->lmcache_diffuse, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+
+		if(l->lmcache_lightvectors)
+			memset (l->lmcache_lightvectors, 0, l->lmcachewidth * l->lmcacheheight * sizeof (vec3_t [ALLSTYLES]));
+	}
+
+	const dface_t* f = g_dfaces + facenum;
+	const dplane_t* p = getPlaneFromFace(f);
+	vec3_t          facenormal;
+
 	// for each sample whose light we need to calculate
 	for (i = 0; i < l->lmcachewidth * l->lmcacheheight; i++)
 	{
@@ -3477,6 +3522,9 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		vec3_t spot2;
 		vec3_t pointnormal2;
 		vec3_t *sampled;
+		vec3_t *sampled_ambient;
+		vec3_t *sampled_diffuse;
+		vec3_t *sampled_lightvectors;
 		vec3_t *normal_out;
 		bool nudged;
 		int *wallflags_out;
@@ -3492,6 +3540,19 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			sampled = l->lmcache[i];
 			normal_out = &l->lmcache_normal[i];
 			wallflags_out = &l->lmcache_wallflags[i];
+
+			if(g_bumpmaps)
+			{
+				sampled_ambient = l->lmcache_ambient[i];
+				sampled_diffuse = l->lmcache_diffuse[i];
+				sampled_lightvectors = l->lmcache_lightvectors[i];
+			}
+			else
+			{
+				sampled_ambient = nullptr;
+				sampled_diffuse = nullptr;
+				sampled_lightvectors = nullptr;
+			}
 //
 // The following graph illustrates the range in which a sample point can affect the lighting of a face when g_blur = 1.5 and g_extra = on
 //              X : the sample point. They are placed on every TEXTURE_STEP/lmcache_density (=16.0/3) texture pixels. We calculate light for each sample point, which is the main time sink.
@@ -3534,6 +3595,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			square[1][0] = l->texmins[0] * TEXTURE_STEP + floor (s + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
 			square[1][1] = l->texmins[1] * TEXTURE_STEP + floor (t + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
 		}
+
 		// find world's position for the sample
 		{
 			{
@@ -3559,6 +3621,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 					}
 				}
 			}
+
 			if (l->translucent_b)
 			{
 				const dplane_t *surfaceplane = getPlaneFromFaceNumber (surface);
@@ -3587,6 +3650,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 				*wallflags_out |= WALLFLAG_NUDGED;
 			}
 		}
+
 		// calculate normal for the sample
 		{
 			GetPhongNormal (surface, surfpt, pointnormal);
@@ -3596,6 +3660,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 			}
 			VectorCopy (pointnormal, *normal_out);
 		}
+
 		// calculate visibility for the sample
 		{
 			if (!g_visdatasize)
@@ -3654,34 +3719,42 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		{
 			if (!blocked)
 			{
-				GatherSampleLight(spot, pvs, pointnormal, sampled
-					, styles
-					, 0
-					, l->miptex
-					, surface
-					);
+				GatherSampleLight(spot, pvs, pointnormal, p->normal, sampled, sampled_ambient, sampled_diffuse, sampled_lightvectors, styles, 0, l->miptex, surface);
 			}
+
 			if (l->translucent_b)
 			{
 				vec3_t sampled2[ALLSTYLES];
+				vec3_t sampled2_ambient[ALLSTYLES];
+				vec3_t sampled2_diffuse[ALLSTYLES];
+				vec3_t sampled2_lightvectors[ALLSTYLES];
+
 				memset (sampled2, 0, ALLSTYLES * sizeof (vec3_t));
+				memset (sampled2_ambient, 0, ALLSTYLES * sizeof (vec3_t));
+				memset (sampled2_diffuse, 0, ALLSTYLES * sizeof (vec3_t));
+				memset (sampled2_lightvectors, 0, ALLSTYLES * sizeof (vec3_t));
+
 				if (!blocked)
 				{
-					GatherSampleLight(spot2, pvs2, pointnormal2, sampled2
-						, styles
-						, 0
-						, l->miptex
-						, surface
-						);
+					GatherSampleLight(spot2, pvs2, pointnormal2, p->normal, sampled2, sampled2_ambient, sampled2_diffuse, sampled2_lightvectors, styles, 0, l->miptex, surface);
 				}
+
 				for (j = 0; j < ALLSTYLES && styles[j] != 255; j++)
 				{
 					for (int x = 0; x < 3; x++)
 					{
 						sampled[j][x] = (1.0 - l->translucent_v[x]) * sampled[j][x] + l->translucent_v[x] * sampled2[j][x];
+
+						if(g_bumpmaps)
+						{
+							sampled_ambient[j][x] = (1.0 - l->translucent_v[x]) * sampled_ambient[j][x] + l->translucent_v[x] * sampled2_ambient[j][x];
+							sampled_diffuse[j][x] = (1.0 - l->translucent_v[x]) * sampled_diffuse[j][x] + l->translucent_v[x] * sampled2_diffuse[j][x];
+							sampled_lightvectors[j][x] = (1.0 - l->translucent_v[x]) * sampled_lightvectors[j][x] + l->translucent_v[x] * sampled2_lightvectors[j][x];
+						}
 					}
 				}
 			}
+
 			if (g_drawnudge)
 			{
 				for (j = 0; j < ALLSTYLES && styles[j] != 255; j++)
@@ -3727,7 +3800,6 @@ void            BuildFacelights(const int facenum)
 	vec3_t			delta;
 	byte			pvs2[(MAX_MAP_LEAFS + 7) / 8];
 	int				thisoffset2 = -1, lastoffset2 = -1;
-	float			tbnmatrix[3][3];
 
 	int				*sample_wallflags;
 
@@ -3737,12 +3809,10 @@ void            BuildFacelights(const int facenum)
     // some surfaces don't need lightmaps
     //
     f->lightofs = -1;
-	if (!g_bumpmaps)
+
+	for (j = 0; j < ALLSTYLES; j++)
 	{
-		for (j = 0; j < ALLSTYLES; j++)
-		{
-			f_styles[j] = 255;
-		}
+		f_styles[j] = 255;
 	}
 
     if (g_texinfo[f->texinfo].flags & TEX_SPECIAL)
@@ -3754,21 +3824,11 @@ void            BuildFacelights(const int facenum)
         return;                                            // non-lit texture
     }
 
-	f->styles[DEFAULT_MAP] = 0;
+	f->styles[0] = 0;
 
-	if (!g_bumpmaps)
+	if (g_face_patches[facenum] && g_face_patches[facenum]->emitstyle)
 	{
-		if (g_face_patches[facenum] && g_face_patches[facenum]->emitstyle)
-		{
-			f_styles[1] = g_face_patches[facenum]->emitstyle;
-		}
-	}
-	else
-	{
-		// These are fixed
-		f_styles[BUMP_LIGHTVECS_STYLE] = BUMP_LIGHTVECS_STYLE;
-		f_styles[BUMP_BASELIGHT_STYLE] = BUMP_BASELIGHT_STYLE;
-		f_styles[BUMP_ADDLIGHT_STYLE] = BUMP_ADDLIGHT_STYLE;
+		f_styles[1] = g_face_patches[facenum]->emitstyle;
 	}
 
     memset(&l, 0, sizeof(l));
@@ -3807,12 +3867,14 @@ void            BuildFacelights(const int facenum)
 		fl_samples[k] = (sample_t *)calloc (l.numsurfpt, sizeof(sample_t));
 		hlassume (fl_samples[k] != NULL, assume_NoMemory);
 	}
+
 	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
 	{
 		hlassume (patch->totalstyle_all = (unsigned char *)malloc (ALLSTYLES * sizeof (unsigned char)), assume_NoMemory);
 		hlassume (patch->samplelight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
 		hlassume (patch->totallight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
 		hlassume (patch->directlight_all = (vec3_t *)malloc (ALLSTYLES * sizeof (vec3_t)), assume_NoMemory);
+
 		for (j = 0; j < ALLSTYLES; j++)
 		{
 			patch->totalstyle_all[j] = 255;
@@ -3820,6 +3882,7 @@ void            BuildFacelights(const int facenum)
 			VectorClear (patch->totallight_all[j]);
 			VectorClear (patch->directlight_all[j]);
 		}
+
 		patch->totalstyle_all[0] = 0;
 	}
 
@@ -3901,66 +3964,85 @@ void            BuildFacelights(const int facenum)
 				}
 			}
 		}
-	  for (pass = 0; pass < 2; pass++)
-	  {
-		for (s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++)
+		for (pass = 0; pass < 2; pass++)
 		{
-			for (t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++)
+			for (s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++)
 			{
-				weighting = (qmin (0.5, sizehalf - (s - s_center)) - qmax (-0.5, -sizehalf - (s - s_center)))
-					* (qmin (0.5, sizehalf - (t - t_center)) - qmax (-0.5, -sizehalf - (t - t_center)));
-				if (g_bleedfix && !g_drawnudge)
+				for (t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++)
 				{
-					int wallflags = sample_wallflags[(s - s_center + l.lmcache_side) + (2 * l.lmcache_side + 1) * (t - t_center + l.lmcache_side)];
-					if (wallflags & (WALLFLAG_BLOCKED | WALLFLAG_SHADOWED))
+					weighting = (qmin (0.5, sizehalf - (s - s_center)) - qmax (-0.5, -sizehalf - (s - s_center)))
+						* (qmin (0.5, sizehalf - (t - t_center)) - qmax (-0.5, -sizehalf - (t - t_center)));
+					if (g_bleedfix && !g_drawnudge)
 					{
-						continue;
-					}
-					if (wallflags & WALLFLAG_NUDGED)
-					{
-						if (pass == 0)
+						int wallflags = sample_wallflags[(s - s_center + l.lmcache_side) + (2 * l.lmcache_side + 1) * (t - t_center + l.lmcache_side)];
+						if (wallflags & (WALLFLAG_BLOCKED | WALLFLAG_SHADOWED))
 						{
 							continue;
 						}
+						if (wallflags & WALLFLAG_NUDGED)
+						{
+							if (pass == 0)
+							{
+								continue;
+							}
+						}
 					}
+					pos = s + l.lmcachewidth * t;
+
+					// when blur distance (g_blur) is large, the subsample can be very far from the original lightmap sample (aligned with interval TEXTURE_STEP (16.0))
+					// in some cases such as a thin cylinder, the subsample can even grow into the opposite side
+					// as a result, when exposed to a directional light, the light on the cylinder may "leak" into the opposite dark side
+					// this correction limits the effect of blur distance when the normal changes very fast
+					// this correction will not break the smoothness that HLRAD_GROWSAMPLE ensures
+					weighting_correction = DotProduct (l.lmcache_normal[pos], centernormal);
+					weighting_correction = (weighting_correction > 0)? weighting_correction * weighting_correction: 0;
+					weighting = weighting * weighting_correction;
+					for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
+					{
+						VectorMA (fl_samples[j][i].light, weighting, l.lmcache[pos][j], fl_samples[j][i].light);
+
+						if(g_bumpmaps)
+						{
+							VectorMA (fl_samples[j][i].light_ambient, weighting, l.lmcache_ambient[pos][j], fl_samples[j][i].light_ambient);
+							VectorMA (fl_samples[j][i].light_diffuse, weighting, l.lmcache_diffuse[pos][j], fl_samples[j][i].light_diffuse);
+							VectorMA (fl_samples[j][i].light_vector, weighting, l.lmcache_lightvectors[pos][j], fl_samples[j][i].light_vector);
+						}
+					}
+					subsamples += weighting;
 				}
-				pos = s + l.lmcachewidth * t;
-				// when blur distance (g_blur) is large, the subsample can be very far from the original lightmap sample (aligned with interval TEXTURE_STEP (16.0))
-				// in some cases such as a thin cylinder, the subsample can even grow into the opposite side
-				// as a result, when exposed to a directional light, the light on the cylinder may "leak" into the opposite dark side
-				// this correction limits the effect of blur distance when the normal changes very fast
-				// this correction will not break the smoothness that HLRAD_GROWSAMPLE ensures
-				weighting_correction = DotProduct (l.lmcache_normal[pos], centernormal);
-				weighting_correction = (weighting_correction > 0)? weighting_correction * weighting_correction: 0;
-				weighting = weighting * weighting_correction;
+			}
+
+			if (subsamples > NORMAL_EPSILON)
+			{
+				break;
+			}
+			else
+			{
+				subsamples = 0.0;
 				for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 				{
-					VectorMA (fl_samples[j][i].light, weighting, l.lmcache[pos][j], fl_samples[j][i].light);
+					VectorClear (fl_samples[j][i].light);
+
+					if(g_bumpmaps)
+					{
+						VectorClear (fl_samples[j][i].light_ambient);
+						VectorClear (fl_samples[j][i].light_diffuse);
+						VectorClear (fl_samples[j][i].light_vector);
+					}
 				}
-				subsamples += weighting;
 			}
 		}
-		if (subsamples > NORMAL_EPSILON)
-		{
-			break;
-		}
-		else
-		{
-			subsamples = 0.0;
-			for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
-			{
-				VectorClear (fl_samples[j][i].light);
-			}
-		}
-	  }
 		if (subsamples > 0)
 		{
 			for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 			{
-				if (g_bumpmaps && f_styles[j] == BUMP_LIGHTVECS_STYLE)
-					continue;
-
 				VectorScale (fl_samples[j][i].light, 1.0 / subsamples, fl_samples[j][i].light);
+
+				if(g_bumpmaps)
+				{
+					VectorScale (fl_samples[j][i].light_ambient, 1.0 / subsamples, fl_samples[j][i].light_ambient);
+					VectorScale (fl_samples[j][i].light_diffuse, 1.0 / subsamples, fl_samples[j][i].light_diffuse);
+				}
 			}
 		}
     } // end of i loop
@@ -3988,6 +4070,8 @@ void            BuildFacelights(const int facenum)
             //LRC (ends)
         }
     }
+
+	const dplane_t* p = getPlaneFromFace(f);
 
 	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
 	{
@@ -4042,29 +4126,29 @@ void            BuildFacelights(const int facenum)
 				lastoffset2 = thisoffset2;
 			}
 			vec3_t frontsampled[ALLSTYLES], backsampled[ALLSTYLES];
+
 			for (j = 0; j < ALLSTYLES; j++)
 			{
 				VectorClear (frontsampled[j]);
 				VectorClear (backsampled[j]);
 			}
+
 			VectorSubtract (vec3_origin, l.facenormal, normal2);
-			GatherSampleLight (patch->origin, pvs, l.facenormal, frontsampled, 
+			GatherSampleLight (patch->origin, pvs, l.facenormal, p->normal, frontsampled, nullptr, nullptr, nullptr,
 				patch->totalstyle_all
 				, 1
 				, l.miptex
 				, facenum
 				);
-			GatherSampleLight (spot2, pvs2, normal2, backsampled, 
+			GatherSampleLight (spot2, pvs2, normal2, p->normal, backsampled, nullptr, nullptr, nullptr,
 				patch->totalstyle_all
 				, 1
 				, l.miptex
 				, facenum
 				);
+
 			for (j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++)
 			{
-				if (g_bumpmaps && j > 0)
-					break;
-
 				for (int x = 0; x < 3; x++)
 				{
 					patch->totallight_all[j][x] += (1.0 - l.translucent_v[x]) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
@@ -4073,8 +4157,8 @@ void            BuildFacelights(const int facenum)
 		}
 		else
 		{
-			GatherSampleLight (patch->origin, pvs, l.facenormal, 
-				patch->totallight_all, 
+			GatherSampleLight (patch->origin, pvs, l.facenormal, p->normal,
+				patch->totallight_all, nullptr, nullptr, nullptr,
 				patch->totalstyle_all
 				, 1
 				, l.miptex
@@ -4094,19 +4178,12 @@ void            BuildFacelights(const int facenum)
                 for (i = 0; i < l.numsurfpt; i++, s++)
                 {
                     VectorAdd(s->light, g_ambient, s->light);
+
+					if(g_bumpmaps)
+						VectorAdd(s->light_ambient, g_ambient, s->light_ambient);
                 }
                 break;
             }
-
-			if (g_bumpmaps && f->styles[j] == BUMP_BASELIGHT_STYLE)
-			{
-				s = fl_samples[j];
-				for (i = 0; i < l.numsurfpt; i++, s++)
-				{
-					VectorAdd(s->light, g_ambient, s->light);
-				}
-				break;
-			}
         }
     }
 
@@ -4157,6 +4234,7 @@ void            BuildFacelights(const int facenum)
 					break;
 				}
 			}
+
 			if (j == ALLSTYLES)
 			{
 				if (++stylewarningcount >= stylewarningnext)
@@ -4183,133 +4261,18 @@ void            BuildFacelights(const int facenum)
         //LRC (ends)
     }
 
-	if (g_bumpmaps)
+	facelight_t* fl = &facelight[facenum];
+	vec_t maxlights[ALLSTYLES];
+	for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
 	{
-		// Get the pointer to the bumpvecs style
-		s = fl_samples[BUMP_LIGHTVECS_STYLE];
-		texinfo_t* tx = &g_texinfo[f->texinfo];
-
-		// Build tbn matrix
-		VectorCopy(tx->vecs[0], tbnmatrix[0]);
-		VectorNormalize(tbnmatrix[0]);
-
-		VectorCopy(tx->vecs[1], tbnmatrix[1]);
-		VectorNormalize(tbnmatrix[1]);
-
-		VectorCopy(plane->normal, tbnmatrix[2]);
-		VectorNormalize(tbnmatrix[2]);
-
-		// Transform by TBN matrix
-		for (i = 0; i < l.numsurfpt; i++, s++)
+		maxlights[j] = 0;
+		for (i = 0; i < fl->numsamples; i++)
 		{
-			if (s->light[0] || s->light[1] || s->light[2])
-			{
-				vec3_t tmp;
-				tmp[0] = DotProduct(tbnmatrix[0], s->light);
-				tmp[1] = DotProduct(tbnmatrix[1], s->light);
-				tmp[2] = DotProduct(tbnmatrix[2], s->light);
-				VectorCopy(tmp, s->light);
-			}
-			else
-			{
-				s->light[0] = 0;
-				s->light[1] = 0;
-				s->light[2] = 0.5;
-			}
-
-			s->light[0] = (s->light[0] + 1) * 127;
-			s->light[1] = (s->light[1] + 1) * 127;
-			s->light[2] = (s->light[2] + 1) * 127;
+			vec_t b = VectorMaximum(fl_samples[j][i].light);
+			maxlights[j] = qmax(maxlights[j], b);
 		}
 
-		// Copy to final position
-		facelight_t* fl = &facelight[facenum];
-
-		// Copy default map
-		f->styles[DEFAULT_MAP] = f_styles[DEFAULT_STYLE];
-		fl->samples[DEFAULT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
-		memcpy(fl->samples[DEFAULT_MAP], fl_samples[DEFAULT_STYLE], fl->numsamples * sizeof(sample_t));
-
-		// Copy addlight
-		f->styles[BUMP_ADDLIGHT_MAP] = f_styles[BUMP_ADDLIGHT_STYLE];
-		fl->samples[BUMP_ADDLIGHT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
-		memcpy(fl->samples[BUMP_ADDLIGHT_MAP], fl_samples[BUMP_ADDLIGHT_STYLE], fl->numsamples * sizeof(sample_t));
-
-		// Copy to baselight
-		f->styles[BUMP_BASELIGHT_MAP] = f_styles[BUMP_BASELIGHT_STYLE];
-		fl->samples[BUMP_BASELIGHT_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
-		memcpy(fl->samples[BUMP_BASELIGHT_MAP], fl_samples[BUMP_BASELIGHT_STYLE], fl->numsamples * sizeof(sample_t));
-
-		// Copy to lightvecs
-		f->styles[BUMP_LIGHTVECS_MAP] = f_styles[BUMP_LIGHTVECS_STYLE];
-		fl->samples[BUMP_LIGHTVECS_MAP] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
-		memcpy(fl->samples[BUMP_LIGHTVECS_MAP], fl_samples[BUMP_LIGHTVECS_STYLE], fl->numsamples * sizeof(sample_t));
-	}
-	else
-	{
-		facelight_t* fl = &facelight[facenum];
-		vec_t maxlights[ALLSTYLES];
-		for (j = 0; j < ALLSTYLES && f_styles[j] != 255; j++)
-		{
-			maxlights[j] = 0;
-			for (i = 0; i < fl->numsamples; i++)
-			{
-				vec_t b = VectorMaximum(fl_samples[j][i].light);
-				maxlights[j] = qmax(maxlights[j], b);
-			}
-
-			if (maxlights[j] <= g_corings[f_styles[j]] * 0.1) // light is too dim, discard this style to reduce RAM usage
-			{
-				if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
-				{
-					ThreadLock();
-					if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
-					{
-						g_maxdiscardedlight = maxlights[j];
-						VectorCopy(g_face_centroids[facenum], g_maxdiscardedpos);
-					}
-					ThreadUnlock();
-				}
-				maxlights[j] = 0;
-			}
-		}
-
-		for (k = 0; k < MAXLIGHTMAPS; k++)
-		{
-			int bestindex = -1;
-			if (k == 0)
-			{
-				bestindex = 0;
-			}
-			else
-			{
-				vec_t bestmaxlight = 0;
-				for (j = 1; j < ALLSTYLES && f_styles[j] != 255; j++)
-				{
-					if (maxlights[j] > bestmaxlight + NORMAL_EPSILON)
-					{
-						bestmaxlight = maxlights[j];
-						bestindex = j;
-					}
-				}
-			}
-
-			if (bestindex != -1)
-			{
-				maxlights[bestindex] = 0;
-				f->styles[k] = f_styles[bestindex];
-				fl->samples[k] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
-				hlassume(fl->samples[k] != NULL, assume_NoMemory);
-				memcpy(fl->samples[k], fl_samples[bestindex], fl->numsamples * sizeof(sample_t));
-			}
-			else
-			{
-				f->styles[k] = 255;
-				fl->samples[k] = NULL;
-			}
-		}
-
-		for (j = 1; j < ALLSTYLES && f_styles[j] != 255; j++)
+		if (maxlights[j] <= g_corings[f_styles[j]] * 0.1) // light is too dim, discard this style to reduce RAM usage
 		{
 			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 			{
@@ -4321,6 +4284,56 @@ void            BuildFacelights(const int facenum)
 				}
 				ThreadUnlock();
 			}
+			maxlights[j] = 0;
+		}
+	}
+
+	for (k = 0; k < MAXLIGHTMAPS; k++)
+	{
+		int bestindex = -1;
+		if (k == 0)
+		{
+			bestindex = 0;
+		}
+		else
+		{
+			vec_t bestmaxlight = 0;
+			for (j = 1; j < ALLSTYLES && f_styles[j] != 255; j++)
+			{
+				if (maxlights[j] > bestmaxlight + NORMAL_EPSILON)
+				{
+					bestmaxlight = maxlights[j];
+					bestindex = j;
+				}
+			}
+		}
+
+		if (bestindex != -1)
+		{
+			maxlights[bestindex] = 0;
+			f->styles[k] = f_styles[bestindex];
+			fl->samples[k] = (sample_t*)malloc(fl->numsamples * sizeof(sample_t));
+			hlassume(fl->samples[k] != NULL, assume_NoMemory);
+			memcpy(fl->samples[k], fl_samples[bestindex], fl->numsamples * sizeof(sample_t));
+		}
+		else
+		{
+			f->styles[k] = 255;
+			fl->samples[k] = NULL;
+		}
+	}
+
+	for (j = 1; j < ALLSTYLES && f_styles[j] != 255; j++)
+	{
+		if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
+		{
+			ThreadLock();
+			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
+			{
+				g_maxdiscardedlight = maxlights[j];
+				VectorCopy(g_face_centroids[facenum], g_maxdiscardedpos);
+			}
+			ThreadUnlock();
 		}
 	}
 
@@ -4450,6 +4463,13 @@ void            BuildFacelights(const int facenum)
 	free (l.lmcache_wallflags);
 	free (l.surfpt_position);
 	free (l.surfpt_surface);
+
+	if(g_bumpmaps)
+	{
+		free (l.lmcache_ambient);
+		free (l.lmcache_diffuse);
+		free (l.lmcache_lightvectors);
+	}
 }
 
 // =====================================================================================
@@ -4477,123 +4497,138 @@ void            PrecompLightmapOffsets()
             continue;                                      // non-lit texture
         }
 
-		if(!g_bumpmaps)
+		int i, j, k;
+		vec_t maxlights[ALLSTYLES];
 		{
-			int i, j, k;
-			vec_t maxlights[ALLSTYLES];
+			vec3_t maxlights1[ALLSTYLES];
+			vec3_t maxlights2[ALLSTYLES];
+			for (j = 0; j < ALLSTYLES; j++)
 			{
-				vec3_t maxlights1[ALLSTYLES];
-				vec3_t maxlights2[ALLSTYLES];
-				for (j = 0; j < ALLSTYLES; j++)
-				{
-					VectorClear (maxlights1[j]);
-					VectorClear (maxlights2[j]);
-				}
-				for (k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++)
-				{
-					for (i = 0; i < fl->numsamples; i++)
-					{
-						VectorCompareMaximum (maxlights1[f->styles[k]], fl->samples[k][i].light, maxlights1[f->styles[k]]);
-					}
-				}
-				int numpatches;
-				const int *patches;
-				GetTriangulationPatches (facenum, &numpatches, &patches); // collect patches and their neighbors
+				VectorClear (maxlights1[j]);
+				VectorClear (maxlights2[j]);
+			}
 
-				for (i = 0; i < numpatches; i++)
+			for (k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++)
+			{
+				for (i = 0; i < fl->numsamples; i++)
 				{
-					patch = &g_patches[patches[i]];
-					for (k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++)
-					{
-						VectorCompareMaximum (maxlights2[patch->totalstyle[k]], patch->totallight[k], maxlights2[patch->totalstyle[k]]);
-					}
+					VectorCompareMaximum (maxlights1[f->styles[k]], fl->samples[k][i].light, maxlights1[f->styles[k]]);
 				}
-				for (j = 0; j < ALLSTYLES; j++)
+			}
+
+			int numpatches;
+			const int *patches;
+			GetTriangulationPatches (facenum, &numpatches, &patches); // collect patches and their neighbors
+
+			for (i = 0; i < numpatches; i++)
+			{
+				patch = &g_patches[patches[i]];
+				for (k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++)
 				{
-					vec3_t v;
-					VectorAdd (maxlights1[j], maxlights2[j], v);
-					maxlights[j] = VectorMaximum (v);
-					if (maxlights[j] <= g_corings[j] * 0.01)
+					VectorCompareMaximum (maxlights2[patch->totalstyle[k]], patch->totallight[k], maxlights2[patch->totalstyle[k]]);
+				}
+			}
+
+			for (j = 0; j < ALLSTYLES; j++)
+			{
+				vec3_t v;
+				VectorAdd (maxlights1[j], maxlights2[j], v);
+				maxlights[j] = VectorMaximum (v);
+				if (maxlights[j] <= g_corings[j] * 0.01)
+				{
+					if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 					{
-						if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
-						{
-							g_maxdiscardedlight = maxlights[j];
-							VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
-						}
-						maxlights[j] = 0;
+						g_maxdiscardedlight = maxlights[j];
+						VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
+					}
+					maxlights[j] = 0;
+				}
+			}
+		}
+
+		unsigned char oldstyles[MAXLIGHTMAPS];
+		sample_t *oldsamples[MAXLIGHTMAPS];
+		for (k = 0; k < MAXLIGHTMAPS; k++)
+		{
+			oldstyles[k] = f->styles[k];
+			oldsamples[k] = fl->samples[k];
+		}
+
+		for (k = 0; k < MAXLIGHTMAPS; k++)
+		{
+			unsigned char beststyle = 255;
+			if (k == 0)
+			{
+				beststyle = 0;
+			}
+			else
+			{
+				vec_t bestmaxlight = 0;
+				for (j = 1; j < ALLSTYLES; j++)
+				{
+					if (maxlights[j] > bestmaxlight + NORMAL_EPSILON)
+					{
+						bestmaxlight = maxlights[j];
+						beststyle = j;
 					}
 				}
 			}
-			unsigned char oldstyles[MAXLIGHTMAPS];
-			sample_t *oldsamples[MAXLIGHTMAPS];
-			for (k = 0; k < MAXLIGHTMAPS; k++)
+
+			if (beststyle != 255)
 			{
-				oldstyles[k] = f->styles[k];
-				oldsamples[k] = fl->samples[k];
-			}
-			for (k = 0; k < MAXLIGHTMAPS; k++)
-			{
-				unsigned char beststyle = 255;
-				if (k == 0)
+				maxlights[beststyle] = 0;
+				f->styles[k] = beststyle;
+				fl->samples[k] = (sample_t *)malloc (fl->numsamples * sizeof (sample_t));
+				hlassume (fl->samples[k] != NULL, assume_NoMemory);
+
+				for (i = 0; i < MAXLIGHTMAPS && oldstyles[i] != 255; i++)
 				{
-					beststyle = 0;
+					if (oldstyles[i] == f->styles[k])
+					{
+						break;
+					}
+				}
+
+				if (i < MAXLIGHTMAPS && oldstyles[i] != 255)
+				{
+					memcpy (fl->samples[k], oldsamples[i], fl->numsamples * sizeof (sample_t));
 				}
 				else
 				{
-					vec_t bestmaxlight = 0;
-					for (j = 1; j < ALLSTYLES; j++)
+					memcpy (fl->samples[k], oldsamples[0], fl->numsamples * sizeof (sample_t)); // copy 'sample.pos' from style 0 to the new style - because 'sample.pos' is actually the same for all styles! (why did we decide to store it in many places?)
+					
+					for (j = 0; j < fl->numsamples; j++)
 					{
-						if (maxlights[j] > bestmaxlight + NORMAL_EPSILON)
+						VectorClear (fl->samples[k][j].light);
+
+						if(g_bumpmaps)
 						{
-							bestmaxlight = maxlights[j];
-							beststyle = j;
+							VectorClear (fl->samples[k][j].light_ambient);
+							VectorClear (fl->samples[k][j].light_diffuse);
+							VectorClear (fl->samples[k][j].light_vector);
 						}
 					}
-				}
-				if (beststyle != 255)
-				{
-					maxlights[beststyle] = 0;
-					f->styles[k] = beststyle;
-					fl->samples[k] = (sample_t *)malloc (fl->numsamples * sizeof (sample_t));
-					hlassume (fl->samples[k] != NULL, assume_NoMemory);
-					for (i = 0; i < MAXLIGHTMAPS && oldstyles[i] != 255; i++)
-					{
-						if (oldstyles[i] == f->styles[k])
-						{
-							break;
-						}
-					}
-					if (i < MAXLIGHTMAPS && oldstyles[i] != 255)
-					{
-						memcpy (fl->samples[k], oldsamples[i], fl->numsamples * sizeof (sample_t));
-					}
-					else
-					{
-						memcpy (fl->samples[k], oldsamples[0], fl->numsamples * sizeof (sample_t)); // copy 'sample.pos' from style 0 to the new style - because 'sample.pos' is actually the same for all styles! (why did we decide to store it in many places?)
-						for (j = 0; j < fl->numsamples; j++)
-						{
-							VectorClear (fl->samples[k][j].light);
-						}
-					}
-				}
-				else
-				{
-					f->styles[k] = 255;
-					fl->samples[k] = NULL;
 				}
 			}
-			for (j = 1; j < ALLSTYLES; j++)
+			else
 			{
-				if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
-				{
-					g_maxdiscardedlight = maxlights[j];
-					VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
-				}
+				f->styles[k] = 255;
+				fl->samples[k] = NULL;
 			}
-			for (k = 0; k < MAXLIGHTMAPS && oldstyles[k] != 255; k++)
+		}
+
+		for (j = 1; j < ALLSTYLES; j++)
+		{
+			if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
 			{
-				free (oldsamples[k]);
+				g_maxdiscardedlight = maxlights[j];
+				VectorCopy (g_face_centroids[facenum], g_maxdiscardedpos);
 			}
+		}
+
+		for (k = 0; k < MAXLIGHTMAPS && oldstyles[k] != 255; k++)
+		{
+			free (oldsamples[k]);
 		}
 
         for (lightstyles = 0; lightstyles < MAXLIGHTMAPS; lightstyles++)
@@ -4618,6 +4653,25 @@ void            PrecompLightmapOffsets()
 void ReduceLightmap ()
 {
 	byte *oldlightdata = (byte *)malloc (g_lightdatasize);
+	byte* oldlightdata_ambient = nullptr;
+	byte* oldlightdata_diffuse = nullptr;
+	byte* oldlightdata_vectors = nullptr;
+
+	if(g_bumpmaps)
+	{
+		oldlightdata_ambient = (byte *)malloc (g_lightdatasize);
+		hlassume (oldlightdata_ambient != NULL, assume_NoMemory);
+		memcpy (oldlightdata_ambient, g_dlightdata_ambient, g_lightdatasize);
+
+		oldlightdata_diffuse = (byte *)malloc (g_lightdatasize);
+		hlassume (oldlightdata_diffuse != NULL, assume_NoMemory);
+		memcpy (oldlightdata_diffuse, g_dlightdata_diffuse, g_lightdatasize);
+
+		oldlightdata_vectors = (byte *)malloc (g_lightdatasize);
+		hlassume (oldlightdata_vectors != NULL, assume_NoMemory);
+		memcpy (oldlightdata_vectors, g_dlightdata_vectors, g_lightdatasize);
+	}
+
 	hlassume (oldlightdata != NULL, assume_NoMemory);
 	memcpy (oldlightdata, g_dlightdata, g_lightdatasize);
 
@@ -4658,6 +4712,7 @@ void ReduceLightmap ()
 			oldstyles[k] = f->styles[k];
 			f->styles[k] = 255;
 		}
+
 		int numstyles = 0;
 		for (k = 0; k < MAXLIGHTMAPS && oldstyles[k] != 255; k++)
 		{
@@ -4667,18 +4722,39 @@ void ReduceLightmap ()
 				unsigned char *v = &oldlightdata[oldofs + fl->numsamples * 3 * k + i * 3];
 				maxb = qmax (maxb, VectorMaximum (v));
 			}
+
 			if (maxb <= 0) // black
 			{
 				continue;
 			}
+
 			f->styles[numstyles] = oldstyles[k];
 			hlassume (g_lightdatasize + fl->numsamples * 3 * (numstyles + 1) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING);
 			memcpy (&g_dlightdata[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
+
+			if(g_bumpmaps)
+			{
+				memcpy (&g_dlightdata_ambient[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata_ambient[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
+				memcpy (&g_dlightdata_diffuse[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata_diffuse[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
+				memcpy (&g_dlightdata_vectors[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata_vectors[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3);
+			}
+
 			numstyles++;
 		}
+
 		g_lightdatasize += fl->numsamples * 3 * numstyles;
 	}
+
 	free (oldlightdata);
+
+	if(oldlightdata_ambient)
+		free(oldlightdata_ambient);
+
+	if(oldlightdata_diffuse)
+		free(oldlightdata_diffuse);
+
+	if(oldlightdata_vectors)
+		free(oldlightdata_vectors);
 }
 
 
@@ -5050,6 +5126,12 @@ void ScaleDirectLights ()
 			{
 				samp = &fl->samples[k][i];
 				VectorScale (samp->light, g_direct_scale, samp->light);
+
+				if(g_bumpmaps)
+				{
+					VectorScale (samp->light_ambient, g_direct_scale, samp->light_ambient);
+					VectorScale (samp->light_diffuse, g_direct_scale, samp->light_diffuse);
+				}
 			}
 		}
 	}
@@ -5086,10 +5168,6 @@ void AddPatchLights (int facenum)
 		{
 			for (i = 0; i < fl_other->numsamples; i++)
 			{
-				// Do not contribute to anything but default and baselight
-				if (g_bumpmaps && f_other->styles[k] != BUMP_BASELIGHT_STYLE && f_other->styles[k] != DEFAULT_STYLE)
-					continue;
-
 				samp = &fl_other->samples[k][i];
 				if (samp->surface != facenum)
 				{ 
@@ -5098,15 +5176,18 @@ void AddPatchLights (int facenum)
 				}
 
 				{
-					vec3_t v;
-
+					vec3_t tmp, v, v_amb;
 					int style = f_other->styles[k];
-					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &v);
+					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &tmp);
 
-					VectorAdd (samp->light, v, v);
+					VectorAdd (samp->light, tmp, v);
+					if(g_bumpmaps)
+						VectorAdd (samp->light_ambient, tmp, v_amb);
+
 					if (VectorMaximum (v) >= g_corings[f_other->styles[k]])
 					{
 						VectorCopy (v, samp->light);
+						VectorCopy (v_amb, samp->light_ambient); // Bounce lighting only adds to ambient light
 					}
 					else
 					{
@@ -5166,7 +5247,7 @@ void            FinalLightFace(const int facenum)
 		else
 			Log ("Error.\n");
 	}
-    int             i, j, k;
+    int             i, j, k, l;
     vec3_t          lb, v;
     facelight_t*    fl;
     sample_t*       samp;
@@ -5176,6 +5257,7 @@ void            FinalLightFace(const int facenum)
 	vec3_t			*original_basiclight;
 	int				(*final_basiclight)[3];
 	int				lbi[3];
+	float			tbnmatrix[3][3];
 
     // ------------------------------------------------------------------------
     // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -5204,6 +5286,23 @@ void            FinalLightFace(const int facenum)
         return;
     }
 
+	// Prepare the TBN matrix if we're doing bump map data
+	if(g_bumpmaps)
+	{
+		texinfo_t* tx = &g_texinfo[f->texinfo];
+		const dplane_t* faceplane = getPlaneFromFace (f);
+
+		// Build tbn matrix
+		VectorCopy(tx->vecs[0], tbnmatrix[0]);
+		VectorNormalize(tbnmatrix[0]);
+
+		VectorCopy(tx->vecs[1], tbnmatrix[1]);
+		VectorNormalize(tbnmatrix[1]);
+
+		VectorCopy(faceplane->normal, tbnmatrix[2]);
+		VectorNormalize(tbnmatrix[2]);
+	}
+
     //
     // set up the triangulation
     //
@@ -5218,136 +5317,191 @@ void            FinalLightFace(const int facenum)
 
 	original_basiclight = (vec3_t *)calloc (fl->numsamples, sizeof(vec3_t));
 	final_basiclight = (int (*)[3])calloc (fl->numsamples, sizeof(int [3]));
+
 	hlassume (original_basiclight != NULL, assume_NoMemory);
 	hlassume (final_basiclight != NULL, assume_NoMemory);
+
+	int numLayers = (g_bumpmaps == false) ? 1 : NB_LIGHTMAP_LAYERS;
 
     for (k = 0; k < lightstyles; k++)
     {
         samp = fl->samples[k];
         for (j = 0; j < fl->numsamples; j++, samp++)
         {
-			if (g_bumpmaps && f->styles[k] == BUMP_LIGHTVECS_STYLE)
+			for(l = 0; l < numLayers; l++)
 			{
-				// Just copy the light vector straight
-				VectorCopy(samp->light, lbi);
-			}
-			else
-			{
-
-				VectorCopy(samp->light, lb);
-				if (f->styles[0] != 0)
+				if(l == LIGHTMAP_LAYER_VECTORS)
 				{
-					Warning("wrong f->styles[0]");
-				}
-				VectorCompareMaximum(lb, vec3_origin, lb);
-				if (k == 0)
-				{
-					VectorCopy(lb, original_basiclight[j]);
-				}
-				else if(!g_bumpmaps)
-				{
-					VectorAdd(lb, original_basiclight[j], lb);
-				}
-
-				// ------------------------------------------------------------------------
-				// Changes by Adam Foster - afoster@compsoc.man.ac.uk
-				// colour lightscale:
-				lb[0] *= g_colour_lightscale[0];
-				lb[1] *= g_colour_lightscale[1];
-				lb[2] *= g_colour_lightscale[2];
-				// ------------------------------------------------------------------------
-
-				// clip from the bottom first
-				for (i = 0; i < 3; i++)
-				{
-					if (lb[i] < minlight)
+					// Move the light vector data into texture space
+					vec3_t tmp;
+					if(lbi[0] || lbi[1] || lbi[2])
 					{
-						lb[i] = minlight;
-					}
-				}
-
-
-				// ------------------------------------------------------------------------
-				// Changes by Adam Foster - afoster@compsoc.man.ac.uk
-
-				// AJM: your code is formatted really wierd, and i cant understand a damn thing. 
-				//      so i reformatted it into a somewhat readable "normal" fashion. :P
-
-				if (g_colour_qgamma[0] != 1.0)
-					lb[0] = (float)pow(lb[0] / 256.0f, g_colour_qgamma[0]) * 256.0f;
-
-				if (g_colour_qgamma[1] != 1.0)
-					lb[1] = (float)pow(lb[1] / 256.0f, g_colour_qgamma[1]) * 256.0f;
-
-				if (g_colour_qgamma[2] != 1.0)
-					lb[2] = (float)pow(lb[2] / 256.0f, g_colour_qgamma[2]) * 256.0f;
-
-				// Two different ways of adding noise to the lightmap - colour jitter
-				// (red, green and blue channels are independent), and mono jitter
-				// (monochromatic noise). For simulating dithering, on the cheap. :)
-
-				// Tends to create seams between adjacent polygons, so not ideal.
-
-				// Got really weird results when it was set to limit values to 256.0f - it
-				// was as if r, g or b could wrap, going close to zero.
-
-
-				// clip from the top
-				{
-					vec_t max = VectorMaximum(lb);
-					if (g_drawoverload)
-					{
-						VectorScale(lb, 0.1, lb); // darken good points
-					}
-				}
-				for (i = 0; i < 3; ++i)
-					if (lb[i] < g_minlight)
-						lb[i] = g_minlight;
-				// ------------------------------------------------------------------------
-				for (i = 0; i < 3; ++i)
-				{
-					lbi[i] = (int)floor(lb[i] + 0.5);
-					if (lbi[i] < 0) lbi[i] = 0;
-				}
-				if (!g_bumpmaps || f->styles[k] == DEFAULT_STYLE)
-				{
-					if (k == 0)
-					{
-						VectorCopy(lbi, final_basiclight[j]);
+						tmp[0] = DotProduct(tbnmatrix[0], samp->light_vector);
+						tmp[1] = DotProduct(tbnmatrix[1], samp->light_vector);
+						tmp[2] = DotProduct(tbnmatrix[2], samp->light_vector);
 					}
 					else
 					{
-						VectorSubtract(lbi, final_basiclight[j], lbi);
+						tmp[0] = 0;
+						tmp[1] = 0;
+						tmp[2] = 0.5;
 					}
-				}
 
-				if (k == 0)
+					// Make sure the vector is normalized
+					VectorNormalize(tmp);
+
+					// Now convert it to RGB values
+					for(int m = 0; m < 3; m++)
+						lbi[m] = (tmp[m] + 1) * 127;
+				}
+				else
 				{
-					if (g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2])
-						for (i = 0; i < 3; i++)
-							lbi[i] += g_colour_jitter_hack[i] * ((float)rand() / RAND_MAX - 0.5);
-					if (g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2])
+					switch(l)
 					{
-						temp_rand = (float)rand() / RAND_MAX - 0.5;
-						for (i = 0; i < 3; i++)
-							lbi[i] += g_jitter_hack[i] * temp_rand;
+					case LIGHTMAP_LAYER_DIFFUSE:
+						VectorCopy(samp->light_diffuse, lb);
+						break;
+					case LIGHTMAP_LAYER_AMBIENT:
+						VectorCopy(samp->light_ambient, lb);
+						break;
+					default:
+					case LIGHTMAP_LAYER_DEFAULT:
+						VectorCopy(samp->light, lb);
+						break;
+					}
+
+					if (f->styles[0] != 0)
+					{
+						Warning("wrong f->styles[0]");
+					}
+					VectorCompareMaximum(lb, vec3_origin, lb);
+
+					if (l == LIGHTMAP_LAYER_DEFAULT)
+						VectorCopy(lb, original_basiclight[j]);
+
+					// ------------------------------------------------------------------------
+					// Changes by Adam Foster - afoster@compsoc.man.ac.uk
+					// colour lightscale:
+					lb[0] *= g_colour_lightscale[0];
+					lb[1] *= g_colour_lightscale[1];
+					lb[2] *= g_colour_lightscale[2];
+					// ------------------------------------------------------------------------
+
+					// clip from the bottom first
+					for (i = 0; i < 3; i++)
+					{
+						if (lb[i] < minlight)
+						{
+							lb[i] = minlight;
+						}
+					}
+
+					// ------------------------------------------------------------------------
+					// Changes by Adam Foster - afoster@compsoc.man.ac.uk
+
+					// AJM: your code is formatted really wierd, and i cant understand a damn thing. 
+					//      so i reformatted it into a somewhat readable "normal" fashion. :P
+
+					if (g_colour_qgamma[0] != 1.0)
+						lb[0] = (float)pow(lb[0] / 256.0f, g_colour_qgamma[0]) * 256.0f;
+
+					if (g_colour_qgamma[1] != 1.0)
+						lb[1] = (float)pow(lb[1] / 256.0f, g_colour_qgamma[1]) * 256.0f;
+
+					if (g_colour_qgamma[2] != 1.0)
+						lb[2] = (float)pow(lb[2] / 256.0f, g_colour_qgamma[2]) * 256.0f;
+
+					// Two different ways of adding noise to the lightmap - colour jitter
+					// (red, green and blue channels are independent), and mono jitter
+					// (monochromatic noise). For simulating dithering, on the cheap. :)
+
+					// Tends to create seams between adjacent polygons, so not ideal.
+
+					// Got really weird results when it was set to limit values to 256.0f - it
+					// was as if r, g or b could wrap, going close to zero.
+
+
+					// clip from the top
+					{
+						vec_t max = VectorMaximum(lb);
+						if (g_drawoverload)
+						{
+							VectorScale(lb, 0.1, lb); // darken good points
+						}
+					}
+					for (i = 0; i < 3; ++i)
+						if (lb[i] < g_minlight)
+							lb[i] = g_minlight;
+					// ------------------------------------------------------------------------
+					for (i = 0; i < 3; ++i)
+					{
+						lbi[i] = (int)floor(lb[i] + 0.5);
+						if (lbi[i] < 0) lbi[i] = 0;
+					}
+
+					if (l == LIGHTMAP_LAYER_DEFAULT)
+					{
+						if (k == 0)
+						{
+							VectorCopy(lbi, final_basiclight[j]);
+						}
+						else
+						{
+							VectorSubtract(lbi, final_basiclight[j], lbi);
+						}
+					}
+
+					if (k == 0)
+					{
+						if (g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2])
+						{
+							for (i = 0; i < 3; i++)
+								lbi[i] += g_colour_jitter_hack[i] * ((float)rand() / RAND_MAX - 0.5);
+						}
+
+						if (g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2])
+						{
+							temp_rand = (float)rand() / RAND_MAX - 0.5;
+							for (i = 0; i < 3; i++)
+								lbi[i] += g_jitter_hack[i] * temp_rand;
+						}
 					}
 				}
+
+				// Capping
+				for (i = 0; i < 3; ++i)
+				{
+					if (lbi[i] < 0) lbi[i] = 0;
+					if (lbi[i] > 255) lbi[i] = 255;
+				}
+
+				// Insertion into final data
+				{
+					unsigned char* pdestbuffer = nullptr;
+					switch(l)
+					{
+					case LIGHTMAP_LAYER_AMBIENT:
+						pdestbuffer = g_dlightdata_ambient;
+						break;
+					case LIGHTMAP_LAYER_DIFFUSE:
+						pdestbuffer = g_dlightdata_diffuse;
+						break;
+					case LIGHTMAP_LAYER_VECTORS:
+						pdestbuffer = g_dlightdata_vectors;
+						break;
+					default:
+					case LIGHTMAP_LAYER_DEFAULT:
+						pdestbuffer = g_dlightdata;
+						break;
+					}
+					
+					unsigned char* colors = &pdestbuffer[f->lightofs + k * fl->numsamples * 3 + j * 3];
+
+					colors[0] = (unsigned char)lbi[0];
+					colors[1] = (unsigned char)lbi[1];
+					colors[2] = (unsigned char)lbi[2];
+				}
 			}
-
-			for (i = 0; i < 3; ++i)
-			{
-				if (lbi[i] < 0) lbi[i] = 0;
-				if (lbi[i] > 255) lbi[i] = 255;
-			}
-
-            {
-                unsigned char* colors = &g_dlightdata[f->lightofs + k * fl->numsamples * 3 + j * 3];
-
-                colors[0] = (unsigned char)lbi[0];
-                colors[1] = (unsigned char)lbi[1];
-                colors[2] = (unsigned char)lbi[2];
-            }
         }
     }
 	free (original_basiclight);
@@ -5401,6 +5555,13 @@ bool ExportALDData(ald_datatype_t type)
 		poriginal = (aldheader_t*)pbuffer;
 	}
 
+	// Check the light data size in the original
+	if(poriginal && poriginal->lightdatasize != g_lightdatasize)
+	{
+		delete[] (byte*)poriginal;
+		poriginal = nullptr;
+	}
+
 	// Create new lump
 	aldlumptype_t lumptype;
 	switch (type)
@@ -5431,18 +5592,32 @@ bool ExportALDData(ald_datatype_t type)
 			aldlump_t* plump = (aldlump_t*)((byte*)poriginal + poriginal->lumpoffset) + i;
 			if (plump->type != lumptype)
 			{
-				totalsize += plump->lumpsize + sizeof(aldlump_t);
+				totalsize += sizeof(aldlump_t);
+
+				int j = 0;
+				for(; j < NB_LIGHTMAP_LAYERS; j++)
+				{
+					if(plump->layeroffsets[j] != 0)
+						totalsize += poriginal->lightdatasize;
+				}
+
 				newnumlumps++;
 			}
 		}
 
 		totalsize += sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
+		if(g_bumpmaps)
+			totalsize += (sizeof(byte) * g_lightdatasize)*3;
+
 		newnumlumps++;
 	}
 	else
 	{
 		// No original file
 		totalsize = sizeof(aldheader_t) + sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
+		if(g_bumpmaps)
+			totalsize += (sizeof(byte) * g_lightdatasize)*3;
+
 		newnumlumps = 1;
 	}
 
@@ -5454,8 +5629,10 @@ bool ExportALDData(ald_datatype_t type)
 	fileoffset += sizeof(aldheader_t);
 
 	pnewhdr->header = ALD_HEADER_ENCODED;
+	pnewhdr->version = ALD_VERSION;
 	pnewhdr->numlumps = newnumlumps;
 	pnewhdr->lumpoffset = fileoffset;
+	pnewhdr->lightdatasize = g_lightdatasize;
 
 	aldlump_t* pnewlump = nullptr;
 	if (poriginal)
@@ -5471,15 +5648,21 @@ bool ExportALDData(ald_datatype_t type)
 				continue;
 
 			pnewlumps[j].type = psrclump->type;
-			pnewlumps[j].lumpoffset = fileoffset;
-			pnewlumps[j].lumpsize = psrclump->lumpsize;
-			fileoffset += psrclump->lumpsize;
 
-			// copy data
-			byte* psrclumpdata = ((byte*)poriginal + psrclump->lumpoffset);
-			byte* pdestlumpdata = pfilebuffer + pnewlumps[j].lumpoffset;
+			for(int k = 0; k < NB_LIGHTMAP_LAYERS; k++)
+			{
+				if(k > 0 && !g_bumpmaps)
+					break;
 
-			memcpy(pdestlumpdata, psrclumpdata, psrclump->lumpsize);
+				pnewlumps[j].layeroffsets[k] = fileoffset;
+				fileoffset += poriginal->lightdatasize;
+
+				// copy data
+				byte* psrclumpdata = ((byte*)poriginal + psrclump->layeroffsets[k]);
+				byte* pdestlumpdata = pfilebuffer + pnewlumps[j].layeroffsets[k];
+
+				memcpy(pdestlumpdata, psrclumpdata, poriginal->lightdatasize);
+			}
 
 			j++;
 		}
@@ -5493,14 +5676,36 @@ bool ExportALDData(ald_datatype_t type)
 		fileoffset += sizeof(aldlump_t) * newnumlumps;
 	}
 
-	pnewlump->type = lumptype;
-	pnewlump->lumpoffset = fileoffset;
-	pnewlump->lumpsize = g_lightdatasize;
+	for(int i = 0; i < NB_LIGHTMAP_LAYERS; i++)
+	{
+		if(i > 0 && !g_bumpmaps)
+			break;
 
-	// Copy data to destination
-	byte* pdestdata = pfilebuffer + pnewlump->lumpoffset;
-	memcpy(pdestdata, g_dlightdata, g_lightdatasize);
-	fileoffset += g_lightdatasize;
+		pnewlump->type = lumptype;
+		pnewlump->layeroffsets[i] = fileoffset;
+
+		// Copy data to destination
+		byte* psrc;
+		switch(i)
+		{
+		case LIGHTMAP_LAYER_DEFAULT:
+			psrc = g_dlightdata;
+			break;
+		case LIGHTMAP_LAYER_VECTORS:
+			psrc = g_dlightdata_vectors;
+			break;
+		case LIGHTMAP_LAYER_AMBIENT:
+			psrc = g_dlightdata_ambient;
+			break;
+		case LIGHTMAP_LAYER_DIFFUSE:
+			psrc = g_dlightdata_diffuse;
+			break;
+		}
+
+		byte* pdestdata = pfilebuffer + pnewlump->layeroffsets[i];
+		memcpy(pdestdata, psrc, g_lightdatasize);
+		fileoffset += g_lightdatasize;
+	}
 
 	if (fileoffset != totalsize)
 	{

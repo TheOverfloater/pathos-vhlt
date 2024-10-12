@@ -48,6 +48,7 @@ bool			g_bumpmaps = false;
 
 static vec3_t   (*emitlight)[MAXLIGHTMAPS]; //LRC
 static vec3_t   (*addlight)[MAXLIGHTMAPS]; //LRC
+static vec3_t   (*addlight_ambient)[MAXLIGHTMAPS]; //LRC
 static unsigned char (*newstyles)[MAXLIGHTMAPS];
 
 vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmodels
@@ -1318,12 +1319,6 @@ static void     MakePatchForFace(const int fn, Winding* w, int style
 			if (style < 0)
 				style = -style;
 
-			if (g_bumpmaps && style != 0)
-			{
-				printf("Removed patch with style %d\n", style);
-				return;
-			}
-
 			style = (unsigned char)style;
 			if (style >= ALLSTYLES)
 			{
@@ -2049,6 +2044,7 @@ static void     CollectLight()
 			if (newstyles[i][j] != 255)
 			{
 				patch->totalstyle[j] = newstyles[i][j];
+
 				VectorCopy (newtotallight[j], patch->totallight[j]);
 				VectorCopy (addlight[i][j], emitlight[i][j]);
 			}
@@ -2099,15 +2095,8 @@ static void     GatherLight(int threadnum)
         tIndex = patch->tIndex;
         iIndex = patch->iIndex;
 
-		if (!g_bumpmaps)
-		{
-			for (m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++)
-				VectorAdd(adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]]);
-		}
-		else
-		{
-			VectorAdd(adds[patch->totalstyle[0]], patch->totallight[0], adds[patch->totalstyle[0]]);
-		}
+		for (m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++)
+			VectorAdd(adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]]);
 
         for (k = 0; k < iIndex; k++, tIndex++)
         {
@@ -2128,10 +2117,6 @@ static void     GatherLight(int threadnum)
 				// for each style on the emitting patch
 				for (emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++)
 				{
-					// Do not add in bump map styles
-					if (g_bumpmaps && emitpatch->directstyle[emitstyle] != 0)
-						continue;
-
 					VectorScale(emitpatch->directlight[emitstyle], f, v);
 					VectorMultiply(v, emitpatch->bouncereflectivity, v);
 					if (isPointFinite (v))
@@ -2157,10 +2142,6 @@ static void     GatherLight(int threadnum)
 
 				for (emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++)
 				{
-					// Do not add in bump map styles
-					if (g_bumpmaps && emitpatch->directstyle[emitstyle] != 0)
-						continue;
-
 					VectorScale(emitlight[patchnum][emitstyle], f, v);
 					VectorMultiply(v, emitpatch->bouncereflectivity, v);
 					if (isPointFinite(v))
@@ -2192,68 +2173,51 @@ static void     GatherLight(int threadnum)
             }
         }
 
-		if (g_bumpmaps)
+		vec_t maxlights[ALLSTYLES];
+		for (style = 0; style < ALLSTYLES; style++)
 		{
-			// Any contributions only go to the default style
-			newstyles[j][0] = 0;
-			VectorCopy(adds[0], addlight[j][0]);
-
-			// Contribute to ambient map
-			newstyles[j][BUMP_BASELIGHT_MAP] = BUMP_BASELIGHT_STYLE;
-			VectorCopy(adds[0], addlight[j][BUMP_BASELIGHT_MAP]);
+			maxlights[style] = VectorMaximum(adds[style]);
 		}
-		else
+
+		for (m = 0; m < MAXLIGHTMAPS; m++)
 		{
-			vec_t maxlights[ALLSTYLES];
-			for (style = 0; style < ALLSTYLES; style++)
-			{
-				maxlights[style] = VectorMaximum(adds[style]);
-			}
-
-			for (m = 0; m < MAXLIGHTMAPS; m++)
-			{
-				unsigned char beststyle = 255;
-				if (m == 0)
-				{
-					beststyle = 0;
-				}
-				else if (!g_bumpmaps)
-				{
-					vec_t bestmaxlight = 0;
-					for (style = 1; style < ALLSTYLES; style++)
-					{
-						if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
-						{
-							bestmaxlight = maxlights[style];
-							beststyle = style;
-						}
-					}
-				}
-
-				if (beststyle != 255)
-				{
-					maxlights[beststyle] = 0;
-					newstyles[j][m] = beststyle;
-					VectorCopy(adds[beststyle], addlight[j][m]);
-				}
-				else
-				{
-					newstyles[j][m] = 255;
-				}
-			}
-
+			unsigned char beststyle = 255;
+			vec_t bestmaxlight = 0;
 			for (style = 1; style < ALLSTYLES; style++)
 			{
+				if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+				{
+					bestmaxlight = maxlights[style];
+					beststyle = style;
+				}
+			}
+
+			if (beststyle != 255)
+			{
+				maxlights[beststyle] = 0;
+				newstyles[j][m] = beststyle;
+				VectorCopy(adds[beststyle], addlight[j][m]);
+				
+				if(g_bumpmaps)
+					VectorCopy(adds[beststyle], addlight_ambient[j][m]);
+			}
+			else
+			{
+				newstyles[j][m] = 255;
+			}
+		}
+
+		for (style = 1; style < ALLSTYLES; style++)
+		{
+			if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
+			{
+				ThreadLock();
 				if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
 				{
-					ThreadLock();
-					if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
-					{
-						g_maxdiscardedlight = maxlights[style];
-						VectorCopy(patch->origin, g_maxdiscardedpos);
-					}
-					ThreadUnlock();
+					g_maxdiscardedlight = maxlights[style];
+					VectorCopy(patch->origin, g_maxdiscardedpos);
 				}
+				ThreadUnlock();
 			}
 		}
     }
@@ -2291,15 +2255,8 @@ static void     GatherRGBLight(int threadnum)
         tIndex = patch->tIndex;
         iIndex = patch->iIndex;
 
-		if (!g_bumpmaps)
-		{
-			for (m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++)
-				VectorAdd(adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]]);
-		}
-		else
-		{
-			VectorAdd(adds[patch->totalstyle[0]], patch->totallight[0], adds[patch->totalstyle[0]]);
-		}
+		for (m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++)
+			VectorAdd(adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]]);
 
         for (k = 0; k < iIndex; k++, tIndex++)
         {
@@ -2319,9 +2276,6 @@ static void     GatherRGBLight(int threadnum)
 				// for each style on the emitting patch
 				for (emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++)
 				{
-					if (g_bumpmaps && emitpatch->directstyle[emitstyle] != 0)
-						continue;
-
 					VectorMultiply(emitpatch->directlight[emitstyle], f, v);
 					VectorMultiply(v, emitpatch->bouncereflectivity, v);
 					if (isPointFinite (v))
@@ -2347,9 +2301,6 @@ static void     GatherRGBLight(int threadnum)
 
 				for (emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++)
 				{
-					if (g_bumpmaps && emitpatch->directstyle[emitstyle] != 0)
-						continue;
-
 					VectorMultiply(emitlight[patchnum][emitstyle], f, v);
 					VectorMultiply(v, emitpatch->bouncereflectivity, v);
 
@@ -2382,67 +2333,50 @@ static void     GatherRGBLight(int threadnum)
             }
         }
 
-		if (g_bumpmaps)
+		vec_t maxlights[ALLSTYLES];
+		for (style = 0; style < ALLSTYLES; style++)
 		{
-			// Any contributions only go to the default style
-			newstyles[j][0] = 0;
-			VectorCopy(adds[0], addlight[j][0]);
-
-			// Contribute to ambient map
-			newstyles[j][BUMP_BASELIGHT_MAP] = BUMP_BASELIGHT_STYLE;
-			VectorCopy(adds[0], addlight[j][BUMP_BASELIGHT_MAP]);
+			maxlights[style] = VectorMaximum(adds[style]);
 		}
-		else
+
+		for (m = 0; m < MAXLIGHTMAPS; m++)
 		{
-			vec_t maxlights[ALLSTYLES];
-			for (style = 0; style < ALLSTYLES; style++)
+			unsigned char beststyle = 255;
+			vec_t bestmaxlight = 0;
+			for (style = 1; style < ALLSTYLES; style++)
 			{
-				maxlights[style] = VectorMaximum(adds[style]);
+				if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+				{
+					bestmaxlight = maxlights[style];
+					beststyle = style;
+				}
 			}
 
-			for (m = 0; m < MAXLIGHTMAPS; m++)
+			if (beststyle != 255)
 			{
-				unsigned char beststyle = 255;
-				if (m == 0)
-				{
-					beststyle = 0;
-				}
-				else if(!g_bumpmaps)
-				{
-					vec_t bestmaxlight = 0;
-					for (style = 1; style < ALLSTYLES; style++)
-					{
-						if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
-						{
-							bestmaxlight = maxlights[style];
-							beststyle = style;
-						}
-					}
-				}
+				maxlights[beststyle] = 0;
+				newstyles[j][m] = beststyle;
+				VectorCopy(adds[beststyle], addlight[j][m]);
 
-				if (beststyle != 255)
-				{
-					maxlights[beststyle] = 0;
-					newstyles[j][m] = beststyle;
-					VectorCopy(adds[beststyle], addlight[j][m]);
-				}
-				else
-				{
-					newstyles[j][m] = 255;
-				}
+				if(g_bumpmaps)
+					VectorCopy(adds[beststyle], addlight_ambient[j][m]);
+			}
+			else
+			{
+				newstyles[j][m] = 255;
+			}
 
-				for (style = 1; style < ALLSTYLES; style++)
+			for (style = 1; style < ALLSTYLES; style++)
+			{
+				if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
 				{
+					ThreadLock();
 					if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
 					{
-						ThreadLock();
-						if (maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON)
-						{
-							g_maxdiscardedlight = maxlights[style];
-							VectorCopy(patch->origin, g_maxdiscardedpos);
-						}
-						ThreadUnlock();
+						g_maxdiscardedlight = maxlights[style];
+						VectorCopy(patch->origin, g_maxdiscardedpos);
 					}
+					ThreadUnlock();
 				}
 			}
 		}
@@ -2467,12 +2401,7 @@ static void     BounceLight()
     {
 		patch_t *patch = &g_patches[i];
 		for (j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++)
-		{
-			if (g_bumpmaps && patch->totalstyle[j] != 0)
-				continue;
-
 			VectorCopy (patch->totallight[j], emitlight[i][j]);
-		}
     }
 
     for (i = 0; i < g_numbounce; i++)
@@ -2594,11 +2523,21 @@ static void ExtendLightmapBuffer ()
 			}
 		}
 	}
+
 	if (maxsize >= g_lightdatasize)
 	{
 		hlassume (maxsize <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING);
 		memset (&g_dlightdata[g_lightdatasize], 0, maxsize - g_lightdatasize);
+
+		if(g_bumpmaps)
+		{
+			memset (&g_dlightdata_ambient[g_lightdatasize], 0, maxsize - g_lightdatasize);
+			memset (&g_dlightdata_diffuse[g_lightdatasize], 0, maxsize - g_lightdatasize);
+			memset (&g_dlightdata_vectors[g_lightdatasize], 0, maxsize - g_lightdatasize);
+		}
+
 		g_lightdatasize = maxsize;
+
 	}
 }
 
@@ -2709,6 +2648,10 @@ static void     RadWorld()
 		emitlight = (vec3_t (*)[MAXLIGHTMAPS])AllocBlock ((g_num_patches + 1) * sizeof (vec3_t [MAXLIGHTMAPS]));
 		addlight = (vec3_t (*)[MAXLIGHTMAPS])AllocBlock ((g_num_patches + 1) * sizeof (vec3_t [MAXLIGHTMAPS]));
 		newstyles = (unsigned char (*)[MAXLIGHTMAPS])AllocBlock ((g_num_patches + 1) * sizeof (unsigned char [MAXLIGHTMAPS]));
+
+		if(g_bumpmaps)
+			addlight_ambient = (vec3_t (*)[MAXLIGHTMAPS])AllocBlock ((g_num_patches + 1) * sizeof (vec3_t [MAXLIGHTMAPS]));
+
         // spread light around
         BounceLight();
 
@@ -2718,6 +2661,12 @@ static void     RadWorld()
 		addlight = NULL;
 		FreeBlock (newstyles);
 		newstyles = NULL;
+
+		if(addlight_ambient)
+		{
+			FreeBlock (addlight_ambient);
+			addlight_ambient = NULL;
+		}
     }
 
     FreeTransfers();
@@ -2749,13 +2698,19 @@ static void     RadWorld()
 	MdlLightHack ();
 
 	// Do not reduce bumpmap data
-	if (!g_bumpmaps)
-		ReduceLightmap();
+	ReduceLightmap();
 
 	if (g_lightdatasize == 0)
 	{
 		g_lightdatasize = 1;
 		g_dlightdata[0] = 0;
+
+		if(g_bumpmaps)
+		{
+			g_dlightdata_ambient[0] = 0;
+			g_dlightdata_diffuse[0] = 0;
+			g_dlightdata_vectors[0] = 0;
+		}
 	}
 	ExtendLightmapBuffer (); // expand the size of lightdata array (for a few KB) to ensure that game engine reads within its valid range
 }
@@ -3985,13 +3940,7 @@ int             main(const int argc, char** argv)
         Log("No mapname specified\n");
         Usage();
     }
-#if 0
-	if (g_bumpmaps && g_numbounce > 0)
-	{
-		Log("The feature '-bumpmaps' does not support bounce lighting yet.\n");
-		g_numbounce = 0;
-	}
-#endif
+
 	if (g_nightmode && g_daylightreturnmode)
 	{
 		Log("Error: -nightstage and -daylightreturn are both set. Exiting compiler.\n");
