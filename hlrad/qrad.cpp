@@ -2182,13 +2182,20 @@ static void     GatherLight(int threadnum)
 		for (m = 0; m < MAXLIGHTMAPS; m++)
 		{
 			unsigned char beststyle = 255;
-			vec_t bestmaxlight = 0;
-			for (style = 1; style < ALLSTYLES; style++)
+			if (m == 0)
 			{
-				if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+				beststyle = 0;
+			}
+			else
+			{
+				vec_t bestmaxlight = 0;
+				for (style = 1; style < ALLSTYLES; style++)
 				{
-					bestmaxlight = maxlights[style];
-					beststyle = style;
+					if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+					{
+						bestmaxlight = maxlights[style];
+						beststyle = style;
+					}
 				}
 			}
 
@@ -2342,13 +2349,20 @@ static void     GatherRGBLight(int threadnum)
 		for (m = 0; m < MAXLIGHTMAPS; m++)
 		{
 			unsigned char beststyle = 255;
-			vec_t bestmaxlight = 0;
-			for (style = 1; style < ALLSTYLES; style++)
+			if (m == 0)
 			{
-				if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+				beststyle = 0;
+			}
+			else
+			{
+				vec_t bestmaxlight = 0;
+				for (style = 1; style < ALLSTYLES; style++)
 				{
-					bestmaxlight = maxlights[style];
-					beststyle = style;
+					if (maxlights[style] > bestmaxlight + NORMAL_EPSILON)
+					{
+						bestmaxlight = maxlights[style];
+						beststyle = style;
+					}
 				}
 			}
 

@@ -292,86 +292,150 @@ void            PairEdges()
                 hlassert(e->faces[0] == NULL);
                 e->faces[0] = f;
             }
+        }
+    }
 
-            if (e->faces[0] && e->faces[1]) 
+	vec3_t e1_vertex1, e1_vertex2;
+	vec3_t e2_vertex1, e2_vertex2;
+	for(i = 0; i < g_numsurfedges; i++)
+	{
+		edgeshare_t* pedgeshare = &g_edgeshare[i];
+		if(!pedgeshare->faces[0] && !pedgeshare->faces[1]
+			|| pedgeshare->faces[0] && pedgeshare->faces[1])
+			continue;
+
+		dedge_t* pedge = &g_dedges[i];
+		VectorCopy(g_dvertexes[pedge->v[0]].point, e1_vertex1);
+		VectorCopy(g_dvertexes[pedge->v[1]].point, e1_vertex2);
+
+		for(j = 0; j < g_numsurfedges; j++)
+		{
+			if(j == i)
+				continue;
+
+			edgeshare_t* pedgeshare_compare = &g_edgeshare[j];
+			if(!pedgeshare_compare->faces[0] && !pedgeshare_compare->faces[1]
+				|| pedgeshare_compare->faces[0] && pedgeshare_compare->faces[1])
+				continue;
+
+			dedge_t* pedge_compare = &g_dedges[j];
+			VectorCopy(g_dvertexes[pedge_compare->v[0]].point, e2_vertex1);
+			VectorCopy(g_dvertexes[pedge_compare->v[1]].point, e2_vertex2);
+
+			if(VectorCompare(e1_vertex1, e2_vertex1) && VectorCompare(e1_vertex2, e2_vertex2)
+				|| VectorCompare(e1_vertex2, e2_vertex1) && VectorCompare(e1_vertex1, e2_vertex2))
 			{
-				// determine if coplanar
-				if (e->faces[0]->planenum == e->faces[1]->planenum
-					&& e->faces[0]->side == e->faces[1]->side) 
+				if(!pedgeshare->faces[0])
 				{
-					e->coplanar = true;
-					VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
-					e->cos_normals_angle = 1.0;
-				} 
-				else 
-				{
-                    // see if they fall into a "smoothing group" based on angle of the normals
-                    vec3_t          normals[2];
-
-                    VectorCopy(getPlaneFromFace(e->faces[0])->normal, normals[0]);
-                    VectorCopy(getPlaneFromFace(e->faces[1])->normal, normals[1]);
-
-                    e->cos_normals_angle = DotProduct(normals[0], normals[1]);
-
-					vec_t smoothvalue;
-					int m0 = g_texinfo[e->faces[0]->texinfo].miptex;
-					int m1 = g_texinfo[e->faces[1]->texinfo].miptex;
-					smoothvalue = qmax (g_smoothvalues[m0], g_smoothvalues[m1]);
-					if (m0 != m1)
-						smoothvalue = qmax (smoothvalue, g_smoothing_threshold_2);
-
-					if (smoothvalue >= 1.0 - NORMAL_EPSILON)
-						smoothvalue = 2.0;
-
-                    if (e->cos_normals_angle > (1.0 - NORMAL_EPSILON))
-                    {
-                        e->coplanar = true;
-						VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
-						e->cos_normals_angle = 1.0;
-                    }
-                    else if (e->cos_normals_angle >= qmax (smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON))
+					if(pedgeshare_compare->faces[0])
 					{
-                        {
-                            VectorAdd(normals[0], normals[1], e->interface_normal);
-                            VectorNormalize(e->interface_normal);
-                        }
-                    }
-                }
-				if (!VectorCompare (g_translucenttextures[g_texinfo[e->faces[0]->texinfo].miptex], g_translucenttextures[g_texinfo[e->faces[1]->texinfo].miptex]))
-				{
-					e->coplanar = false;
-					VectorClear (e->interface_normal);
-				}
-
-				int miptex0, miptex1;
-				miptex0 = g_texinfo[e->faces[0]->texinfo].miptex;
-				miptex1 = g_texinfo[e->faces[1]->texinfo].miptex;
-				if (fabs (g_lightingconeinfo[miptex0][0] - g_lightingconeinfo[miptex1][0]) > NORMAL_EPSILON ||
-					fabs (g_lightingconeinfo[miptex0][1] - g_lightingconeinfo[miptex1][1]) > NORMAL_EPSILON )
-				{
-					e->coplanar = false;
-					VectorClear (e->interface_normal);
-				}
-
-				if (!VectorCompare(e->interface_normal, vec3_origin))
-				{
-					e->smooth = true;
-				}
-
-				if (e->smooth)
-				{
-					// compute the matrix in advance
-					if (!TranslateTexToTex (e->faces[0] - g_dfaces, abs (k), e->faces[1] - g_dfaces, e->textotex[0], e->textotex[1]))
+						pedgeshare->faces[0] = pedgeshare_compare->faces[0];
+						pedgeshare_compare->faces[1] = pedgeshare->faces[1];
+					}
+					else
 					{
-						e->smooth = false;
-						e->coplanar = false;
-						VectorClear (e->interface_normal);
-
-						dvertex_t *dv = &g_dvertexes[g_dedges[abs(k)].v[0]];
-						Developer (DEVELOPER_LEVEL_MEGASPAM, "TranslateTexToTex failed on face %d and %d @(%f,%f,%f)", (int)(e->faces[0] - g_dfaces), (int)(e->faces[1] - g_dfaces), dv->point[0], dv->point[1], dv->point[2]);
+						pedgeshare->faces[0] = pedgeshare_compare->faces[1];
+						pedgeshare_compare->faces[0] = pedgeshare->faces[1];
 					}
 				}
+				else
+				{
+					if(pedgeshare_compare->faces[0])
+					{
+						pedgeshare->faces[1] = pedgeshare_compare->faces[0];
+						pedgeshare_compare->faces[1] = pedgeshare->faces[0];
+					}
+					else
+					{
+						pedgeshare->faces[1] = pedgeshare_compare->faces[1];
+						pedgeshare_compare->faces[0] = pedgeshare->faces[0];
+					}
+				}
+			}
+		}
+	}
+
+    for(k = 0; k < g_numedges; k++)
+    {
+		e = &g_edgeshare[k];
+        if (e->faces[0] && e->faces[1]) 
+		{
+			// determine if coplanar
+			if (e->faces[0]->planenum == e->faces[1]->planenum
+				&& e->faces[0]->side == e->faces[1]->side) 
+			{
+				e->coplanar = true;
+				VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
+				e->cos_normals_angle = 1.0;
+			} 
+			else 
+			{
+                // see if they fall into a "smoothing group" based on angle of the normals
+                vec3_t          normals[2];
+
+                VectorCopy(getPlaneFromFace(e->faces[0])->normal, normals[0]);
+                VectorCopy(getPlaneFromFace(e->faces[1])->normal, normals[1]);
+
+                e->cos_normals_angle = DotProduct(normals[0], normals[1]);
+
+				vec_t smoothvalue;
+				int m0 = g_texinfo[e->faces[0]->texinfo].miptex;
+				int m1 = g_texinfo[e->faces[1]->texinfo].miptex;
+				smoothvalue = qmax (g_smoothvalues[m0], g_smoothvalues[m1]);
+				if (m0 != m1)
+					smoothvalue = qmax (smoothvalue, g_smoothing_threshold_2);
+
+				if (smoothvalue >= 1.0 - NORMAL_EPSILON)
+					smoothvalue = 2.0;
+
+                if (e->cos_normals_angle > (1.0 - NORMAL_EPSILON))
+                {
+                    e->coplanar = true;
+					VectorCopy(getPlaneFromFace(e->faces[0])->normal, e->interface_normal);
+					e->cos_normals_angle = 1.0;
+                }
+                else if (e->cos_normals_angle >= qmax (smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON))
+				{
+                    {
+                        VectorAdd(normals[0], normals[1], e->interface_normal);
+                        VectorNormalize(e->interface_normal);
+                    }
+                }
             }
+			if (!VectorCompare (g_translucenttextures[g_texinfo[e->faces[0]->texinfo].miptex], g_translucenttextures[g_texinfo[e->faces[1]->texinfo].miptex]))
+			{
+				e->coplanar = false;
+				VectorClear (e->interface_normal);
+			}
+
+			int miptex0, miptex1;
+			miptex0 = g_texinfo[e->faces[0]->texinfo].miptex;
+			miptex1 = g_texinfo[e->faces[1]->texinfo].miptex;
+			if (fabs (g_lightingconeinfo[miptex0][0] - g_lightingconeinfo[miptex1][0]) > NORMAL_EPSILON ||
+				fabs (g_lightingconeinfo[miptex0][1] - g_lightingconeinfo[miptex1][1]) > NORMAL_EPSILON )
+			{
+				e->coplanar = false;
+				VectorClear (e->interface_normal);
+			}
+
+			if (!VectorCompare(e->interface_normal, vec3_origin))
+			{
+				e->smooth = true;
+			}
+
+			if (e->smooth)
+			{
+				// compute the matrix in advance
+				if (!TranslateTexToTex (e->faces[0] - g_dfaces, abs (k), e->faces[1] - g_dfaces, e->textotex[0], e->textotex[1]))
+				{
+					e->smooth = false;
+					e->coplanar = false;
+					VectorClear (e->interface_normal);
+
+					dvertex_t *dv = &g_dvertexes[g_dedges[abs(k)].v[0]];
+					Developer (DEVELOPER_LEVEL_MEGASPAM, "TranslateTexToTex failed on face %d and %d @(%f,%f,%f)", (int)(e->faces[0] - g_dfaces), (int)(e->faces[1] - g_dfaces), dv->point[0], dv->point[1], dv->point[2]);
+				}
+			}
         }
     }
 
@@ -2648,6 +2712,15 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 
 				vec3_t add_one;
 
+				style = l->style;
+				if (opaquestyle != -1)
+				{
+					if (style == 0 || style == opaquestyle)
+						style = opaquestyle;
+					else
+						continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+				}
+
 				// Only add default light in non- bump pass
 				if (!bumpinfopass)
 				{
@@ -2657,17 +2730,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 					VectorScale(l->intensity, dot * l->sunnormalweights[j], add_one);
 					VectorMultiply(add_one, transparency, add_one);
 
-					style = l->style;
-					if (opaquestyle != -1)
-					{
-						if (style == 0 || style == opaquestyle)
-							style = opaquestyle;
-						else
-							continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-					}
-
-					if (!bumpinfopass)
-						VectorAdd(padds[style], add_one, padds[style]);
+					VectorAdd(padds[style], add_one, padds[style]);
 				}
 
 				if (g_bumpmaps)
@@ -2692,7 +2755,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 
 						// Add it to the collection
 						VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
-						VectorMA(padds_ambient[style], normalfactor, add_one_ambient, padds_ambient[style]);
+						VectorMA(padds_ambient[style], (1.0 - normalfactor), add_one_ambient, padds_ambient[style]);
 					}
 					else
 					{
@@ -2768,15 +2831,14 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 						continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
 				}
 
-				// add to the total brightness of this sample
 				if (!bumpinfopass)
 				{
-					// Add to the specified style
+					// Contribute to default lightmap
 					VectorAdd(padds[style], add_one, padds[style]);
-				} 
+				}
 				else if(g_bumpmaps)
 				{
-					// Contribute to baselight only
+					// Contribute to ambient only
 					VectorAdd(padds_ambient[style], add_one, padds_ambient[style]);
 				}
 			} // (loop over the normals)
@@ -3041,7 +3103,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 
 				// Add it to the collection
 				VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
-				VectorMA(padds_ambient[style], normalfactor, add_one_ambient, padds_ambient[style]);
+				VectorMA(padds_ambient[style], (1.0 - normalfactor), add_one_ambient, padds_ambient[style]);
 			}
 			else
 			{
@@ -3101,7 +3163,8 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 
 	// Determine difference to surface normal
 	Float normalfactor = DotProduct(normal, basenormal);
-	normalfactor = 1.0;
+	if(normalfactor < 0)
+		normalfactor = 0;
 
 	//
 	// First step - Calculate regular lighting
@@ -3528,6 +3591,8 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		vec3_t *normal_out;
 		bool nudged;
 		int *wallflags_out;
+		vec3_t basenormal;
+		vec3_t basenormal2;
 
 		// prepare input parameter and output parameter
 		{
@@ -3653,11 +3718,16 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 
 		// calculate normal for the sample
 		{
+			
+			VectorCopy(getPlaneFromFace(f)->normal, basenormal);
+
 			GetPhongNormal (surface, surfpt, pointnormal);
 			if (l->translucent_b)
 			{
 				VectorSubtract (vec3_origin, pointnormal, pointnormal2);
+				VectorSubtract (vec3_origin, basenormal, basenormal2);
 			}
+
 			VectorCopy (pointnormal, *normal_out);
 		}
 
@@ -3736,7 +3806,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 
 				if (!blocked)
 				{
-					GatherSampleLight(spot2, pvs2, pointnormal2, p->normal, sampled2, sampled2_ambient, sampled2_diffuse, sampled2_lightvectors, styles, 0, l->miptex, surface);
+					GatherSampleLight(spot2, pvs2, pointnormal2, basenormal2, sampled2, sampled2_ambient, sampled2_diffuse, sampled2_lightvectors, styles, 0, l->miptex, surface);
 				}
 
 				for (j = 0; j < ALLSTYLES && styles[j] != 255; j++)
