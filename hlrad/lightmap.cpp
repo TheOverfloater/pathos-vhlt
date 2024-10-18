@@ -2743,7 +2743,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 					{
 						// Contribution comes from correlation between
 						// the gathered light vector and the light direction
-						float dotn = qmax(0, DotProduct(pdirections[style], delta_bump));
+						float dotn = qmax(0, DotProduct(pdirections[style], delta_bump)) * normalfactor;
 
 						// Calculate the lighting for ambient and diffuse
 						VectorScale(l->intensity, dotn * l->sunnormalweights[j], add_one_diffuse);
@@ -2754,8 +2754,8 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 						VectorMultiply(add_one_ambient, transparency, add_one_ambient);
 
 						// Add it to the collection
-						VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
-						VectorMA(padds_ambient[style], (1.0 - normalfactor), add_one_ambient, padds_ambient[style]);
+						VectorAdd(padds_diffuse[style], add_one_diffuse, padds_diffuse[style]);
+						VectorAdd(padds_ambient[style], add_one_ambient, padds_ambient[style]);
 					}
 					else
 					{
@@ -3090,7 +3090,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 			{
 				// Contribution comes from correlation between
 				// the gathered light vector and the light direction
-				float dotn = pow(qmax(0, DotProduct(pdirections[style], delta_bump)), 16);
+				float dotn = pow(qmax(0, DotProduct(pdirections[style], delta_bump)), 16) * normalfactor;
 				ratio_bump = qmax(0, ratio_bump);
 
 				// Calculate the lighting for ambient and diffuse
@@ -3099,11 +3099,11 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 
 				// Multiply by the transparency
 				VectorMultiply(add_one_diffuse, transparency, add_one_diffuse);
-				//VectorMultiply(add_one_ambient, transparency, add_one_ambient);
+				VectorMultiply(add_one_ambient, transparency, add_one_ambient);
 
 				// Add it to the collection
-				VectorMA(padds_diffuse[style], normalfactor, add_one_diffuse, padds_diffuse[style]);
-				VectorMA(padds_ambient[style], (1.0 - normalfactor), add_one_ambient, padds_ambient[style]);
+				VectorAdd(padds_diffuse[style], add_one_diffuse, padds_diffuse[style]);
+				VectorAdd(padds_ambient[style], add_one_ambient, padds_ambient[style]);
 			}
 			else
 			{
@@ -3114,6 +3114,42 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 			}
 		}
     }
+}
+
+vec_t GetBrightestSample( vec3_t& add, vec3_t& add_ambient, vec3_t& add_diffuse )
+{
+	vec_t sampleadd = VectorMaximum(add);
+
+	if(g_bumpmaps)
+	{
+		vec_t sampleadd_ambient = VectorMaximum(add_ambient);
+		vec_t sampleadd_diffuse = VectorMaximum(add_diffuse);
+
+		if(sampleadd_diffuse > sampleadd_ambient && sampleadd_diffuse > sampleadd)
+			return sampleadd_diffuse;
+		else if(sampleadd_ambient > sampleadd)
+			return sampleadd_ambient;
+	}
+
+	return sampleadd;
+}
+
+unsigned char GetBrightestSample( unsigned char* add, unsigned char* add_ambient, unsigned char* add_diffuse )
+{
+	unsigned char sampleadd = VectorMaximum(add);
+
+	if(g_bumpmaps && add_ambient && add_diffuse)
+	{
+		unsigned char sampleadd_ambient = VectorMaximum(add_ambient);
+		unsigned char sampleadd_diffuse = VectorMaximum(add_diffuse);
+
+		if(sampleadd_diffuse > sampleadd_ambient && sampleadd_diffuse > sampleadd)
+			return sampleadd_diffuse;
+		else if(sampleadd_ambient > sampleadd)
+			return sampleadd_ambient;
+	}
+
+	return sampleadd;
 }
 
 static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, const vec3_t basenormal, vec3_t* sample, vec3_t* sample_ambient, vec3_t* sample_diffuse, vec3_t* sample_lightvectors, byte* styles, int step, int miptex, int texlightgap_surfacenum)
@@ -3135,7 +3171,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 	vec3_t			adds_lightvectors[ALLSTYLES];
 	memset(adds_lightvectors, 0, ALLSTYLES * sizeof(vec3_t));
 
-	vec3_t directions[ALLSTYLES];
+	vec3_t			directions[ALLSTYLES];
 	memset(directions, 0, ALLSTYLES * sizeof(vec3_t));
 
 	// calculates textoworld
@@ -3211,7 +3247,8 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 
 	for (style = 0; style < ALLSTYLES; ++style)
 	{
-		if (VectorMaximum(adds[style]) > g_corings[style] * 0.1)
+		vec_t samplebrightness = GetBrightestSample(adds[style], adds_ambient[style], adds_diffuse[style]);
+		if (samplebrightness > g_corings[style] * 0.1)
 		{
 			for (style_index = 0; style_index < ALLSTYLES; style_index++)
 			{
@@ -3233,19 +3270,15 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 			}
 
 			if (styles[style_index] == 255)
-			{
 				styles[style_index] = style;
-			}
 
 			// Contribute to default lightdata
 			VectorAdd(sample[style_index], adds[style], sample[style_index]);
 
 			if(sample_lightvectors && sample_diffuse && sample_ambient)
 			{
-				// Add the light vector to the sample
+				// Add the bump maps components as well
 				VectorCopy(directions[style], sample_lightvectors[style_index]);
-
-				// Add values to final
 				VectorAdd(sample_diffuse[style_index], adds_diffuse[style], sample_diffuse[style_index]);
 				VectorAdd(sample_ambient[style_index], adds_ambient[style], sample_ambient[style_index]);
 			}
@@ -3848,6 +3881,7 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		}
 	}
 }
+
 void            BuildFacelights(const int facenum)
 {
     dface_t*        f;
@@ -3879,7 +3913,6 @@ void            BuildFacelights(const int facenum)
     // some surfaces don't need lightmaps
     //
     f->lightofs = -1;
-
 	for (j = 0; j < ALLSTYLES; j++)
 	{
 		f_styles[j] = 255;
@@ -3894,7 +3927,7 @@ void            BuildFacelights(const int facenum)
         return;                                            // non-lit texture
     }
 
-	f->styles[0] = 0;
+	f_styles[0] = 0;
 
 	if (g_face_patches[facenum] && g_face_patches[facenum]->emitstyle)
 	{
@@ -4338,7 +4371,7 @@ void            BuildFacelights(const int facenum)
 		maxlights[j] = 0;
 		for (i = 0; i < fl->numsamples; i++)
 		{
-			vec_t b = VectorMaximum(fl_samples[j][i].light);
+			vec_t b = GetBrightestSample(fl_samples[j][i].light, fl_samples[j][i].light_ambient, fl_samples[j][i].light_diffuse);
 			maxlights[j] = qmax(maxlights[j], b);
 		}
 
@@ -4571,11 +4604,19 @@ void            PrecompLightmapOffsets()
 		vec_t maxlights[ALLSTYLES];
 		{
 			vec3_t maxlights1[ALLSTYLES];
+			vec3_t maxlights1_ambient[ALLSTYLES];
+			vec3_t maxlights1_diffuse[ALLSTYLES];
 			vec3_t maxlights2[ALLSTYLES];
+			vec3_t maxlights2_ambient[ALLSTYLES];
+			vec3_t maxlights2_diffuse[ALLSTYLES];
 			for (j = 0; j < ALLSTYLES; j++)
 			{
 				VectorClear (maxlights1[j]);
+				VectorClear (maxlights1_ambient[j]);
+				VectorClear (maxlights1_diffuse[j]);
 				VectorClear (maxlights2[j]);
+				VectorClear (maxlights2_ambient[j]);
+				VectorClear (maxlights2_diffuse[j]);
 			}
 
 			for (k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++)
@@ -4583,6 +4624,8 @@ void            PrecompLightmapOffsets()
 				for (i = 0; i < fl->numsamples; i++)
 				{
 					VectorCompareMaximum (maxlights1[f->styles[k]], fl->samples[k][i].light, maxlights1[f->styles[k]]);
+					VectorCompareMaximum (maxlights1_ambient[f->styles[k]], fl->samples[k][i].light_ambient, maxlights1_ambient[f->styles[k]]);
+					VectorCompareMaximum (maxlights1_diffuse[f->styles[k]], fl->samples[k][i].light_diffuse, maxlights1_diffuse[f->styles[k]]);
 				}
 			}
 
@@ -4601,9 +4644,17 @@ void            PrecompLightmapOffsets()
 
 			for (j = 0; j < ALLSTYLES; j++)
 			{
-				vec3_t v;
+				vec3_t v, v_ambient, v_diffuse;
 				VectorAdd (maxlights1[j], maxlights2[j], v);
-				maxlights[j] = VectorMaximum (v);
+
+				if(g_bumpmaps)
+				{
+					VectorAdd (maxlights1_ambient[j], maxlights2_ambient[j], v_ambient);
+					VectorAdd (maxlights1_diffuse[j], maxlights2_diffuse[j], v_diffuse);
+				}
+
+				maxlights[j] = GetBrightestSample(v, v_ambient, v_diffuse);
+
 				if (maxlights[j] <= g_corings[j] * 0.01)
 				{
 					if (maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON)
@@ -4790,7 +4841,16 @@ void ReduceLightmap ()
 			for (i = 0; i < fl->numsamples; i++)
 			{
 				unsigned char *v = &oldlightdata[oldofs + fl->numsamples * 3 * k + i * 3];
-				maxb = qmax (maxb, VectorMaximum (v));
+				unsigned char *va = nullptr;
+				unsigned char* vd = nullptr;
+
+				if(g_bumpmaps)
+				{
+					va = &oldlightdata_ambient[oldofs + fl->numsamples * 3 * k + i * 3];
+					vd = &oldlightdata_diffuse[oldofs + fl->numsamples * 3 * k + i * 3];
+				}
+
+				maxb = qmax (maxb, GetBrightestSample(v, va, vd));
 			}
 
 			if (maxb <= 0) // black
@@ -5228,7 +5288,6 @@ void AddPatchLights (int facenum)
 		return;
 	}
 
-	
 	for (item = g_dependentfacelights[facenum]; item != NULL; item = item->next)
 	{
 		f_other = &g_dfaces[item->facenum];
@@ -5246,27 +5305,33 @@ void AddPatchLights (int facenum)
 				}
 
 				{
-					vec3_t tmp, v, v_amb;
+					vec3_t tmp, v, v_ambient, v_diffuse;
+					VectorClear(v_diffuse); // No diffuse contribution yet here
 					int style = f_other->styles[k];
 					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &tmp);
 
 					VectorAdd (samp->light, tmp, v);
 					if(g_bumpmaps)
-						VectorAdd (samp->light_ambient, tmp, v_amb);
+					{
+						VectorAdd (samp->light_ambient, tmp, v_ambient);
+						VectorAdd (samp->light_diffuse, tmp, v_diffuse);
+					}
 
-					if (VectorMaximum (v) >= g_corings[f_other->styles[k]])
+					Float max = GetBrightestSample(v, v_ambient, v_diffuse);
+					if (max >= g_corings[f_other->styles[k]])
 					{
 						VectorCopy (v, samp->light);
-						VectorCopy (v_amb, samp->light_ambient); // Bounce lighting only adds to ambient light
+						VectorCopy (v_ambient, samp->light_ambient); // Bounce lighting only adds to ambient light
+						VectorCopy (v_diffuse, samp->light_diffuse); // No diffuse yet
 					}
 					else
 					{
-						if (VectorMaximum (v) > g_maxdiscardedlight + NORMAL_EPSILON)
+						if (max > g_maxdiscardedlight + NORMAL_EPSILON)
 						{
 							ThreadLock ();
-							if (VectorMaximum (v) > g_maxdiscardedlight + NORMAL_EPSILON)
+							if (max > g_maxdiscardedlight + NORMAL_EPSILON)
 							{
-								g_maxdiscardedlight = VectorMaximum (v);
+								g_maxdiscardedlight = max;
 								VectorCopy (samp->pos, g_maxdiscardedpos);
 							}
 							ThreadUnlock ();
@@ -5404,7 +5469,7 @@ void            FinalLightFace(const int facenum)
 				{
 					// Move the light vector data into texture space
 					vec3_t tmp;
-					if(lbi[0] || lbi[1] || lbi[2])
+					if(samp->light_vector[0] || samp->light_vector[1] || samp->light_vector[2])
 					{
 						tmp[0] = DotProduct(tbnmatrix[0], samp->light_vector);
 						tmp[1] = DotProduct(tbnmatrix[1], samp->light_vector);
@@ -5573,7 +5638,8 @@ void            FinalLightFace(const int facenum)
 				}
 			}
         }
-    }
+	}
+
 	free (original_basiclight);
 	free (final_basiclight);
 }
