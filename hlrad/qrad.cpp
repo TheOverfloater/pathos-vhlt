@@ -17,6 +17,7 @@
 #include <string>
 
 #include "qrad.h"
+#include "miniz.h"
 
 
 /*
@@ -24,6 +25,21 @@
  * -----
  * every surface must be divided into at least two g_patches each axis
  */
+
+char* compressionlevel_strings[NB_COMPRESSION_LEVELS] = 
+{
+	"default",
+	"best_speed",
+	"best_compression",
+	"uber_compression"
+};
+
+extern char* daystage_strings[RAD_NB_DAYSTAGES]
+{
+	"none",
+	"nightmode",
+	"daylightreturn"
+};
 
 bool			g_fastmode = DEFAULT_FASTMODE;
 typedef enum
@@ -38,13 +54,15 @@ eVisMethods		g_method = DEFAULT_METHOD;
 
 vec_t           g_fade = DEFAULT_FADE;
 
-patch_t*        g_face_patches[MAX_MAP_FACES];
-entity_t*       g_face_entity[MAX_MAP_FACES];
-eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
-patch_t*		g_patches;
-entity_t*		g_face_texlights[MAX_MAP_FACES];
-unsigned        g_num_patches;
-bool			g_bumpmaps = false;
+patch_t*			g_face_patches[MAX_MAP_FACES];
+entity_t*			g_face_entity[MAX_MAP_FACES];
+eModelLightmodes	g_face_lightmode[MAX_MAP_FACES];
+patch_t*			g_patches;
+entity_t*			g_face_texlights[MAX_MAP_FACES];
+unsigned			g_num_patches;
+bool				g_bumpmaps = false;
+bool				g_nocompress = false;
+compressionlevel_t	g_compressionlevel = COMPRESSION_LEVEL_DEFAULT;
 
 static vec3_t   (*emitlight)[MAXLIGHTMAPS]; //LRC
 static vec3_t   (*addlight)[MAXLIGHTMAPS]; //LRC
@@ -56,8 +74,7 @@ vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmode
 vec_t           g_direct_scale = DEFAULT_DLIGHT_SCALE;
 
 unsigned        g_numbounce = DEFAULT_BOUNCE;              // 3; /* Originally this was 8 */
-bool			g_nightmode = false;
-bool			g_daylightreturnmode = false;
+hlrad_daystage_t	g_daystage = DEFAULT_DAYSTAGE;
 
 static bool     g_dumppatches = DEFAULT_DUMPPATCHES;
 
@@ -83,6 +100,7 @@ float			g_smoothing_value_2 = DEFAULT_SMOOTHING2_VALUE;
 bool            g_circus = DEFAULT_CIRCUS;
 bool            g_allow_opaques = DEFAULT_ALLOW_OPAQUES;
 bool			g_allow_spread = DEFAULT_ALLOW_SPREAD;
+bool			g_ignore_err_file = DEFAULT_IGNORE_ERR_FILE;
 
 // --------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -2512,6 +2530,159 @@ static void     FreeTransfers()
     }
 }
 
+static void CompressLightmapData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int* plightdatasize_out )
+{
+	int destsize = compressBound(lightdatasize);
+	byte* pdestination = (byte*)malloc(destsize);
+	memset(pdestination, 0, sizeof(byte)*destsize);
+
+	int compressionlevel;
+	switch(g_compressionlevel)
+	{
+	case COMPRESSION_LEVEL_BEST_SPEED:
+		compressionlevel = MZ_BEST_SPEED;
+		break;
+	case COMPRESSION_LEVEL_BEST_COMPRESSION:
+		compressionlevel = MZ_BEST_COMPRESSION;
+		break;
+	case COMPRESSION_LEVEL_UBER_COMPRESSION:
+		compressionlevel = MZ_UBER_COMPRESSION;
+		break;
+	default:
+	case COMPRESSION_LEVEL_DEFAULT:
+		compressionlevel = MZ_DEFAULT_LEVEL;
+		break;
+	}
+
+	mz_ulong resultsize = destsize;
+	const byte* pdatasrc = reinterpret_cast<const byte*>(plightdataptr);
+	int result = compress2(pdestination, &resultsize, pdatasrc, lightdatasize, compressionlevel);
+	if(result != MZ_OK)
+	{
+		Error("%s - Failed to compress lightmap data, compress returned %d.\n", __FUNCTION__, result);
+		return;
+	}
+
+	// Release original data
+	free(plightdataptr);
+
+	plightdataptr = (byte*)malloc(sizeof(byte)*resultsize);
+	memcpy(plightdataptr, pdestination, sizeof(byte)*resultsize);
+
+	lightdatasize_actual = resultsize;
+	compression_level = compressionlevel;
+
+	if(plightdatasize_out)
+		(*plightdatasize_out) = lightdatasize;
+}
+
+static void FinalizeLightmapData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int& compression_type, int* plightdatasize_out )
+{
+	if(g_nocompress)
+	{
+		// No compression, so keep original data
+		lightdatasize_actual = lightdatasize;
+		compression_type = PBSPV2_LMAP_COMPRESSION_NONE;
+		compression_level = 0;
+
+		if(plightdatasize_out)
+			(*plightdatasize_out) = lightdatasize;
+	}
+	else
+	{
+		// Compress using miniz
+		CompressLightmapData(lightdatasize, plightdataptr, lightdatasize_actual, compression_level, plightdatasize_out);
+		compression_type = PBSPV2_LMAP_COMPRESSION_MINIZ;
+	}
+}
+
+static void FinalizeLightmapBuffers ()
+{
+	double start, end, start_all, end_all;
+	int lightdatasize_original = g_lightdatasize;
+
+	start_all = I_FloatTime();
+	Log("Compressing lightmap data\n");
+
+	// Manage default layer
+	if(!g_nocompress)
+	{
+		start = I_FloatTime();
+		Log("Compressing default lightmap data\n");
+	}
+
+	FinalizeLightmapData(lightdatasize_original, g_dlightdata, g_lightdatasize_actual, g_dlightdata_compression_level, g_dlightdata_compression, &g_lightdatasize);
+	Log("Done compressing default lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_actual);
+
+	if(!g_nocompress)
+	{
+		end = I_FloatTime();
+		LogTimeElapsed(end - start);
+	}
+
+	// Handle all others
+	if(g_bumpmaps)
+	{
+		// Ambient
+		if(!g_nocompress)
+		{
+			start = I_FloatTime();
+			Log("Compressing ambient lightmap data\n");
+		}
+		
+		FinalizeLightmapData(lightdatasize_original, g_dlightdata_ambient, g_lightdatasize_ambient_actual, g_dlightdata_ambient_compression_level, g_dlightdata_ambient_compression, nullptr);
+		
+		if(!g_nocompress)
+		{
+			Log("Done compressing ambient lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_ambient_actual);
+
+			end = I_FloatTime();
+			LogTimeElapsed(end - start);
+		}
+
+		// Diffuse
+		if(!g_nocompress)
+		{
+			start = I_FloatTime();
+			Log("Compressing diffuse lightmap data\n");
+		}
+		
+		FinalizeLightmapData(lightdatasize_original, g_dlightdata_diffuse, g_lightdatasize_diffuse_actual, g_dlightdata_diffuse_compression_level, g_dlightdata_diffuse_compression, nullptr);
+		
+		if(!g_nocompress)
+		{	
+			Log("Done compressing diffuse lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_diffuse_actual);
+
+			end = I_FloatTime();
+			LogTimeElapsed(end - start);
+		}
+
+		// Vectors
+		if(!g_nocompress)
+		{
+			start = I_FloatTime();
+			Log("Compressing vectors lightmap data\n");
+		}
+		
+		FinalizeLightmapData(lightdatasize_original, g_dlightdata_vectors, g_lightdatasize_vectors_actual, g_dlightdata_vectors_compression_level, g_dlightdata_vectors_compression, nullptr);
+		
+		if(!g_nocompress)
+		{
+			Log("Done compressing vectors lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_vectors_actual);
+
+			end = I_FloatTime();
+			LogTimeElapsed(end - start);
+		}
+	}
+
+	if(!g_nocompress)
+	{
+		Log("Lightmap data compression finished\n");
+		end_all = I_FloatTime();
+		LogTimeElapsed(end_all - start_all);
+	}
+}
+
 static void ExtendLightmapBuffer ()
 {
 	int maxsize;
@@ -2527,9 +2698,11 @@ static void ExtendLightmapBuffer ()
 		if (f->lightofs >= 0)
 		{
 			ofs = f->lightofs;
+			int lightmapdivider = TEXTURE_STEP / f->samplescale;
+
 			for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
 			{
-				ofs += (MAX_SURFACE_EXTENT + 1) * (MAX_SURFACE_EXTENT + 1) * 3;
+				ofs += (MAX_SURFACE_EXTENT * lightmapdivider + 1) * (MAX_SURFACE_EXTENT * lightmapdivider + 1) * 3;
 			}
 			if (ofs > maxsize)
 			{
@@ -2726,7 +2899,12 @@ static void     RadWorld()
 			g_dlightdata_vectors[0] = 0;
 		}
 	}
-	ExtendLightmapBuffer (); // expand the size of lightdata array (for a few KB) to ensure that game engine reads within its valid range
+
+	// expand the size of lightdata array (for a few KB) to ensure that game engine reads within its valid range
+	ExtendLightmapBuffer(); 
+
+	// Finalize lightmap buffers
+	FinalizeLightmapBuffers();
 }
 
 // =====================================================================================
@@ -2825,6 +3003,23 @@ static void     Usage()
 	Log("   -drawlerp      : Show bounce light triangulation status.\n");
 	Log("   -drawnudge     : Show nudged samples.\n");
 	Log("   -drawoverload  : Highlight fullbright spots\n");
+	Log("   -nocompress    : Do not compress BSP lighting data lumps\n");
+
+	{
+	Log("	-compressionlevel : Lightmap compression level ( ");
+		int i;
+		for (i=0; i<NB_COMPRESSION_LEVELS; i++)
+			Log ("%s%s", ((i > 0) ? ", " : ""), compressionlevel_strings[i]);
+		Log(" )\n");
+	}
+
+	{
+	Log("	-daystage      : Stage of day ( ");
+		int i;
+		for (i=0; i<RAD_NB_DAYSTAGES; i++)
+			Log ("%s%s", ((i > 0) ? ", " : ""), daystage_strings[i]);
+		Log(" )\n");
+	}
 
     Log("    mapfile       : The mapfile to compile\n\n");
 
@@ -2847,25 +3042,25 @@ static void     Settings()
 
     Log("\n-= Current %s Settings =-\n", g_Program);
     Log("Name                | Setting             | Default\n"
-        "--------------------|---------------------|-------------------------\n");
+        "---------------------------|---------------------|-------------------------\n");
 
     // ZHLT Common Settings
     if (DEFAULT_NUMTHREADS == -1)
     {
-        Log("threads              [ %17d ] [            Varies ]\n", g_numthreads);
+        Log("threads                     [ %17d ] [            Varies ]\n", g_numthreads);
     }
     else
     {
-        Log("threads              [ %17d ] [ %17d ]\n", g_numthreads, DEFAULT_NUMTHREADS);
+        Log("threads                     [ %17d ] [ %17d ]\n", g_numthreads, DEFAULT_NUMTHREADS);
     }
 
-    Log("verbose              [ %17s ] [ %17s ]\n", g_verbose ? "on" : "off", DEFAULT_VERBOSE ? "on" : "off");
-    Log("log                  [ %17s ] [ %17s ]\n", g_log ? "on" : "off", DEFAULT_LOG ? "on" : "off");
-    Log("developer            [ %17d ] [ %17d ]\n", g_developer, DEFAULT_DEVELOPER);
-    Log("chart                [ %17s ] [ %17s ]\n", g_chart ? "on" : "off", DEFAULT_CHART ? "on" : "off");
-    Log("estimate             [ %17s ] [ %17s ]\n", g_estimate ? "on" : "off", DEFAULT_ESTIMATE ? "on" : "off");
-    Log("max texture memory   [ %17d ] [ %17d ]\n", g_max_map_miptex, DEFAULT_MAX_MAP_MIPTEX);
-		Log("max lighting memory  [ %17d ] [ %17d ]\n", g_max_map_lightdata, DEFAULT_MAX_MAP_LIGHTDATA); //lightdata
+    Log("verbose                     [ %17s ] [ %17s ]\n", g_verbose ? "on" : "off", DEFAULT_VERBOSE ? "on" : "off");
+    Log("log                         [ %17s ] [ %17s ]\n", g_log ? "on" : "off", DEFAULT_LOG ? "on" : "off");
+    Log("developer                   [ %17d ] [ %17d ]\n", g_developer, DEFAULT_DEVELOPER);
+    Log("chart                       [ %17s ] [ %17s ]\n", g_chart ? "on" : "off", DEFAULT_CHART ? "on" : "off");
+    Log("estimate                    [ %17s ] [ %17s ]\n", g_estimate ? "on" : "off", DEFAULT_ESTIMATE ? "on" : "off");
+    Log("max texture memory          [ %17d ] [ %17d ]\n", g_max_map_miptex, DEFAULT_MAX_MAP_MIPTEX);
+	Log("max lighting memory         [ %17d ] [ %17d ]\n", g_max_map_lightdata, DEFAULT_MAX_MAP_LIGHTDATA); //lightdata
 
     switch (g_threadpriority)
     {
@@ -2880,90 +3075,92 @@ static void     Settings()
         tmp = "High";
         break;
     }
-    Log("priority             [ %17s ] [ %17s ]\n", tmp, "Normal");
+    Log("priority                    [ %17s ] [ %17s ]\n", tmp, "Normal");
     Log("\n");
 
-	Log("fast rad             [ %17s ] [ %17s ]\n", g_fastmode? "on": "off", DEFAULT_FASTMODE? "on": "off");
-	Log("vismatrix algorithm  [ %17s ] [ %17s ]\n",
+	Log("fast rad                    [ %17s ] [ %17s ]\n", g_fastmode? "on": "off", DEFAULT_FASTMODE? "on": "off");
+	Log("vismatrix algorithm         [ %17s ] [ %17s ]\n",
 		g_method == eMethodVismatrix? "Original": g_method == eMethodSparseVismatrix? "Sparse": g_method == eMethodNoVismatrix? "NoMatrix": "Unknown",
 		DEFAULT_METHOD == eMethodVismatrix? "Original": DEFAULT_METHOD == eMethodSparseVismatrix? "Sparse": DEFAULT_METHOD == eMethodNoVismatrix? "NoMatrix": "Unknown"
 		);
-    Log("oversampling (-extra)[ %17s ] [ %17s ]\n", g_extra ? "on" : "off", DEFAULT_EXTRA ? "on" : "off");
-    Log("bounces              [ %17d ] [ %17d ]\n", g_numbounce, DEFAULT_BOUNCE);
+    Log("oversampling (-extra)       [ %17s ] [ %17s ]\n", g_extra ? "on" : "off", DEFAULT_EXTRA ? "on" : "off");
+    Log("bounces                     [ %17d ] [ %17d ]\n", g_numbounce, DEFAULT_BOUNCE);
 
     safe_snprintf(buf1, sizeof(buf1), "%1.3f %1.3f %1.3f", g_ambient[0], g_ambient[1], g_ambient[2]);
     safe_snprintf(buf2, sizeof(buf2), "%1.3f %1.3f %1.3f", DEFAULT_AMBIENT_RED, DEFAULT_AMBIENT_GREEN, DEFAULT_AMBIENT_BLUE);
-    Log("ambient light        [ %17s ] [ %17s ]\n", buf1, buf2);
-    Log("circus mode          [ %17s ] [ %17s ]\n", g_circus ? "on" : "off", DEFAULT_CIRCUS ? "on" : "off");
+    Log("ambient light               [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("circus mode                 [ %17s ] [ %17s ]\n", g_circus ? "on" : "off", DEFAULT_CIRCUS ? "on" : "off");
 
     Log("\n");
 
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_smoothing_value);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_SMOOTHING_VALUE);
-    Log("smoothing threshold  [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("smoothing threshold         [ %17s ] [ %17s ]\n", buf1, buf2);
 	safe_snprintf(buf1, sizeof(buf1), g_smoothing_value_2<0? "no change": "%3.3f", g_smoothing_value_2);
 	safe_snprintf(buf2, sizeof(buf2), DEFAULT_SMOOTHING2_VALUE<0? "no change": "%3.3f", DEFAULT_SMOOTHING2_VALUE);
-    Log("smoothing threshold 2[ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("smoothing threshold 2       [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_dlight_threshold);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_DLIGHT_THRESHOLD);
-    Log("direct threshold     [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("direct threshold            [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_direct_scale);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_DLIGHT_SCALE);
-    Log("direct light scale   [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("direct light scale          [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_coring);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_CORING);
-    Log("coring threshold     [ %17s ] [ %17s ]\n", buf1, buf2);
-    Log("patch interpolation  [ %17s ] [ %17s ]\n", g_lerp_enabled ? "on" : "off", DEFAULT_LERP_ENABLED ? "on" : "off");
+    Log("coring threshold            [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("patch interpolation         [ %17s ] [ %17s ]\n", g_lerp_enabled ? "on" : "off", DEFAULT_LERP_ENABLED ? "on" : "off");
 
     Log("\n");
 
-    Log("texscale             [ %17s ] [ %17s ]\n", g_texscale ? "on" : "off", DEFAULT_TEXSCALE ? "on" : "off");
-    Log("patch subdividing    [ %17s ] [ %17s ]\n", g_subdivide ? "on" : "off", DEFAULT_SUBDIVIDE ? "on" : "off");
+    Log("texscale                    [ %17s ] [ %17s ]\n", g_texscale ? "on" : "off", DEFAULT_TEXSCALE ? "on" : "off");
+    Log("patch subdividing           [ %17s ] [ %17s ]\n", g_subdivide ? "on" : "off", DEFAULT_SUBDIVIDE ? "on" : "off");
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_chop);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_CHOP);
-    Log("chop value           [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("chop value                  [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_texchop);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_TEXCHOP);
-    Log("texchop value        [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("texchop value               [ %17s ] [ %17s ]\n", buf1, buf2);
     Log("\n");
 
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_fade);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_FADE);
-    Log("global fade          [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global fade                 [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_texlightgap);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_TEXLIGHTGAP);
-    Log("global texlight gap  [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global texlight gap         [ %17s ] [ %17s ]\n", buf1, buf2);
     
     // ------------------------------------------------------------------------
     // Changes by Adam Foster - afoster@compsoc.man.ac.uk
     // replaces the old stuff for displaying current values for gamma and lightscale
     safe_snprintf(buf1, sizeof(buf1), "%1.3f %1.3f %1.3f", g_colour_lightscale[0], g_colour_lightscale[1], g_colour_lightscale[2]);
     safe_snprintf(buf2, sizeof(buf2), "%1.3f %1.3f %1.3f", DEFAULT_COLOUR_LIGHTSCALE_RED, DEFAULT_COLOUR_LIGHTSCALE_GREEN, DEFAULT_COLOUR_LIGHTSCALE_BLUE);
-    Log("global light scale   [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global light scale          [ %17s ] [ %17s ]\n", buf1, buf2);
 
     safe_snprintf(buf1, sizeof(buf1), "%1.3f %1.3f %1.3f", g_colour_qgamma[0], g_colour_qgamma[1], g_colour_qgamma[2]);
     safe_snprintf(buf2, sizeof(buf2), "%1.3f %1.3f %1.3f", DEFAULT_COLOUR_GAMMA_RED, DEFAULT_COLOUR_GAMMA_GREEN, DEFAULT_COLOUR_GAMMA_BLUE);
-    Log("global gamma         [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global gamma                [ %17s ] [ %17s ]\n", buf1, buf2);
     // ------------------------------------------------------------------------
 
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_lightscale);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_LIGHTSCALE);
-    Log("global light scale   [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global light scale          [ %17s ] [ %17s ]\n", buf1, buf2);
 
 
     safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_indirect_sun);
     safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_INDIRECT_SUN);
-    Log("global sky diffusion [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("global sky diffusion        [ %17s ] [ %17s ]\n", buf1, buf2);
 
     Log("\n");
-	Log("spread angles        [ %17s ] [ %17s ]\n", g_allow_spread ? "on" : "off", DEFAULT_ALLOW_SPREAD ? "on" : "off");
-    Log("opaque entities      [ %17s ] [ %17s ]\n", g_allow_opaques ? "on" : "off", DEFAULT_ALLOW_OPAQUES ? "on" : "off");
-    Log("sky lighting fix     [ %17s ] [ %17s ]\n", g_sky_lighting_fix ? "on" : "off", DEFAULT_SKY_LIGHTING_FIX ? "on" : "off");
-    Log("incremental          [ %17s ] [ %17s ]\n", g_incremental ? "on" : "off", DEFAULT_INCREMENTAL ? "on" : "off");
-    Log("dump                 [ %17s ] [ %17s ]\n", g_dumppatches ? "on" : "off", DEFAULT_DUMPPATCHES ? "on" : "off");
-	Log("bump map info        [ %17s ] [ %17s ]\n", g_bumpmaps ? "on" : "off", DEFAULT_BUMPMAPS ? "on" : "off");
-	Log("night mode           [ %17s ] [ %17s ]\n", g_nightmode ? "on" : "off", DEFAULT_NIGHTMODE ? "on" : "off");
-	Log("daylight return mode [ %17s ] [ %17s ]\n", g_daylightreturnmode ? "on" : "off", DEFAULT_DAYLIGHTRETURN_MODE ? "on" : "off");
+	Log("spread angles               [ %17s ] [ %17s ]\n", g_allow_spread ? "on" : "off", DEFAULT_ALLOW_SPREAD ? "on" : "off");
+    Log("opaque entities             [ %17s ] [ %17s ]\n", g_allow_opaques ? "on" : "off", DEFAULT_ALLOW_OPAQUES ? "on" : "off");
+    Log("sky lighting fix            [ %17s ] [ %17s ]\n", g_sky_lighting_fix ? "on" : "off", DEFAULT_SKY_LIGHTING_FIX ? "on" : "off");
+    Log("incremental                 [ %17s ] [ %17s ]\n", g_incremental ? "on" : "off", DEFAULT_INCREMENTAL ? "on" : "off");
+    Log("dump                        [ %17s ] [ %17s ]\n", g_dumppatches ? "on" : "off", DEFAULT_DUMPPATCHES ? "on" : "off");
+	Log("bump map info               [ %17s ] [ %17s ]\n", g_bumpmaps ? "on" : "off", DEFAULT_BUMPMAPS ? "on" : "off");
+	Log("no lightdata compression    [ %17s ] [ %17s ]\n", g_nocompress ? "on" : "off", DEFAULT_NOCOMPRESS ? "on" : "off");
+	Log("lightdata compression level [ %17s ] [ %17s ]\n", compressionlevel_strings[g_compressionlevel], compressionlevel_strings[COMPRESSION_LEVEL_DEFAULT]);
+	Log("day stage                   [ %17s ] [ %17s ]\n", daystage_strings[g_daystage], daystage_strings[DEFAULT_DAYSTAGE]);
+	Log("Ignore .err file            [ %17s ] [ %17s ]\n", g_ignore_err_file ? "yes" : "no", DEFAULT_IGNORE_ERR_FILE ? "yes" : "no");
 
     // ------------------------------------------------------------------------
     // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -2972,10 +3169,10 @@ static void     Settings()
     Log("\n");
     safe_snprintf(buf1, sizeof(buf1), "%3.1f %3.1f %3.1f", g_colour_jitter_hack[0], g_colour_jitter_hack[1], g_colour_jitter_hack[2]);
     safe_snprintf(buf2, sizeof(buf2), "%3.1f %3.1f %3.1f", DEFAULT_COLOUR_JITTER_HACK_RED, DEFAULT_COLOUR_JITTER_HACK_GREEN, DEFAULT_COLOUR_JITTER_HACK_BLUE);
-    Log("colour jitter        [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("colour jitter               [ %17s ] [ %17s ]\n", buf1, buf2);
     safe_snprintf(buf1, sizeof(buf1), "%3.1f %3.1f %3.1f", g_jitter_hack[0], g_jitter_hack[1], g_jitter_hack[2]);
     safe_snprintf(buf2, sizeof(buf2), "%3.1f %3.1f %3.1f", DEFAULT_JITTER_HACK_RED, DEFAULT_JITTER_HACK_GREEN, DEFAULT_JITTER_HACK_BLUE);
-    Log("monochromatic jitter [ %17s ] [ %17s ]\n", buf1, buf2);
+    Log("monochromatic jitter        [ %17s ] [ %17s ]\n", buf1, buf2);
 
 
 
@@ -2983,33 +3180,33 @@ static void     Settings()
 
     Log("\n");
     Log("custom shadows with bounce light\n"
-        "                     [ %17s ] [ %17s ]\n", g_customshadow_with_bouncelight ? "on" : "off", DEFAULT_CUSTOMSHADOW_WITH_BOUNCELIGHT ? "on" : "off");
-    Log("rgb transfers        [ %17s ] [ %17s ]\n", g_rgb_transfers ? "on" : "off", DEFAULT_RGB_TRANSFERS ? "on" : "off"); 
+        "                            [ %17s ] [ %17s ]\n", g_customshadow_with_bouncelight ? "on" : "off", DEFAULT_CUSTOMSHADOW_WITH_BOUNCELIGHT ? "on" : "off");
+    Log("rgb transfers               [ %17s ] [ %17s ]\n", g_rgb_transfers ? "on" : "off", DEFAULT_RGB_TRANSFERS ? "on" : "off"); 
 
-	Log("minimum final light  [ %17d ] [ %17d ]\n", (int)g_minlight, (int)DEFAULT_MINLIGHT);
+	Log("minimum final light         [ %17d ] [ %17d ]\n", (int)g_minlight, (int)DEFAULT_MINLIGHT);
 	sprintf (buf1, "%d (%s)", g_transfer_compress_type, float_type_string[g_transfer_compress_type]);
 	sprintf (buf2, "%d (%s)", DEFAULT_TRANSFER_COMPRESS_TYPE, float_type_string[DEFAULT_TRANSFER_COMPRESS_TYPE]);
-	Log("size of transfer     [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("size of transfer            [ %17s ] [ %17s ]\n", buf1, buf2);
 	sprintf (buf1, "%d (%s)", g_rgbtransfer_compress_type, vector_type_string[g_rgbtransfer_compress_type]);
 	sprintf (buf2, "%d (%s)", DEFAULT_RGBTRANSFER_COMPRESS_TYPE, vector_type_string[DEFAULT_RGBTRANSFER_COMPRESS_TYPE]);
-	Log("size of rgbtransfer  [ %17s ] [ %17s ]\n", buf1, buf2);
-	Log("soft sky             [ %17s ] [ %17s ]\n", g_softsky ? "on" : "off", DEFAULT_SOFTSKY ? "on" : "off");
+	Log("size of rgbtransfer         [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("soft sky                    [ %17s ] [ %17s ]\n", g_softsky ? "on" : "off", DEFAULT_SOFTSKY ? "on" : "off");
 	safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_translucentdepth);
 	safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_TRANSLUCENTDEPTH);
-	Log("translucent depth    [ %17s ] [ %17s ]\n", buf1, buf2);
-	Log("block opaque         [ %17s ] [ %17s ]\n", g_blockopaque ? "on" : "off", DEFAULT_BLOCKOPAQUE ? "on" : "off");
-	Log("ignore textures      [ %17s ] [ %17s ]\n", g_notextures ? "on" : "off", DEFAULT_NOTEXTURES ? "on" : "off");
+	Log("translucent depth           [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("block opaque                [ %17s ] [ %17s ]\n", g_blockopaque ? "on" : "off", DEFAULT_BLOCKOPAQUE ? "on" : "off");
+	Log("ignore textures             [ %17s ] [ %17s ]\n", g_notextures ? "on" : "off", DEFAULT_NOTEXTURES ? "on" : "off");
 	safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_texreflectgamma);
 	safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_TEXREFLECTGAMMA);
-	Log("reflectivity gamma   [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("reflectivity gamma          [ %17s ] [ %17s ]\n", buf1, buf2);
 	safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_texreflectscale);
 	safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_TEXREFLECTSCALE);
-	Log("reflectivity scale   [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("reflectivity scale          [ %17s ] [ %17s ]\n", buf1, buf2);
 	safe_snprintf(buf1, sizeof(buf1), "%3.3f", g_blur);
 	safe_snprintf(buf2, sizeof(buf2), "%3.3f", DEFAULT_BLUR);
-	Log("blur size            [ %17s ] [ %17s ]\n", buf1, buf2);
-	Log("no emitter range     [ %17s ] [ %17s ]\n", g_noemitterrange ? "on" : "off", DEFAULT_NOEMITTERRANGE ? "on" : "off");
-	Log("wall bleeding fix    [ %17s ] [ %17s ]\n", g_bleedfix ? "on" : "off", DEFAULT_BLEEDFIX ? "on" : "off");
+	Log("blur size                   [ %17s ] [ %17s ]\n", buf1, buf2);
+	Log("no emitter range            [ %17s ] [ %17s ]\n", g_noemitterrange ? "on" : "off", DEFAULT_NOEMITTERRANGE ? "on" : "off");
+	Log("wall bleeding fix           [ %17s ] [ %17s ]\n", g_bleedfix ? "on" : "off", DEFAULT_BLEEDFIX ? "on" : "off");
 
     Log("\n\n");
 }
@@ -3121,12 +3318,19 @@ void            LoadRadFiles(const char* const mapname, const char* const user_r
 	else
 	{
 		safe_strncpy(global_lights, mapdir, _MAX_PATH);
-		if (g_nightmode)
+		switch(g_daystage)
+		{
+		case RAD_DAYSTAGE_NIGHTMODE:
 			safe_strncat(global_lights, lights_rad_night, _MAX_PATH);
-		else if (g_daylightreturnmode)
+			break;
+		case RAD_DAYSTAGE_DAYLIGHTRETURN:
 			safe_strncat(global_lights, lights_rad_daylight_return, _MAX_PATH);
-		else
+			break;
+		default:
+		case RAD_DAYSTAGE_NONE:
 			safe_strncat(global_lights, lights_rad, _MAX_PATH);
+			break;
+		}
 
 		if (q_exists(global_lights))
 		{
@@ -3136,12 +3340,19 @@ void            LoadRadFiles(const char* const mapname, const char* const user_r
 		{
 			// Look for lights.rad in appdir
 			safe_strncpy(global_lights, appdir, _MAX_PATH);
-			if (g_nightmode)
+			switch(g_daystage)
+			{
+			case RAD_DAYSTAGE_NIGHTMODE:
 				safe_strncat(global_lights, lights_rad_night, _MAX_PATH);
-			else if (g_daylightreturnmode)
+				break;
+			case RAD_DAYSTAGE_DAYLIGHTRETURN:
 				safe_strncat(global_lights, lights_rad_daylight_return, _MAX_PATH);
-			else
+				break;
+			default:
+			case RAD_DAYSTAGE_NONE:
 				safe_strncat(global_lights, lights_rad, _MAX_PATH);
+				break;
+			}
 
 			if (q_exists(global_lights))
 			{
@@ -3149,13 +3360,19 @@ void            LoadRadFiles(const char* const mapname, const char* const user_r
 			}
 			else
 			{
-				// Look for lights.rad in current working directory
-				if (g_nightmode)
+				switch(g_daystage)
+				{
+				case RAD_DAYSTAGE_NIGHTMODE:
 					safe_strncat(global_lights, lights_rad_night, _MAX_PATH);
-				else if (g_daylightreturnmode)
+					break;
+				case RAD_DAYSTAGE_DAYLIGHTRETURN:
 					safe_strncat(global_lights, lights_rad_daylight_return, _MAX_PATH);
-				else
+					break;
+				default:
+				case RAD_DAYSTAGE_NONE:
 					safe_strncat(global_lights, lights_rad, _MAX_PATH);
+					break;
+				}
 
 				if (q_exists(global_lights))
 				{
@@ -3921,17 +4138,67 @@ int             main(const int argc, char** argv)
 				Usage();
 			}
 		}
-		else if (!strcasecmp(argv[i], "-nightmode"))
+		else if (!strcasecmp(argv[i], "-daystage"))
 		{
-			g_nightmode = true;
-		}
-		else if (!strcasecmp(argv[i], "-daylightreturnmode"))
-		{
-			g_daylightreturnmode = true;
+			if (i + 1 < argc)
+			{
+				int j = 0;
+				for(; j < RAD_NB_DAYSTAGES; j++)
+				{
+					if(!strcmp(argv[i+1], daystage_strings[j]))
+						break;
+				}
+
+				if(j == RAD_NB_DAYSTAGES)
+				{
+					Log("Unknown option \"%s\" on \"%s\"\n", argv[i+1], argv[i]);
+					Usage();
+				}
+
+				g_daystage = (hlrad_daystage_t)j;
+				i++;
+			}
+			else
+			{
+				Usage();
+			}
 		}
 		else if (!strcasecmp(argv[i], "-bumpmaps"))
 		{
 			g_bumpmaps = true;
+		}
+		else if (!strcasecmp(argv[i], "-nocompress"))
+		{
+			g_nocompress = true;
+		}
+		else if (!strcasecmp(argv[i], "-ignoreerrfile"))
+		{
+			g_ignore_err_file = true;
+		}
+		else if (!strcasecmp(argv[i], "-compressionlevel"))
+		{
+			if (i + 1 < argc)
+			{
+				int j = 0;
+				for(; j < NB_COMPRESSION_LEVELS; j++)
+				{
+					if(!strcmp(argv[i+1], compressionlevel_strings[j]))
+						break;
+				}
+
+				if(j == NB_COMPRESSION_LEVELS)
+				{
+					Log("Unknown option \"%s\" on \"%s\"\n", argv[i+1], argv[i]);
+					Usage();
+				}
+
+				g_compressionlevel = (compressionlevel_t)j;
+				i++;
+			}
+			else
+			{
+				Usage();
+			}
 		}
         else if (argv[i][0] == '-')
         {
@@ -3954,12 +4221,6 @@ int             main(const int argc, char** argv)
         Log("No mapname specified\n");
         Usage();
     }
-
-	if (g_nightmode && g_daylightreturnmode)
-	{
-		Log("Error: -nightstage and -daylightreturn are both set. Exiting compiler.\n");
-		exit(1);
-	}
 
     g_smoothing_threshold = (float)cos(g_smoothing_value * (Q_PI / 180.0));
 
@@ -3988,7 +4249,8 @@ int             main(const int argc, char** argv)
 		Log("\n");
 	}
 
-    CheckForErrorLog();
+	if(!g_ignore_err_file)
+		CheckForErrorLog();
 
 	compress_compatability_test ();
 #ifdef PLATFORM_CAN_CALC_EXTENT
@@ -4067,25 +4329,27 @@ int             main(const int argc, char** argv)
 
 	EmbedLightmapInTextures ();
 
-	if (g_nightmode || g_daylightreturnmode)
+	if (g_daystage != RAD_DAYSTAGE_NONE)
 	{
+		char szstagename[256];
 		ald_datatype_t type;
-		if (g_daylightreturnmode)
+		switch(g_daystage)
+		{
+		case RAD_DAYSTAGE_DAYLIGHTRETURN:
 			type = ALD_DATA_DAYLIGHT_RETURN;
-		else
+			strcpy(szstagename, "daylight return");
+			break;
+		default:
+		case RAD_DAYSTAGE_NIGHTMODE:
 			type = ALD_DATA_NIGHTSTAGE;
+			strcpy(szstagename, "night time");
+			break;
+		}
 
 		if (ExportALDData(type))
-		{
-			if (g_nightmode)
-				Log("Exported nighttime lightdata to ALD file, BSP file will not be modified. Exiting.\n");
-			else
-				Log("Exported daylight return lightdata to ALD file, BSP file will not be modified. Exiting.\n");
-		}
+			Log("Exported %s lightdata to ALD file, BSP file will not be modified. Exiting.\n", szstagename);
 		else
-		{
 			Log("Error when trying to export ALD data.\n");
-		}
 	}
 	else
 	{

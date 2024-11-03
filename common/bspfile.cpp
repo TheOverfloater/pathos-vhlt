@@ -24,18 +24,30 @@ int             g_dvisdata_checksum;
 int             g_lightdatasize;
 byte*           g_dlightdata;
 int             g_dlightdata_checksum;
+int				g_dlightdata_compression;
+int				g_dlightdata_compression_level;
+int				g_lightdatasize_actual;
 
 int             g_lightdatasize_ambient;
 byte*           g_dlightdata_ambient;
 int             g_dlightdata_ambient_checksum;
+int				g_dlightdata_ambient_compression;
+int				g_dlightdata_ambient_compression_level;
+int				g_lightdatasize_ambient_actual;
 
 int             g_lightdatasize_diffuse;
 byte*           g_dlightdata_diffuse;
 int             g_dlightdata_diffuse_checksum;
+int				g_dlightdata_diffuse_compression;
+int				g_dlightdata_diffuse_compression_level;
+int				g_lightdatasize_diffuse_actual;
 
 int             g_lightdatasize_vectors;
 byte*           g_dlightdata_vectors;
 int             g_dlightdata_vectors_checksum;
+int				g_dlightdata_vectors_compression;
+int				g_dlightdata_vectors_compression_level;
+int				g_lightdatasize_vectors_actual;
 
 int             g_texdatasize;
 byte*           g_dtexdata;                                  // (dmiptexlump_t)
@@ -405,19 +417,54 @@ static int      CopyLump(int lump, void* dest, int size, const dheader_t* const 
 	{ 
 		hlassume(g_max_map_miptex > length,assume_MAX_MAP_MIPTEX); 
 	}
-	else if(lump == LUMP_LIGHTING && dest == (void*)g_dlightdata
-		|| lump == LUMP_LIGHTING_AMBIENT && dest == (void*)g_dlightdata_ambient
-		|| lump == LUMP_LIGHTING_DIFFUSE && dest == (void*)g_dlightdata_diffuse
-		|| lump == LUMP_LIGHTING_VECTORS && dest == (void*)g_dlightdata_vectors)
-	{ 
-		hlassume(g_max_map_lightdata > length,assume_MAX_MAP_LIGHTING); 
-	}
 
     memcpy(dest, (byte*) header + ofs, length);
 
     return length / size;
 }
 
+// =====================================================================================
+//  CopyLump
+//      balh
+// =====================================================================================
+static int      CopyLightingLump(int lump, void* dest, int size, const dheader_t* const header, int& compression, int& compression_level, int& actual_size)
+{
+    int length = header->lumps[lump].filelen;
+    int ofs = header->lumps[lump].fileofs;
+
+	if(!length)
+		return 0;
+
+    if (length != sizeof(dlmapdata_t))
+    {
+        Error("LoadBSPFile: odd lump size");
+    }
+
+	const dlmapdata_t* plightmapdata = reinterpret_cast<const dlmapdata_t*>(reinterpret_cast<const byte*>(header) + ofs);
+
+	//special handling for tex and lightdata to keep things from exploding - KGP
+	if(lump == LUMP_LIGHTING && dest == (void*)g_dlightdata
+		|| lump == LUMP_LIGHTING_AMBIENT && dest == (void*)g_dlightdata_ambient
+		|| lump == LUMP_LIGHTING_DIFFUSE && dest == (void*)g_dlightdata_diffuse
+		|| lump == LUMP_LIGHTING_VECTORS && dest == (void*)g_dlightdata_vectors)
+	{ 
+		hlassume(g_max_map_lightdata > plightmapdata->datasize, assume_MAX_MAP_LIGHTING); 
+	}
+
+	const byte* pdatasrc = reinterpret_cast<const byte*>(header) + plightmapdata->dataoffset;
+    memcpy(dest, pdatasrc, plightmapdata->datasize);
+
+	compression = plightmapdata->compression;
+	compression_level = plightmapdata->compressionlevel;
+	actual_size = plightmapdata->datasize;
+
+    if (plightmapdata->noncompressedsize % size)
+    {
+        Error("LoadBSPFile: odd light data size");
+    }
+
+    return plightmapdata->noncompressedsize / size;
+}
 
 // =====================================================================================
 //  LoadBSPFile
@@ -467,17 +514,17 @@ void            LoadBSPImage(dheader_t* const header)
     g_numedges = CopyLump(LUMP_EDGES, g_dedges, sizeof(dedge_t), header);
     g_texdatasize = CopyLump(LUMP_TEXTURES, g_dtexdata, 1, header);
     g_visdatasize = CopyLump(LUMP_VISIBILITY, g_dvisdata, 1, header);
-    g_lightdatasize = CopyLump(LUMP_LIGHTING, g_dlightdata, 1, header);
+    g_lightdatasize = CopyLightingLump(LUMP_LIGHTING, g_dlightdata, 1, header, g_dlightdata_compression, g_dlightdata_compression_level, g_lightdatasize_actual);
     g_entdatasize = CopyLump(LUMP_ENTITIES, g_dentdata, 1, header);
 
 	if(header->lumps[LUMP_LIGHTING_AMBIENT].filelen)
-		CopyLump(LUMP_LIGHTING_AMBIENT, g_dlightdata_ambient, 1, header);
+		CopyLightingLump(LUMP_LIGHTING_AMBIENT, g_dlightdata_ambient, 1, header, g_dlightdata_ambient_compression, g_dlightdata_ambient_compression_level, g_lightdatasize_ambient_actual);
 
 	if(header->lumps[LUMP_LIGHTING_DIFFUSE].filelen)
-		CopyLump(LUMP_LIGHTING_DIFFUSE, g_dlightdata_diffuse, 1, header);
+		CopyLightingLump(LUMP_LIGHTING_DIFFUSE, g_dlightdata_diffuse, 1, header, g_dlightdata_diffuse_compression, g_dlightdata_diffuse_compression_level, g_lightdatasize_diffuse_actual);
 
 	if(header->lumps[LUMP_LIGHTING_VECTORS].filelen)
-		CopyLump(LUMP_LIGHTING_VECTORS, g_dlightdata_vectors, 1, header);
+		CopyLightingLump(LUMP_LIGHTING_VECTORS, g_dlightdata_vectors, 1, header, g_dlightdata_vectors_compression, g_dlightdata_vectors_compression_level, g_lightdatasize_vectors_actual);
 
     Free(header);                                          // everything has been copied out
 
@@ -499,17 +546,17 @@ void            LoadBSPImage(dheader_t* const header)
     g_dedges_checksum = FastChecksum(g_dedges, g_numedges * sizeof(g_dedges[0]));
     g_dtexdata_checksum = FastChecksum(g_dtexdata, g_numedges * sizeof(g_dtexdata[0]));
     g_dvisdata_checksum = FastChecksum(g_dvisdata, g_visdatasize * sizeof(g_dvisdata[0]));
-    g_dlightdata_checksum = FastChecksum(g_dlightdata, g_lightdatasize * sizeof(g_dlightdata[0]));
+    g_dlightdata_checksum = FastChecksum(g_dlightdata, g_lightdatasize_actual);
     g_dentdata_checksum = FastChecksum(g_dentdata, g_entdatasize * sizeof(g_dentdata[0]));
 
 	if(g_dlightdata_ambient)
-		g_dlightdata_ambient_checksum = FastChecksum(g_dlightdata_ambient, g_lightdatasize * sizeof(g_dlightdata_ambient[0]));
+		g_dlightdata_ambient_checksum = FastChecksum(g_dlightdata_ambient, g_lightdatasize_ambient_actual);
 
 	if(g_dlightdata_diffuse)
-		g_dlightdata_diffuse_checksum = FastChecksum(g_dlightdata_diffuse, g_lightdatasize * sizeof(g_dlightdata_diffuse[0]));
+		g_dlightdata_diffuse_checksum = FastChecksum(g_dlightdata_diffuse, g_lightdatasize_diffuse_actual);
 
 	if(g_dlightdata_vectors)
-		g_dlightdata_vectors_checksum = FastChecksum(g_dlightdata_vectors, g_lightdatasize * sizeof(g_dlightdata_vectors[0]));
+		g_dlightdata_vectors_checksum = FastChecksum(g_dlightdata_vectors, g_lightdatasize_vectors_actual);
 }
 
 //
@@ -526,6 +573,44 @@ static void     AddLump(int lumpnum, void* data, int len, dheader_t* header, FIL
     lump->fileofs = LittleLong(ftell(bspfile));
     lump->filelen = LittleLong(len);
     SafeWrite(bspfile, data, (len + 3) & ~3);
+}
+
+// =====================================================================================
+//  AddLump
+//      balh
+// =====================================================================================
+static void     AddLightingLump(int lumpnum, void* data, int len, int actual_size, int compression, int compression_level, dheader_t* header, FILE* bspfile)
+{
+	lump_t* lump =&header->lumps[lumpnum];
+	if(!actual_size)
+	{
+		lump->fileofs = LittleLong(ftell(bspfile));
+		lump->filelen = 0;
+		return;
+	}
+
+	// Determine total size
+	int datasize = sizeof(dlmapdata_t) + sizeof(byte)*actual_size;
+    lump->fileofs = LittleLong(ftell(bspfile));
+    lump->filelen = LittleLong(sizeof(dlmapdata_t));
+
+	// Allocate buffer
+	byte* pbuffer = (byte*)malloc(datasize);
+
+	// Fill lightmap data struct's info
+	dlmapdata_t* pdatastruct = reinterpret_cast<dlmapdata_t*>(pbuffer);
+	pdatastruct->compression = compression;
+	pdatastruct->compressionlevel = compression_level;
+	pdatastruct->noncompressedsize = len;
+	pdatastruct->dataoffset = lump->fileofs + sizeof(dlmapdata_t);
+	pdatastruct->datasize = actual_size;
+
+	byte* pbufferrawdata = pbuffer + sizeof(dlmapdata_t);
+	memcpy(pbufferrawdata, data, sizeof(byte)*actual_size);
+
+	// Write to disk
+    SafeWrite(bspfile, pbuffer, datasize);
+	free(pbuffer);
 }
 
 // =====================================================================================
@@ -563,19 +648,21 @@ void            WriteBSPFile(const char* const filename)
     AddLump(LUMP_EDGES,     g_dedges,       g_numedges * sizeof(dedge_t),       header, bspfile);
     AddLump(LUMP_MODELS,    g_dmodels,      g_nummodels * sizeof(dmodel_t),     header, bspfile);
 
-    AddLump(LUMP_LIGHTING,  g_dlightdata,   g_lightdatasize,                    header, bspfile);
     AddLump(LUMP_VISIBILITY,g_dvisdata,     g_visdatasize,                      header, bspfile);
     AddLump(LUMP_ENTITIES,  g_dentdata,     g_entdatasize,                      header, bspfile);
     AddLump(LUMP_TEXTURES,  g_dtexdata,     g_texdatasize,                      header, bspfile);
 
+	// Handle light data lumps
+    AddLightingLump(LUMP_LIGHTING, g_dlightdata, g_lightdatasize, g_lightdatasize_actual, g_dlightdata_compression, g_dlightdata_compression_level, header, bspfile);
+
 	if(g_dlightdata_ambient)
-		AddLump(LUMP_LIGHTING_AMBIENT,  g_dlightdata_ambient,   g_lightdatasize, header, bspfile);
+		AddLightingLump(LUMP_LIGHTING_AMBIENT, g_dlightdata_ambient, g_lightdatasize, g_lightdatasize_ambient_actual, g_dlightdata_ambient_compression, g_dlightdata_ambient_compression_level, header, bspfile);
 
 	if(g_dlightdata_diffuse)
-		AddLump(LUMP_LIGHTING_DIFFUSE,  g_dlightdata_diffuse,   g_lightdatasize, header, bspfile);
+		AddLightingLump(LUMP_LIGHTING_DIFFUSE, g_dlightdata_diffuse, g_lightdatasize, g_lightdatasize_diffuse_actual, g_dlightdata_diffuse_compression, g_dlightdata_diffuse_compression_level, header, bspfile);
 
 	if(g_dlightdata_vectors)
-		AddLump(LUMP_LIGHTING_VECTORS,  g_dlightdata_vectors,   g_lightdatasize, header, bspfile);
+		AddLightingLump(LUMP_LIGHTING_VECTORS, g_dlightdata_vectors, g_lightdatasize, g_lightdatasize_vectors_actual, g_dlightdata_vectors_compression, g_dlightdata_vectors_compression_level, header, bspfile);
 
     fseek(bspfile, 0, SEEK_SET);
     SafeWrite(bspfile, header, sizeof(dheader_t));
@@ -724,10 +811,11 @@ void GetFaceExtents (int facenum, int mins_out[2], int maxs_out[2])
 		}
 	}
 
+	int lightmapdivider = TEXTURE_STEP / f->samplescale;
 	for (i = 0; i < 2; i++)
 	{
-		bmins[i] = (int)floor (mins[i] / TEXTURE_STEP);
-		bmaxs[i] = (int)ceil (maxs[i] / TEXTURE_STEP);
+		bmins[i] = (int)floor (mins[i] / lightmapdivider);
+		bmaxs[i] = (int)ceil (maxs[i] / lightmapdivider);
 	}
 
 	for (i = 0; i < 2; i++)
@@ -908,6 +996,8 @@ int CountBlocks ()
 	{
 		dface_t *f = &g_dfaces[k];
 		const char *texname =  GetTextureByNumber (ParseTexinfoForFace (f));
+		int lightmapdivider = TEXTURE_STEP / f->samplescale;
+
 		if (!strncmp (texname, "sky", 3) //sky, no lightmap allocation.
 			|| !strncmp (texname, "!", 1) || !strncasecmp (texname, "water", 5) || !strncasecmp (texname, "laser", 5) //water, no lightmap allocation.
 			|| (g_texinfo[ParseTexinfoForFace (f)].flags & TEX_SPECIAL) //aaatrigger, I don't know.
@@ -922,9 +1012,11 @@ int CountBlocks ()
 			int bmaxs[2];
 			int i;
 			GetFaceExtents (k, bmins, bmaxs);
+			
+
 			for (i = 0; i < 2; i++)
 			{
-				extents[i] = (bmaxs[i] - bmins[i]) * TEXTURE_STEP;
+				extents[i] = (bmaxs[i] - bmins[i]) * lightmapdivider;
 			}
 
 			VectorClear (point);
@@ -935,13 +1027,13 @@ int CountBlocks ()
 				VectorCopy (v->point, point);
 			}
 		}
-		if (extents[0] < 0 || extents[1] < 0 || extents[0] > qmax (512, MAX_SURFACE_EXTENT * TEXTURE_STEP) || extents[1] > qmax (512, MAX_SURFACE_EXTENT * TEXTURE_STEP))
+		if (extents[0] < 0 || extents[1] < 0 || extents[0] > qmax (512, MAX_SURFACE_EXTENT * lightmapdivider) || extents[1] > qmax (512, MAX_SURFACE_EXTENT * lightmapdivider))
 			// the default restriction from the engine is 512, but place 'max (512, MAX_SURFACE_EXTENT * TEXTURE_STEP)' here in case someone raise the limit
 		{
 			Warning ("Bad surface extents %d/%d at position (%.0f,%.0f,%.0f)", extents[0], extents[1], point[0], point[1], point[2]);
 			continue;
 		}
-		DoAllocBlock (blocks, (extents[0] / TEXTURE_STEP) + 1, (extents[1] / TEXTURE_STEP) + 1);
+		DoAllocBlock (blocks, (extents[0] / lightmapdivider) + 1, (extents[1] / lightmapdivider) + 1);
 	}
 	int count = 0;
 	lightmapblock_t *next;
@@ -1106,6 +1198,16 @@ void            PrintBSPFileSizes()
     totalmemory += GlobUsage("lightdata", g_lightdatasize, g_max_map_lightdata);
     totalmemory += GlobUsage("visdata", g_visdatasize, sizeof(g_dvisdata));
     totalmemory += GlobUsage("entdata", g_entdatasize, sizeof(g_dentdata));
+
+	if(g_lightdatasize_ambient_actual)
+		totalmemory += GlobUsage("lightdata", g_lightdatasize_ambient_actual, g_max_map_lightdata);
+
+	if(g_lightdatasize_diffuse_actual)
+		totalmemory += GlobUsage("lightdata", g_lightdatasize_diffuse_actual, g_max_map_lightdata);
+
+	if(g_lightdatasize_vectors_actual)
+		totalmemory += GlobUsage("lightdata", g_lightdatasize_vectors_actual, g_max_map_lightdata);
+
 	if (numallocblocks == -1)
 	{
 		Log ("* AllocBlock    [ not available to the " PLATFORM_VERSIONSTRING " version ]\n");

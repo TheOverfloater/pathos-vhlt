@@ -2,10 +2,14 @@
 #include <assert.h>
 #include "datatypes.h"
 #include "aldformat.h"
+#include "miniz.h"
 
 edgeshare_t     g_edgeshare[MAX_MAP_EDGES];
 vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP_FACES]?
 bool            g_sky_lighting_fix = DEFAULT_SKY_LIGHTING_FIX;
+
+extern bool					g_nocompress;
+extern compressionlevel_t	g_compressionlevel;
 
 //#define TEXTURE_STEP   16.0
 
@@ -268,6 +272,8 @@ void            PairEdges()
 
     memset(&g_edgeshare, 0, sizeof(g_edgeshare));
 
+	Log("Pairing edges for smoothing\n");
+
     f = g_dfaces;
     for (i = 0; i < g_numfaces; i++, f++)
     {
@@ -294,7 +300,10 @@ void            PairEdges()
             }
         }
     }
-
+	
+    double start = I_FloatTime();
+	int paircount = 0;
+	Log("Pairing single edges across entities\n");
 	vec3_t e1_vertex1, e1_vertex2;
 	vec3_t e2_vertex1, e2_vertex2;
 	for(i = 0; i < g_numsurfedges; i++)
@@ -330,12 +339,18 @@ void            PairEdges()
 					if(pedgeshare_compare->faces[0])
 					{
 						pedgeshare->faces[0] = pedgeshare_compare->faces[0];
+						pedgeshare->separate[0] = true;
+
 						pedgeshare_compare->faces[1] = pedgeshare->faces[1];
+						pedgeshare_compare->separate[1] = true;
 					}
 					else
 					{
 						pedgeshare->faces[0] = pedgeshare_compare->faces[1];
+						pedgeshare->separate[0] = true;
+
 						pedgeshare_compare->faces[0] = pedgeshare->faces[1];
+						pedgeshare_compare->separate[0] = true;
 					}
 				}
 				else
@@ -343,17 +358,30 @@ void            PairEdges()
 					if(pedgeshare_compare->faces[0])
 					{
 						pedgeshare->faces[1] = pedgeshare_compare->faces[0];
+						pedgeshare->separate[1] = true;
+
 						pedgeshare_compare->faces[1] = pedgeshare->faces[0];
+						pedgeshare_compare->separate[1] = true;
 					}
 					else
 					{
 						pedgeshare->faces[1] = pedgeshare_compare->faces[1];
+						pedgeshare->separate[1] = true;
+
 						pedgeshare_compare->faces[0] = pedgeshare->faces[0];
+						pedgeshare_compare->separate[0] = true;
 					}
 				}
+
+				paircount++;
 			}
 		}
 	}
+
+	Log("Paired %d edges across entities\n", paircount);
+
+    double end = I_FloatTime();
+    LogTimeElapsed(end - start);
 
     for(k = 0; k < g_numedges; k++)
     {
@@ -585,8 +613,6 @@ void            PairEdges()
 	}
 }
 
-#define MAX_SINGLEMAP ((MAX_SURFACE_EXTENT+1)*(MAX_SURFACE_EXTENT+1)) //#define	MAX_SINGLEMAP	(18*18*4) //--vluzacn
-
 typedef enum
 {
 	WALLFLAG_NONE = 0,
@@ -606,10 +632,10 @@ typedef struct
 	int				miptex;
 
     int             numsurfpt;
-    vec3_t          surfpt[MAX_SINGLEMAP];
+    vec3_t*         surfpt;
 	vec3_t*			surfpt_position; //[MAX_SINGLEMAP] // surfpt_position[] are valid positions for light tracing, while surfpt[] are positions for getting phong normal and doing patch interpolation
 	int*			surfpt_surface; //[MAX_SINGLEMAP] // the face that owns this position
-	bool			surfpt_lightoutside[MAX_SINGLEMAP];
+	bool*			surfpt_lightoutside;
 
     vec3_t          texorg;
     vec3_t          worldtotex[2];                         // s = (world - texorg) . worldtotex[0]
@@ -630,6 +656,7 @@ typedef struct
 	int				*lmcache_wallflags; // wallflag_t
 	int				lmcachewidth;
 	int				lmcacheheight;
+	int				lightmapdivider;
 
 	vec3_t			(*lmcache_ambient)[ALLSTYLES];
 	vec3_t			(*lmcache_diffuse)[ALLSTYLES];
@@ -724,7 +751,8 @@ static void     CalcFaceExtents(lightinfo_t* l)
 
 	if (!(tex->flags & TEX_SPECIAL))
 	{
-		if ((l->texsize[0] > MAX_SURFACE_EXTENT) || (l->texsize[1] > MAX_SURFACE_EXTENT)
+		int maxsurfextent = MAX_SURFACE_EXTENT * l->lightmapdivider;
+		if ((l->texsize[0] > maxsurfextent) || (l->texsize[1] > maxsurfextent)
 			|| l->texsize[0] < 0 || l->texsize[1] < 0 //--vluzacn
 			)
 		{
@@ -764,6 +792,10 @@ static void     CalcFaceExtents(lightinfo_t* l)
 		{
 			l->lmcache_density = 1;
 		}
+
+		int maxsurfextent = l->lightmapdivider * MAX_SURFACE_EXTENT;
+		int maxsinglemap = ((maxsurfextent+1)*(maxsurfextent+1));
+
 		l->lmcache_side = (int)ceil ((0.5 * g_blur * l->lmcache_density - 0.5) * (1 - NORMAL_EPSILON));
 		l->lmcache_offset = l->lmcache_side;
 		l->lmcachewidth = l->texsize[0] * l->lmcache_density + 1 + 2 * l->lmcache_side;
@@ -774,9 +806,12 @@ static void     CalcFaceExtents(lightinfo_t* l)
 		hlassume (l->lmcache_normal != NULL, assume_NoMemory);
 		l->lmcache_wallflags = (int *)malloc (l->lmcachewidth * l->lmcacheheight * sizeof (int));
 		hlassume (l->lmcache_wallflags != NULL, assume_NoMemory);
-		l->surfpt_position = (vec3_t *)malloc (MAX_SINGLEMAP * sizeof (vec3_t));
-		l->surfpt_surface = (int *)malloc (MAX_SINGLEMAP * sizeof (int));
+		l->surfpt_position = (vec3_t *)malloc (maxsinglemap * sizeof (vec3_t));
+		l->surfpt_surface = (int *)malloc (maxsinglemap * sizeof (int));
 		hlassume (l->surfpt_position != NULL && l->surfpt_surface != NULL, assume_NoMemory);
+
+  		l->surfpt = (vec3_t*)malloc(sizeof(vec3_t)*maxsinglemap);
+		l->surfpt_lightoutside = (bool*)malloc(sizeof(bool)*maxsinglemap);
 
 		if(g_bumpmaps)
 		{
@@ -1061,10 +1096,16 @@ void ChopFrag (samplefrag_t *frag)
 		{
 			continue;
 		}
+
 		if (es->faces[e->edgeside] - g_dfaces != frag->facenum)
 		{
-			Error ("internal error 1 in GrowSingleSampleFrag");
+			if(!es->separate[e->edgeside])
+			{
+				// Ignore this for faces from separate entities
+				Error ("internal error 1 in GrowSingleSampleFrag");
+			}
 		}
+
 		m = &es->textotex[e->edgeside];
 		m_inverse = &es->textotex[1-e->edgeside];
 		e->nextfacenum = es->faces[1-e->edgeside] - g_dfaces;
@@ -1589,9 +1630,13 @@ static void		CalcPoints(lightinfo_t* l)
 	const eModelLightmodes lightmode = g_face_lightmode[facenum];
 	const int       h = l->texsize[1] + 1;
 	const int       w = l->texsize[0] + 1;
-	const vec_t     starts = l->texmins[0] * TEXTURE_STEP;
-	const vec_t     startt = l->texmins[1] * TEXTURE_STEP;
-	light_flag_t    LuxelFlags[MAX_SINGLEMAP];
+	const vec_t     starts = l->texmins[0] * l->lightmapdivider;
+	const vec_t     startt = l->texmins[1] * l->lightmapdivider;
+
+	int maxsurfextent = l->lightmapdivider * MAX_SURFACE_EXTENT;
+	int maxsinglemap = ((maxsurfextent+1)*(maxsurfextent+1));
+
+	light_flag_t*	_pLuxelFlags = (light_flag_t*)malloc(sizeof(light_flag_t)*maxsinglemap);
 	light_flag_t*   pLuxelFlags;
 	vec_t           us, ut;
 	vec_t*          surf;
@@ -1602,14 +1647,14 @@ static void		CalcPoints(lightinfo_t* l)
 		for (s = 0; s < w; s++)
 		{
 			surf = l->surfpt[s+w*t];
-			pLuxelFlags = &LuxelFlags[s+w*t];
-			us = starts + s * TEXTURE_STEP;
-			ut = startt + t * TEXTURE_STEP;
+			pLuxelFlags = &_pLuxelFlags[s+w*t];
+			us = starts + s * l->lightmapdivider;
+			ut = startt + t * l->lightmapdivider;
 			vec_t square[2][2];
-			square[0][0] = us - TEXTURE_STEP;
-			square[0][1] = ut - TEXTURE_STEP;
-			square[1][0] = us + TEXTURE_STEP;
-			square[1][1] = ut + TEXTURE_STEP;
+			square[0][0] = us - l->lightmapdivider;
+			square[0][1] = ut - l->lightmapdivider;
+			square[1][0] = us + l->lightmapdivider;
+			square[1][1] = ut + l->lightmapdivider;
 			bool nudged;
 			*pLuxelFlags = SetSampleFromST (surf,
 											l->surfpt_position[s+w*t], &l->surfpt_surface[s+w*t],
@@ -1633,7 +1678,7 @@ static void		CalcPoints(lightinfo_t* l)
 				for (s = 0; s < w; s++)
 				{
 					surf = l->surfpt[s+w*t];
-					pLuxelFlags = &LuxelFlags[s+w*t];
+					pLuxelFlags = &_pLuxelFlags[s+w*t];
 					if (*pLuxelFlags != LightOutside)
 						continue;
 					for (n = 0; n < 4; n++)
@@ -1648,7 +1693,7 @@ static void		CalcPoints(lightinfo_t* l)
 						if (t_other < 0 || t_other >= h || s_other < 0 || s_other >= w)
 							continue;
 						surf_other = l->surfpt[s_other+w*t_other];
-						pLuxelFlags_other = &LuxelFlags[s_other+w*t_other];
+						pLuxelFlags_other = &_pLuxelFlags[s_other+w*t_other];
 						if (*pLuxelFlags_other != LightOutside && *pLuxelFlags_other != LightShifted)
 						{
 							*pLuxelFlags = LightShifted;
@@ -1665,7 +1710,7 @@ static void		CalcPoints(lightinfo_t* l)
 			{
 				for (s = 0; s < w; s++)
 				{
-					pLuxelFlags = &LuxelFlags[s+w*t];
+					pLuxelFlags = &_pLuxelFlags[s+w*t];
 					if (*pLuxelFlags == LightShifted)
 					{
 						*pLuxelFlags = LightShiftedInside;
@@ -1676,10 +1721,12 @@ static void		CalcPoints(lightinfo_t* l)
 				break;
 		}
 	}
-	for (int i = 0; i < MAX_SINGLEMAP; i++)
+	for (int i = 0; i < maxsinglemap; i++)
 	{
-		l->surfpt_lightoutside[i] = (LuxelFlags[i] == LightOutside);
+		l->surfpt_lightoutside[i] = (_pLuxelFlags[i] == LightOutside);
 	}
+
+	free(_pLuxelFlags);
 }
 
 //==============================================================
@@ -1706,8 +1753,7 @@ static directlight_t* directlights[MAX_MAP_LEAFS];
 static facelight_t facelight[MAX_MAP_FACES];
 static int      numdlights;
 
-extern bool g_nightmode;
-extern bool g_daylightreturnmode;
+extern hlrad_daystage_t g_daystage;
 
 // =====================================================================================
 //  CreateDirectLights
@@ -1856,73 +1902,80 @@ void            CreateDirectLights()
         e = &g_entities[i];
         name = ValueForKey(e, "classname");
 
-		if (g_nightmode)
+		switch(g_daystage)
 		{
-			if (strncmp(name, "light", 5) 
-				&& strncmp(name, "night_light", 11))
-				continue;
-
-			if (!strcmp(name, "light_environment"))
+		case RAD_DAYSTAGE_NIGHTMODE:
 			{
-				int value = IntForKey(e, "nightmode");
-				if (value != 1)
+				if (strncmp(name, "light", 5) 
+					&& strncmp(name, "night_light", 11))
+					continue;
+
+				if (!strcmp(name, "light_environment"))
+				{
+					int value = IntForKey(e, "nightmode");
+					if (value != 1)
+					{
+						pLight = ValueForKey(e, "_light");
+						if (pLight)
+						{
+							int ir, ig, ib;
+							argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
+							Log("Discarded light_environment with color %d %d %d due to -nightmode.\n", ir, ig, ib);
+						}
+
+						continue;
+					}
+				}
+			}
+			break;
+		case RAD_DAYSTAGE_DAYLIGHTRETURN:
+			{
+				if (strncmp(name, "light", 5))
+					continue;
+
+				if (!strcmp(name, "light_environment"))
+				{
+					int value = IntForKey(e, "daylightreturn");
+					if (value != 1)
+					{
+						pLight = ValueForKey(e, "_light");
+						if (pLight)
+						{
+							int ir, ig, ib;
+							argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
+							Log("Discarded light_environment with color %d %d %d due to -daylightreturnmode.\n", ir, ig, ib);
+						}
+
+						continue;
+					}
+				}
+			}
+			break;
+		default:
+		case RAD_DAYSTAGE_NONE:
+			{
+				if (strncmp(name, "light", 5))
+					continue;
+
+				if (!strcmp(name, "light_environment")
+					&& (IntForKey(e, "daylightreturn") == 1
+						|| IntForKey(e, "nightmode") == 1))
 				{
 					pLight = ValueForKey(e, "_light");
 					if (pLight)
 					{
 						int ir, ig, ib;
 						argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-						Log("Discarded light_environment with color %d %d %d due to -nightmode.\n", ir, ig, ib);
+						if(IntForKey(e, "daylightreturn") == 1)
+							Log("Discarded light_environment with color %d %d %d due to being set to only work in -daylightreturnmode.\n", ir, ig, ib);
+						else
+							Log("Discarded light_environment with color %d %d %d due to being set to only work in -nightmode.\n", ir, ig, ib);
 					}
 
 					continue;
 				}
 			}
-		}
-		else if (g_daylightreturnmode)
-		{
-			if (strncmp(name, "light", 5))
-				continue;
-
-			if (!strcmp(name, "light_environment"))
-			{
-				int value = IntForKey(e, "daylightreturn");
-				if (value != 1)
-				{
-					pLight = ValueForKey(e, "_light");
-					if (pLight)
-					{
-						int ir, ig, ib;
-						argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-						Log("Discarded light_environment with color %d %d %d due to -daylightreturnmode.\n", ir, ig, ib);
-					}
-
-					continue;
-				}
-			}
-		}
-		else
-		{
-			if (strncmp(name, "light", 5))
-				continue;
-
-			if (!strcmp(name, "light_environment")
-				&& (IntForKey(e, "daylightreturn") == 1
-					|| IntForKey(e, "nightmode") == 1))
-			{
-				pLight = ValueForKey(e, "_light");
-				if (pLight)
-				{
-					int ir, ig, ib;
-					argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-					if(IntForKey(e, "daylightreturn") == 1)
-						Log("Discarded light_environment with color %d %d %d due to being set to only work in -daylightreturnmode.\n", ir, ig, ib);
-					else
-						Log("Discarded light_environment with color %d %d %d due to being set to only work in -nightmode.\n", ir, ig, ib);
-				}
-
-				continue;
-			}
+			break;
 		}
 
 		{
@@ -2417,12 +2470,12 @@ void            CreateDirectLights()
 			const char *classname = ValueForKey (e, "classname");
 			if (!strcmp (classname, "light_environment"))
 			{
-				if (g_nightmode)
+				if (g_daystage == RAD_DAYSTAGE_NIGHTMODE)
 				{
 					if (IntForKey(e, "nightmode") == 1)
 						countlightenvironment++;
 				}
-				else if (g_daylightreturnmode)
+				else if (g_daystage == RAD_DAYSTAGE_DAYLIGHTRETURN)
 				{
 					if(IntForKey(e, "daylightreturn") == 1)
 						countlightenvironment++;
@@ -3338,22 +3391,22 @@ static void AddSamplesToPatches (const sample_t **samples, const unsigned char *
 	{
 		// prepare clip planes
 		vec_t s_vec, t_vec;
-		s_vec = l->texmins[0] * TEXTURE_STEP + (i % (l->texsize[0] + 1)) * TEXTURE_STEP;
-		t_vec = l->texmins[1] * TEXTURE_STEP + (i / (l->texsize[0] + 1)) * TEXTURE_STEP;
+		s_vec = l->texmins[0] * l->lightmapdivider + (i % (l->texsize[0] + 1)) * l->lightmapdivider;
+		t_vec = l->texmins[1] * l->lightmapdivider + (i / (l->texsize[0] + 1)) * l->lightmapdivider;
 
 		dplane_t clipplanes[4];
 		VectorClear (clipplanes[0].normal);
 		clipplanes[0].normal[0] = 1;
-		clipplanes[0].dist = s_vec - 0.5 * TEXTURE_STEP;
+		clipplanes[0].dist = s_vec - 0.5 * l->lightmapdivider;
 		VectorClear (clipplanes[1].normal);
 		clipplanes[1].normal[0] = -1;
-		clipplanes[1].dist = -(s_vec + 0.5 * TEXTURE_STEP);
+		clipplanes[1].dist = -(s_vec + 0.5 * l->lightmapdivider);
 		VectorClear (clipplanes[2].normal);
 		clipplanes[2].normal[1] = 1;
-		clipplanes[2].dist = t_vec - 0.5 * TEXTURE_STEP;
+		clipplanes[2].dist = t_vec - 0.5 * l->lightmapdivider;
 		VectorClear (clipplanes[3].normal);
 		clipplanes[3].normal[1] = -1;
-		clipplanes[3].dist = -(t_vec + 0.5 * TEXTURE_STEP);
+		clipplanes[3].dist = -(t_vec + 0.5 * l->lightmapdivider);
 
 		// clip each patch
 		for (j = 0, patch = g_face_patches[facenum]; j < numtexwindings; j++, patch = patch->next)
@@ -3369,7 +3422,7 @@ static void AddSamplesToPatches (const sample_t **samples, const unsigned char *
 			if (w->m_NumPoints)
 			{
 				// add sample to patch
-				vec_t area = w->getArea () / (TEXTURE_STEP * TEXTURE_STEP);
+				vec_t area = w->getArea () / (l->lightmapdivider * l->lightmapdivider);
 				patch->samples += area;
 				for (m = 0; m < ALLSTYLES && styles[m] != 255; m++)
 				{
@@ -3631,8 +3684,8 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 		{
 			s = ((i % l->lmcachewidth) - l->lmcache_offset) / (vec_t)l->lmcache_density;
 			t = ((i / l->lmcachewidth) - l->lmcache_offset) / (vec_t)l->lmcache_density;
-			s_vec = l->texmins[0] * TEXTURE_STEP + s * TEXTURE_STEP;
-			t_vec = l->texmins[1] * TEXTURE_STEP + t * TEXTURE_STEP;
+			s_vec = l->texmins[0] * l->lightmapdivider + s * l->lightmapdivider;
+			t_vec = l->texmins[1] * l->lightmapdivider + t * l->lightmapdivider;
 			nearest_s = qmax (0, qmin ((int)floor (s + 0.5), l->texsize[0]));
 			nearest_t = qmax (0, qmin ((int)floor (t + 0.5), l->texsize[1]));
 			sampled = l->lmcache[i];
@@ -3688,10 +3741,10 @@ void CalcLightmap (lightinfo_t *l, byte *styles)
 //    || +     +-----+-----+     +     + || +     +-----+-----+-----+     + || +     +-----+-----+-----+     + || +     +     +-----+-----+     + ||
 //    ==============================================================================================================================================
 //
-			square[0][0] = l->texmins[0] * TEXTURE_STEP + ceil (s - (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP - TEXTURE_STEP;
-			square[0][1] = l->texmins[1] * TEXTURE_STEP + ceil (t - (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP - TEXTURE_STEP;
-			square[1][0] = l->texmins[0] * TEXTURE_STEP + floor (s + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
-			square[1][1] = l->texmins[1] * TEXTURE_STEP + floor (t + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * TEXTURE_STEP + TEXTURE_STEP;
+			square[0][0] = l->texmins[0] * l->lightmapdivider + ceil (s - (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * l->lightmapdivider - l->lightmapdivider;
+			square[0][1] = l->texmins[1] * l->lightmapdivider + ceil (t - (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * l->lightmapdivider - l->lightmapdivider;
+			square[1][0] = l->texmins[0] * l->lightmapdivider + floor (s + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * l->lightmapdivider + l->lightmapdivider;
+			square[1][1] = l->texmins[1] * l->lightmapdivider + floor (t + (l->lmcache_side + 0.5) / (vec_t)l->lmcache_density) * l->lightmapdivider + l->lightmapdivider;
 		}
 
 		// find world's position for the sample
@@ -3949,6 +4002,7 @@ void            BuildFacelights(const int facenum)
     plane = getPlaneFromFace(f);
     VectorCopy(plane->normal, l.facenormal);
     l.facedist = plane->dist;
+	l.lightmapdivider = TEXTURE_STEP / f->samplescale;
 
     CalcFaceVectors(&l);
     CalcFaceExtents(&l);
@@ -3960,8 +4014,11 @@ void            BuildFacelights(const int facenum)
     lightmapwidth = l.texsize[0] + 1;
     lightmapheight = l.texsize[1] + 1;
 
+	int maxsurfextent = l.lightmapdivider * MAX_SURFACE_EXTENT;
+	int maxsinglemap = ((maxsurfextent+1)*(maxsurfextent+1));
+
     size = lightmapwidth * lightmapheight;
-    hlassume(size <= MAX_SINGLEMAP, assume_MAX_SINGLEMAP);
+    hlassume(size <= maxsinglemap, assume_MAX_SINGLEMAP);
 
     facelight[facenum].numsamples = l.numsurfpt;
 
@@ -4566,6 +4623,8 @@ void            BuildFacelights(const int facenum)
 	free (l.lmcache_wallflags);
 	free (l.surfpt_position);
 	free (l.surfpt_surface);
+	free (l.surfpt);
+	free (l.surfpt_lightoutside);
 
 	if(g_bumpmaps)
 	{
@@ -4588,7 +4647,23 @@ void            PrecompLightmapOffsets()
     int             i; //LRC
 	patch_t*        patch; //LRC
 
+	// Set all these to their base values
     g_lightdatasize = 0;
+	g_dlightdata_compression = 0;
+	g_dlightdata_compression_level = 0;
+	g_lightdatasize_actual = 0;
+	
+	g_dlightdata_ambient_compression = 0;
+	g_dlightdata_ambient_compression_level = 0;
+	g_lightdatasize_ambient_actual = 0;
+	
+	g_dlightdata_diffuse_compression = 0;
+	g_dlightdata_diffuse_compression_level = 0;
+	g_lightdatasize_diffuse_actual = 0;
+	
+	g_dlightdata_vectors_compression = 0;
+	g_dlightdata_vectors_compression_level = 0;
+	g_lightdatasize_vectors_actual = 0;
 
     for (facenum = 0; facenum < g_numfaces; facenum++)
     {
@@ -4992,11 +5067,12 @@ void MLH_CalcExtents (const dface_t *f, int *texturemins, int *extents)
 	int bmaxs[2];
 	int i;
 
+	int lightmapdivider = TEXTURE_STEP / f->samplescale;
 	GetFaceExtents (f - g_dfaces, bmins, bmaxs);
 	for (i = 0; i < 2; i++)
 	{
-		texturemins[i] = bmins[i] * TEXTURE_STEP;
-		extents[i] = (bmaxs[i] - bmins[i]) * TEXTURE_STEP;
+		texturemins[i] = bmins[i] * lightmapdivider;
+		extents[i] = (bmaxs[i] - bmins[i]) * lightmapdivider;
 	}
 }
 void MLH_GetSamples_r (mdllight_t *ml, int nodenum, const float *start, const float *end)
@@ -5057,7 +5133,8 @@ void MLH_GetSamples_r (mdllight_t *ml, int nodenum, const float *start, const fl
 			}
 			ds >>= 4;
 			dt >>= 4;
-			MLH_AddSample (ml, node->firstface + i, extents[0] / TEXTURE_STEP + 1, extents[1] / TEXTURE_STEP + 1, ds, dt, mid);
+			int lightmapdivider = TEXTURE_STEP / f->samplescale;
+			MLH_AddSample (ml, node->firstface + i, extents[0] / lightmapdivider + 1, extents[1] / lightmapdivider + 1, ds, dt, mid);
 			break;
 		}
 	}
@@ -5445,7 +5522,7 @@ void            FinalLightFace(const int facenum)
     // sample the triangulation
     //
 
-	if (!g_nightmode || IntForKey(g_face_entity[facenum], "_ignorenight") != 0)
+	if (!g_daystage == RAD_DAYSTAGE_NIGHTMODE || IntForKey(g_face_entity[facenum], "_ignorenight") != 0)
 		minlight = FloatForKey(g_face_entity[facenum], "_minlight") * 128;
 	else
 		minlight = 0;
@@ -5698,6 +5775,24 @@ bool ExportALDData(ald_datatype_t type)
 		poriginal = nullptr;
 	}
 
+	int compressionlevel;
+	switch(g_compressionlevel)
+	{
+	case COMPRESSION_LEVEL_BEST_SPEED:
+		compressionlevel = MZ_BEST_SPEED;
+		break;
+	case COMPRESSION_LEVEL_BEST_COMPRESSION:
+		compressionlevel = MZ_BEST_COMPRESSION;
+		break;
+	case COMPRESSION_LEVEL_UBER_COMPRESSION:
+		compressionlevel = MZ_UBER_COMPRESSION;
+		break;
+	default:
+	case COMPRESSION_LEVEL_DEFAULT:
+		compressionlevel = MZ_DEFAULT_LEVEL;
+		break;
+	}
+
 	// Create new lump
 	aldlumptype_t lumptype;
 	switch (type)
@@ -5717,45 +5812,75 @@ bool ExportALDData(ald_datatype_t type)
 
 	// Create file based on original if present
 	int newnumlumps = 0;
-	int totalsize = 0;
+	int totalsize = sizeof(aldheader_t);
 
 	if (poriginal)
 	{
-		totalsize = sizeof(aldheader_t);
-
 		for (int i = 0; i < poriginal->numlumps; i++)
 		{
 			aldlump_t* plump = (aldlump_t*)((byte*)poriginal + poriginal->lumpoffset) + i;
 			if (plump->type != lumptype)
 			{
+				// Add the lump to the size
 				totalsize += sizeof(aldlump_t);
 
-				int j = 0;
-				for(; j < NB_LIGHTMAP_LAYERS; j++)
+				for(int j = 0; j < NB_LIGHTMAP_LAYERS; j++)
 				{
 					if(plump->layeroffsets[j] != 0)
-						totalsize += poriginal->lightdatasize;
+					{
+						// Add layer and it's data to the total size
+						aldlayer_t* player = (aldlayer_t*)((byte*)poriginal + plump->layeroffsets[j]);
+						totalsize += sizeof(aldlayer_t) + player->datasize;
+					}
 				}
 
 				newnumlumps++;
 			}
 		}
+	}
 
-		totalsize += sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
-		if(g_bumpmaps)
-			totalsize += (sizeof(byte) * g_lightdatasize)*3;
+	// These hold the compressed data
+	byte *pdatasources[NB_SURF_LIGHTMAP_LAYERS];
+	int datasizes_noncompressed[NB_SURF_LIGHTMAP_LAYERS];
+	int datasizes_compressed[NB_SURF_LIGHTMAP_LAYERS];
 
-		newnumlumps++;
+	// Add our current one
+	pdatasources[SURF_LIGHTMAP_DEFAULT] = g_dlightdata;
+	datasizes_noncompressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize;
+	datasizes_compressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize_actual;
+	totalsize += sizeof(aldlump_t) + sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_actual;
+
+	int layernumber;
+	if(g_bumpmaps)
+	{
+		// Add ambient
+		pdatasources[SURF_LIGHTMAP_AMBIENT] = g_dlightdata_ambient;
+		datasizes_noncompressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize;
+		datasizes_compressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize_ambient_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_ambient_actual);
+
+		// Add diffuse
+		pdatasources[SURF_LIGHTMAP_DIFFUSE] = g_dlightdata_diffuse;
+		datasizes_noncompressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize;
+		datasizes_compressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize_diffuse_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_diffuse_actual);
+
+		// Add vectors
+		pdatasources[SURF_LIGHTMAP_VECTORS] = g_dlightdata_vectors;
+		datasizes_noncompressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize;
+		datasizes_compressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize_vectors_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_vectors_actual);
+
+		// Set layer nb
+		layernumber = NB_SURF_LIGHTMAP_LAYERS;
 	}
 	else
 	{
-		// No original file
-		totalsize = sizeof(aldheader_t) + sizeof(aldlump_t) + sizeof(byte) * g_lightdatasize;
-		if(g_bumpmaps)
-			totalsize += (sizeof(byte) * g_lightdatasize)*3;
-
-		newnumlumps = 1;
+		// No additional layers
+		layernumber = 1;
 	}
+
+	newnumlumps++;
 
 	// Create buffer
 	int fileoffset = 0;
@@ -5765,7 +5890,7 @@ bool ExportALDData(ald_datatype_t type)
 	fileoffset += sizeof(aldheader_t);
 
 	pnewhdr->header = ALD_HEADER_ENCODED;
-	pnewhdr->version = ALD_VERSION;
+	pnewhdr->version = ALD_HEADER_VERSION;
 	pnewhdr->numlumps = newnumlumps;
 	pnewhdr->lumpoffset = fileoffset;
 	pnewhdr->lightdatasize = g_lightdatasize;
@@ -5787,17 +5912,27 @@ bool ExportALDData(ald_datatype_t type)
 
 			for(int k = 0; k < NB_LIGHTMAP_LAYERS; k++)
 			{
-				if(k > 0 && !g_bumpmaps)
+				if(!psrclump->layeroffsets[k])
 					break;
 
+				// Get original layer
+				const aldlayer_t* psrclayer = (const aldlayer_t*)((const byte*)poriginal + psrclump->layeroffsets[k]);
+
+				// Get layer to write to
 				pnewlumps[j].layeroffsets[k] = fileoffset;
-				fileoffset += poriginal->lightdatasize;
+				aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlumps[j].layeroffsets[k]);
+				fileoffset += sizeof(aldlayer_t);
+
+				poutlayer->compression = psrclayer->compression;
+				poutlayer->compressionlevel = psrclayer->compressionlevel;
+				poutlayer->datasize = psrclayer->datasize;
+				poutlayer->dataoffset = fileoffset;
+				fileoffset += psrclayer->datasize;
 
 				// copy data
-				byte* psrclumpdata = ((byte*)poriginal + psrclump->layeroffsets[k]);
-				byte* pdestlumpdata = pfilebuffer + pnewlumps[j].layeroffsets[k];
-
-				memcpy(pdestlumpdata, psrclumpdata, poriginal->lightdatasize);
+				byte* psrclumpdata = ((byte*)poriginal + psrclayer->dataoffset);
+				byte* pdestlumpdata = pfilebuffer + poutlayer->dataoffset;
+				memcpy(pdestlumpdata, psrclumpdata, psrclayer->datasize);
 			}
 
 			j++;
@@ -5814,33 +5949,27 @@ bool ExportALDData(ald_datatype_t type)
 
 	for(int i = 0; i < NB_LIGHTMAP_LAYERS; i++)
 	{
-		if(i > 0 && !g_bumpmaps)
+		if(i == layernumber)
 			break;
 
 		pnewlump->type = lumptype;
 		pnewlump->layeroffsets[i] = fileoffset;
 
 		// Copy data to destination
-		byte* psrc;
-		switch(i)
-		{
-		case LIGHTMAP_LAYER_DEFAULT:
-			psrc = g_dlightdata;
-			break;
-		case LIGHTMAP_LAYER_VECTORS:
-			psrc = g_dlightdata_vectors;
-			break;
-		case LIGHTMAP_LAYER_AMBIENT:
-			psrc = g_dlightdata_ambient;
-			break;
-		case LIGHTMAP_LAYER_DIFFUSE:
-			psrc = g_dlightdata_diffuse;
-			break;
-		}
+		byte* psrc = pdatasources[i];
 
-		byte* pdestdata = pfilebuffer + pnewlump->layeroffsets[i];
-		memcpy(pdestdata, psrc, g_lightdatasize);
-		fileoffset += g_lightdatasize;
+		// Get layer
+		aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlump->layeroffsets[i]);
+		fileoffset += sizeof(aldlayer_t);
+
+		poutlayer->compression = g_nocompress ? PBSPV2_LMAP_COMPRESSION_NONE : PBSPV2_LMAP_COMPRESSION_MINIZ;
+		poutlayer->compressionlevel = compressionlevel;
+		poutlayer->dataoffset = fileoffset;
+		poutlayer->datasize = datasizes_compressed[i];
+		fileoffset += poutlayer->datasize;
+
+		byte* pdestdata = pfilebuffer + poutlayer->dataoffset;
+		memcpy(pdestdata, psrc, poutlayer->datasize);
 	}
 
 	if (fileoffset != totalsize)

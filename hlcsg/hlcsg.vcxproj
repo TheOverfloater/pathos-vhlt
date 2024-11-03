@@ -263,6 +263,7 @@
     <ClCompile Include="..\common\log.cpp" />
     <ClCompile Include="..\common\mathlib.cpp" />
     <ClCompile Include="..\common\messages.cpp" />
+    <ClCompile Include="..\common\miniz.c" />
     <ClCompile Include="..\common\scriplib.cpp" />
     <ClCompile Include="..\common\threads.cpp" />
     <ClCompile Include="..\common\winding.cpp" />
@@ -280,6 +281,8 @@
     <ClCompile Include="wadpath.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\aldformat.h" />
+    <ClInclude Include="..\common\miniz.h" />
     <ClInclude Include="..\template\basictypes.h" />
     <ClInclude Include="..\common\blockmem.h" />
     <ClInclude Include="..\common\boundingbox.h" />

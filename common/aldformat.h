@@ -11,7 +11,19 @@ All Rights Reserved.
 #define ALDHEADER_H
 
 #define ALD_HEADER_ENCODED		(('D'<<24)+('L'<<16)+('A'<<8)+'P')
-#define ALD_VERSION				1
+#define ALD_HEADER_VERSION		1
+
+// Lightmap layers
+enum surf_lmap_layers_t
+{
+	SURF_LIGHTMAP_DEFAULT = 0,
+	SURF_LIGHTMAP_VECTORS,
+	SURF_LIGHTMAP_AMBIENT,
+	SURF_LIGHTMAP_DIFFUSE,
+
+	// Must be last
+	NB_SURF_LIGHTMAP_LAYERS
+};
 
 enum aldlumptype_t 
 {
@@ -25,13 +37,21 @@ enum aldlumptype_t
 	ALD_LUMP_DAYLIGHT_RETURN_DATA_BUMP
 };
 
+enum aldcompression_t
+{
+	ALD_COMPRESSION_NONE = 0,
+	ALD_COMPRESSION_MINIZ
+};
+
 struct aldheader_t
 {
 	aldheader_t():
 		header(0),
+		version(0),
 		flags(0),
 		lumpoffset(0),
-		numlumps(0)
+		numlumps(0),
+		lightdatasize(0)
 		{}
 
 	Int32 header;
@@ -48,11 +68,28 @@ struct aldlump_t
 	aldlump_t():
 		type(0)
 	{
-		for(Uint32 i = 0; i < NB_LIGHTMAP_LAYERS; i++)
+		for(Uint32 i = 0; i < NB_SURF_LIGHTMAP_LAYERS; i++)
 			layeroffsets[i] = 0;
 	}
 
+	// Type of ALD lump
 	Int32 type;
-	Int32 layeroffsets[NB_LIGHTMAP_LAYERS];
+	// The offsets to each layer
+	Int32 layeroffsets[NB_SURF_LIGHTMAP_LAYERS];
+};
+
+struct aldlayer_t
+{
+	aldlayer_t():
+		compression(0),
+		compressionlevel(0),
+		dataoffset(0),
+		datasize(0)
+	{}
+
+	Int32 compression;
+	Int32 compressionlevel;
+	Int32 dataoffset;
+	Int32 datasize;
 };
 #endif

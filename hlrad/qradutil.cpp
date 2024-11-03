@@ -702,8 +702,9 @@ void FindFacePositions (int facenum)
 	{
 		density = 1.0;
 	}
-	map->step[0] = (vec_t)TEXTURE_STEP / density;
-	map->step[1] = (vec_t)TEXTURE_STEP / density;
+	int lightmapdivider = TEXTURE_STEP / f->samplescale;
+	map->step[0] = (vec_t)lightmapdivider / density;
+	map->step[1] = (vec_t)lightmapdivider / density;
 	map->step[2] = 1.0;
 	for (k = 0; k < 2; k++)
 	{

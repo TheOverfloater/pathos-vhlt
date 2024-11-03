@@ -10,6 +10,7 @@
 //  MakeFaceEdges
 
 static int      subdivides;
+extern float    g_lightmapscale;
 
 /* a surface has all of the faces that could be drawn on a given plane
    the outside filling stage can remove some of them so a better bsp can be generated */
@@ -59,6 +60,8 @@ void            SubdivideFace(face_t* f, face_t** prevptr)
 	if (f->facestyle == face_discardable)
 		return;
 	
+    float texturestep = TEXTURE_STEP / g_lightmapscale;
+
     for (axis = 0; axis < 2; axis++)
     {
         while (1)
@@ -91,7 +94,7 @@ void            SubdivideFace(face_t* f, face_t** prevptr)
             v = VectorNormalize(temp);
 
             VectorCopy(temp, plane.normal);
-            plane.dist = (mins + g_subdivide_size - TEXTURE_STEP) / v; //plane.dist = (mins + g_subdivide_size - 16) / v; //--vluzacn
+            plane.dist = (mins + g_subdivide_size - texturestep) / v; //plane.dist = (mins + g_subdivide_size - 16) / v; //--vluzacn
             next = f->next;
             SplitFace(f, &plane, &front, &back);
             if (!front || !back)

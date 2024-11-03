@@ -66,7 +66,7 @@ bool            g_info = DEFAULT_INFO;
 bool            g_bLeakOnly = DEFAULT_LEAKONLY; // leakonly mode "-leakonly"
 bool            g_bLeaked = false;
 int             g_subdivide_size = DEFAULT_SUBDIVIDE_SIZE;
-
+float           g_lightmapscale = DEFAULT_LIGHTMAPSCALE;
 bool            g_bUseNullTex = DEFAULT_NULLTEX; // "-nonulltex"
 
 
@@ -1376,42 +1376,43 @@ static void     Usage()
     Banner();
 
     Log("\n-= %s Options =-\n\n", g_Program);
-	Log("    -console #     : Set to 0 to turn off the pop-up console (default is 1)\n");
-	Log("    -lang file     : localization file\n");
-    Log("    -leakonly      : Run BSP only enough to check for LEAKs\n");
-    Log("    -subdivide #   : Sets the face subdivide size\n");
-    Log("    -maxnodesize # : Sets the maximum portal node size\n\n");
-    Log("    -notjunc       : Don't break edges on t-junctions     (not for final runs)\n");
-	Log("    -nobrink       : Don't smooth brinks                  (not for final runs)\n");
-    Log("    -noclip        : Don't process the clipping hull      (not for final runs)\n");
-    Log("    -nofill        : Don't fill outside (will mask LEAKs) (not for final runs)\n");
-	Log("    -noinsidefill  : Don't fill empty spaces\n");
-	Log("    -noopt         : Don't optimize planes on BSP write   (not for final runs)\n");
-	Log("    -noclipnodemerge: Don't optimize clipnodes\n");
-    Log("    -texdata #     : Alter maximum texture memory limit (in kb)\n");
-    Log("    -lightdata #   : Alter maximum lighting memory limit (in kb)\n");
-    Log("    -chart         : display bsp statitics\n");
-    Log("    -low | -high   : run program an altered priority level\n");
-    Log("    -nolog         : don't generate the compile logfiles\n");
-    Log("    -threads #     : manually specify the number of threads to run\n");
+	Log("    -console #         : Set to 0 to turn off the pop-up console (default is 1)\n");
+	Log("    -lang file         : Localization file\n");
+    Log("    -leakonly          : Run BSP only enough to check for LEAKs\n");
+    Log("    -subdivide #       : Sets the face subdivide size\n");
+    Log("    -maxnodesize #     : Sets the maximum portal node size\n\n");
+    Log("    -notjunc           : Don't break edges on t-junctions     (not for final runs)\n");
+	Log("    -nobrink           : Don't smooth brinks                  (not for final runs)\n");
+    Log("    -noclip            : Don't process the clipping hull      (not for final runs)\n");
+    Log("    -nofill            : Don't fill outside (will mask LEAKs) (not for final runs)\n");
+	Log("    -noinsidefill      : Don't fill empty spaces\n");
+	Log("    -noopt             : Don't optimize planes on BSP write   (not for final runs)\n");
+	Log("    -noclipnodemerge   : Don't optimize clipnodes\n");
+    Log("    -texdata #         : Alter maximum texture memory limit (in kb)\n");
+    Log("    -lightdata #       : Alter maximum lighting memory limit (in kb)\n");
+    Log("    -chart             : display bsp statitics\n");
+    Log("    -low | -high       : Run program an altered priority level\n");
+    Log("    -nolog             : Don't generate the compile logfiles\n");
+    Log("    -threads #         : Manually specify the number of threads to run\n");
 #ifdef SYSTEM_WIN32
-    Log("    -estimate      : display estimated time during compile\n");
+    Log("    -estimate          : Display estimated time during compile\n");
 #endif
 #ifdef SYSTEM_POSIX
-    Log("    -noestimate    : do not display continuous compile time estimates\n");
+    Log("    -noestimate        : do not display continuous compile time estimates\n");
 #endif
 
-    Log("    -nonulltex     : Don't strip NULL faces\n");
+    Log("    -nonulltex         : Don't strip NULL faces\n");
 
 
-	Log("    -nohull2       : Don't generate hull 2 (the clipping hull for large monsters and pushables)\n");
+	Log("    -nohull2           : Don't generate hull 2 (the clipping hull for large monsters and pushables)\n");
 
-	Log("    -viewportal    : Show portal boundaries in 'mapname_portal.pts' file\n");
+	Log("    -viewportal        : Show portal boundaries in 'mapname_portal.pts' file\n");
 
-    Log("    -verbose       : compile with verbose messages\n");
-    Log("    -noinfo        : Do not show tool configuration information\n");
-    Log("    -dev #         : compile with developer message\n\n");
-    Log("    mapfile        : The mapfile to compile\n\n");
+    Log("    -verbose           : Compile with verbose messages\n");
+    Log("    -noinfo            : Do not show tool configuration information\n");
+    Log("    -dev #             : Compile with developer message\n\n");
+    Log("    -lightmapscale #   : Lightmap scaler value\n\n");
+    Log("    mapfile            : The mapfile to compile\n\n");
 
     exit(1);
 }
@@ -1476,6 +1477,7 @@ static void     Settings()
     Log("max node size       [ %7d ] [ %7d ] (Min %d) (Max %d)\n",
         g_maxnode_size, DEFAULT_MAXNODE_SIZE, MIN_MAXNODE_SIZE, MAX_MAXNODE_SIZE);
 	Log("remove hull 2       [ %7s ] [ %7s ]\n", g_nohull2? "on": "off", "off");
+	Log("lightmap scale      [ %7f ] [ %7f ]\n", g_lightmapscale, DEFAULT_LIGHTMAPSCALE);
     Log("\n\n");
 }
 
@@ -1792,6 +1794,24 @@ int             main(const int argc, char** argv)
                          MIN_SUBDIVIDE_SIZE, g_subdivide_size);
                     g_subdivide_size = MIN_SUBDIVIDE_SIZE; //MAX_SUBDIVIDE_SIZE; //--vluzacn
                 }
+            }
+            else
+            {
+                Usage();
+            }
+        }
+        else if (!strcasecmp(argv[i], "-lightmapscale"))
+        {
+            if (i + 1 < argc)	//added "1" .--vluzacn
+            {
+                g_lightmapscale = atof(argv[i+1]);
+                float texturestep = TEXTURE_STEP / g_lightmapscale;
+                if(texturestep < 1.0)
+                {
+                    Log("Scale value %.2f for '%s' is too big, max is %.2f.\n", g_lightmapscale, argv[i], TEXTURE_STEP);
+                    Usage();
+                }
+                i++;
             }
             else
             {

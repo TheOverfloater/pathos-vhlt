@@ -193,6 +193,12 @@ typedef enum
 }
 contents_t;
 
+enum pbspv2_compressiontypes_t
+{
+	PBSPV2_LMAP_COMPRESSION_NONE = 0,
+	PBSPV2_LMAP_COMPRESSION_MINIZ
+};
+
 typedef struct
 {
     int             planenum;
@@ -271,6 +277,23 @@ typedef struct
 }
 dleaf_t;
 
+struct dlmapdata_t
+{
+	dlmapdata_t():
+		compression(0),
+		compressionlevel(0),
+		dataoffset(0),
+		datasize(0),
+		noncompressedsize(0)
+	{}
+
+	int compression;
+	int compressionlevel;
+	int dataoffset;
+	int datasize;
+	int noncompressedsize;
+};
+
 //============================================================================
 
 #define ANGLE_UP    -1.0 //#define ANGLE_UP    -1 //--vluzacn
@@ -291,15 +314,27 @@ extern int      g_dvisdata_checksum;
 extern int      g_lightdatasize;
 extern byte*    g_dlightdata;
 extern int      g_dlightdata_checksum;
+extern int      g_dlightdata_compression;
+extern int      g_dlightdata_compression_level;
+extern int      g_lightdatasize_actual;
 
 extern byte*    g_dlightdata_ambient;
 extern int      g_dlightdata_ambient_checksum;
+extern int      g_dlightdata_ambient_compression;
+extern int      g_dlightdata_ambient_compression_level;
+extern int      g_lightdatasize_ambient_actual;
 
 extern byte*    g_dlightdata_diffuse;
 extern int      g_dlightdata_diffuse_checksum;
+extern int      g_dlightdata_diffuse_compression;
+extern int      g_dlightdata_diffuse_compression_level;
+extern int      g_lightdatasize_diffuse_actual;
 
 extern byte*    g_dlightdata_vectors;
 extern int      g_dlightdata_vectors_checksum;
+extern int      g_dlightdata_vectors_compression;
+extern int      g_dlightdata_vectors_compression_level;
+extern int      g_lightdatasize_vectors_actual;
 
 extern int      g_texdatasize;
 extern byte*    g_dtexdata;                                  // (dmiptexlump_t)

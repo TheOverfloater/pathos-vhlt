@@ -43,6 +43,27 @@
 #include <direct.h>
 #endif
 
+enum compressionlevel_t
+{
+	COMPRESSION_LEVEL_DEFAULT = 0,
+	COMPRESSION_LEVEL_BEST_SPEED,
+	COMPRESSION_LEVEL_BEST_COMPRESSION,
+	COMPRESSION_LEVEL_UBER_COMPRESSION,
+
+	NB_COMPRESSION_LEVELS
+};
+extern char* compressionlevel_strings[NB_COMPRESSION_LEVELS];
+
+enum hlrad_daystage_t
+{
+	RAD_DAYSTAGE_NONE = 0,
+	RAD_DAYSTAGE_NIGHTMODE,
+	RAD_DAYSTAGE_DAYLIGHTRETURN,
+
+	RAD_NB_DAYSTAGES
+};
+extern char* daystage_strings[RAD_NB_DAYSTAGES];
+
 #define DEFAULT_FASTMODE			false
 #define DEFAULT_METHOD eMethodSparseVismatrix
 #define DEFAULT_LERP_ENABLED        true
@@ -50,11 +71,13 @@
 #define DEFAULT_BOUNCE              8
 #define DEFAULT_DUMPPATCHES         false
 #define DEFAULT_BUMPMAPS            false
-#define DEFAULT_NIGHTMODE           false
-#define DEFAULT_DAYLIGHTRETURN_MODE false
+#define DEFAULT_NOCOMPRESS			false
+#define DEFAULT_COMPRESSION_LEVEL	COMPRESSION_LEVEL_DEFAULT
 #define DEFAULT_AMBIENT_RED         0.0
 #define DEFAULT_AMBIENT_GREEN       0.0
 #define DEFAULT_AMBIENT_BLUE        0.0
+#define DEFAULT_DAYSTAGE			RAD_DAYSTAGE_NONE
+
 // 188 is the fullbright threshold for Goldsrc, regardless of the brightness and gamma settings in the graphic options.
 // However, hlrad can only control the light values of each single light style. So the final in-game brightness may exceed 188 if you have set a high value in the "custom appearance" of the light, or if the face receives light from different styles.
 #define DEFAULT_TEXSCALE            true
@@ -95,6 +118,7 @@ enum lightmap_layers_t
 #define DEFAULT_INFO                true
 #define DEFAULT_ALLOW_OPAQUES       true
 #define DEFAULT_ALLOW_SPREAD		true
+#define DEFAULT_IGNORE_ERR_FILE		false
 
 // ------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -336,6 +360,7 @@ typedef struct
 	bool			smooth;
 	facelist_t*		vertex_facelist[2]; //possible smooth faces, not include faces[0] and faces[1]
 	matrix_t		textotex[2]; // how we translate texture coordinates from one face to the other face
+	bool			separate[2];
 } edgeshare_t;
 
 extern edgeshare_t g_edgeshare[MAX_MAP_EDGES];

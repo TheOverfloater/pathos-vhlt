@@ -17,6 +17,7 @@ static PlaneMap gPlaneMap;
 static int gNumMappedPlanes;
 static dplane_t gMappedPlanes[MAX_MAP_PLANES];
 extern bool g_noopt;
+extern float g_lightmapscale;
 
 typedef std::map< int, int > texinfomap_t;
 static int g_nummappedtexinfo;
@@ -310,7 +311,7 @@ static void     WriteFace(face_t* f)
     df->firstedge = g_numsurfedges;
     df->numedges = f->numpoints;
 	df->smoothgroupbits = 0; // Nothing for now
-	df->samplescale = 1.0;
+	df->samplescale = g_lightmapscale;
 
 	df->texinfo = WriteTexinfo (f->texturenum);
 

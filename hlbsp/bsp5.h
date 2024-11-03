@@ -50,7 +50,7 @@
 #define DEFAULT_WATERVIS        false
 #define DEFAULT_CHART           false
 #define DEFAULT_INFO            true
-
+#define DEFAULT_LIGHTMAPSCALE   1.0
 #define DEFAULT_NULLTEX             true
 
 
