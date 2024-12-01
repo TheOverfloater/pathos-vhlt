@@ -3091,6 +3091,12 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 					ratio_bump *= spotdotfactor;
 				}
 
+				if(ratio < 0)
+					ratio = 0;
+
+				if(ratio_bump < 0)
+					ratio_bump = 0;
+
 				if (!bumpinfopass)
 					VectorScale(l->intensity, ratio, add);
 
@@ -5383,15 +5389,15 @@ void AddPatchLights (int facenum)
 
 				{
 					vec3_t tmp, v, v_ambient, v_diffuse;
-					VectorClear(v_diffuse); // No diffuse contribution yet here
 					int style = f_other->styles[k];
 					InterpolateSampleLight (samp->pos, samp->surface, 1, &style, &tmp);
 
 					VectorAdd (samp->light, tmp, v);
 					if(g_bumpmaps)
 					{
+						// Only contribute to ambient for now
 						VectorAdd (samp->light_ambient, tmp, v_ambient);
-						VectorAdd (samp->light_diffuse, tmp, v_diffuse);
+						VectorCopy (samp->light_diffuse, v_diffuse);
 					}
 
 					Float max = GetBrightestSample(v, v_ambient, v_diffuse);
@@ -5399,7 +5405,7 @@ void AddPatchLights (int facenum)
 					{
 						VectorCopy (v, samp->light);
 						VectorCopy (v_ambient, samp->light_ambient); // Bounce lighting only adds to ambient light
-						VectorCopy (v_diffuse, samp->light_diffuse); // No diffuse yet
+						//VectorCopy (v_diffuse, samp->light_diffuse); // No diffuse yet
 					}
 					else
 					{
@@ -5910,7 +5916,8 @@ bool ExportALDData(ald_datatype_t type)
 
 			pnewlumps[j].type = psrclump->type;
 
-			for(int k = 0; k < NB_LIGHTMAP_LAYERS; k++)
+			int k = 0;
+			for(; k < NB_LIGHTMAP_LAYERS; k++)
 			{
 				if(!psrclump->layeroffsets[k])
 					break;
@@ -5935,6 +5942,10 @@ bool ExportALDData(ald_datatype_t type)
 				memcpy(pdestlumpdata, psrclumpdata, psrclayer->datasize);
 			}
 
+			// Fill rest with zero offsets
+			for(; k < NB_LIGHTMAP_LAYERS; k++)
+				pnewlumps[j].layeroffsets[k] = 0;
+
 			j++;
 		}
 
@@ -5947,9 +5958,10 @@ bool ExportALDData(ald_datatype_t type)
 		fileoffset += sizeof(aldlump_t) * newnumlumps;
 	}
 
-	for(int i = 0; i < NB_LIGHTMAP_LAYERS; i++)
+	int i = 0;
+	for(; i < NB_LIGHTMAP_LAYERS; i++)
 	{
-		if(i == layernumber)
+		if(i >= layernumber)
 			break;
 
 		pnewlump->type = lumptype;
@@ -5971,6 +5983,10 @@ bool ExportALDData(ald_datatype_t type)
 		byte* pdestdata = pfilebuffer + poutlayer->dataoffset;
 		memcpy(pdestdata, psrc, poutlayer->datasize);
 	}
+
+	// Fill rest with zero offsets
+	for(; i < NB_LIGHTMAP_LAYERS; i++)
+		pnewlump->layeroffsets[i] = 0;
 
 	if (fileoffset != totalsize)
 	{
