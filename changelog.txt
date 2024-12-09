@@ -1,0 +1,45 @@
+2024 April 5th:
+  - Use Solokiller's cleaned VHLT code instead of default VHLT code.
+  - Add bump map info generation support.
+  - Add support for bounce and bump map info generation.
+  - Add safeguards against lightstyles being in use with bump map info generation.
+  - Add code to manage func_clipeconomy entity as generating no clipnodes by default.
+  - Add back support for VHLT's original func_detail.
+ 
+2024 July 9th:
+  - Add light_environment support for nightmode.
+  - More informative messages for discarded light entities.
+
+2024 October 12th:
+  - Modify VHLT to now produce Pathos BSP Version 2 files.
+  - Add new lumps for ambient, diffuse lightmap data, and light vectors data.
+  - Allow bump mapping data generation code to work together with animated/swithchable lightstyles.
+  - Modify HLRAD to use the latest ALD file specification.
+  
+2024 October 14th:
+  - This fixes a potential crash inside HLRAD.
+  - Add support for smoothing lighting between the faces of different entities.
+  - Fix issue with outdoor areas not getting ambient lighting from light_environment entities.
+  
+2024 October 18th:
+  - Several fixes added to HLRAD to properly account for bump data lightmaps/vector map when it comes to coring and empty lightmap reduction.
+  
+2024 November 3rd:
+  - Modified vhlt compile tools to now support lightmap upscaling up to 8x(still needs work).
+  - Modified vhlt compile tools to support miniz compression of lightmap data.
+  - Improved parameter design for new features in the compile tools.
+  
+2024 December 1st:
+  - Fix for issue with light_spot entities causing dark/corrupted pixels due to lack of capping of ratio variables.
+  - Fix for incorrect diffuse lightdata generation with bounce.
+  - Fix for crash when compiling into ALDs without bump map data being generated.
+ 
+2024 December 9th:
+  - Added changelog.
+  - Add .ald file to clean list in ResetTempFiles to avoid issues in the future.
+  - Edge pairing across entities will now not happen in fast mode.
+  - Improved messages which display info about discarded light entities.
+  - Added safeguard against light entities with the "night_" prefix having lightstyles set.
+  - Added safeguard so light data size between BSP and ALD, and output to ALD is checked for consistency.
+  - Added -noreduce parameter to disable lightdata reduction for multi daystage compiles.
+  - Using any kind of nonstandard daystage will now enable -noreduce by default.

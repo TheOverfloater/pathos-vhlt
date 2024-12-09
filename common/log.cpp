@@ -68,6 +68,9 @@ void            ResetTmpFiles()
         safe_snprintf(filename, _MAX_PATH, "%s.bsp", g_Mapname);
         _unlink(filename);
 
+        safe_snprintf(filename, _MAX_PATH, "%s.ald", g_Mapname);
+        _unlink(filename);
+
         safe_snprintf(filename, _MAX_PATH, "%s.inc", g_Mapname);
         _unlink(filename);
 

@@ -10,6 +10,8 @@ bool            g_sky_lighting_fix = DEFAULT_SKY_LIGHTING_FIX;
 
 extern bool					g_nocompress;
 extern compressionlevel_t	g_compressionlevel;
+// Original lightdata size loaded from BSP
+int				g_original_lightdatasize = 0;
 
 //#define TEXTURE_STEP   16.0
 
@@ -300,88 +302,90 @@ void            PairEdges()
             }
         }
     }
-	
-    double start = I_FloatTime();
-	int paircount = 0;
-	Log("Pairing single edges across entities\n");
-	vec3_t e1_vertex1, e1_vertex2;
-	vec3_t e2_vertex1, e2_vertex2;
-	for(i = 0; i < g_numsurfedges; i++)
+	if(!g_fastmode)
 	{
-		edgeshare_t* pedgeshare = &g_edgeshare[i];
-		if(!pedgeshare->faces[0] && !pedgeshare->faces[1]
-			|| pedgeshare->faces[0] && pedgeshare->faces[1])
-			continue;
-
-		dedge_t* pedge = &g_dedges[i];
-		VectorCopy(g_dvertexes[pedge->v[0]].point, e1_vertex1);
-		VectorCopy(g_dvertexes[pedge->v[1]].point, e1_vertex2);
-
-		for(j = 0; j < g_numsurfedges; j++)
+		double start = I_FloatTime();
+		int paircount = 0;
+		Log("Pairing single edges across entities\n");
+		vec3_t e1_vertex1, e1_vertex2;
+		vec3_t e2_vertex1, e2_vertex2;
+		for(i = 0; i < g_numsurfedges; i++)
 		{
-			if(j == i)
+			edgeshare_t* pedgeshare = &g_edgeshare[i];
+			if(!pedgeshare->faces[0] && !pedgeshare->faces[1]
+				|| pedgeshare->faces[0] && pedgeshare->faces[1])
 				continue;
 
-			edgeshare_t* pedgeshare_compare = &g_edgeshare[j];
-			if(!pedgeshare_compare->faces[0] && !pedgeshare_compare->faces[1]
-				|| pedgeshare_compare->faces[0] && pedgeshare_compare->faces[1])
-				continue;
+			dedge_t* pedge = &g_dedges[i];
+			VectorCopy(g_dvertexes[pedge->v[0]].point, e1_vertex1);
+			VectorCopy(g_dvertexes[pedge->v[1]].point, e1_vertex2);
 
-			dedge_t* pedge_compare = &g_dedges[j];
-			VectorCopy(g_dvertexes[pedge_compare->v[0]].point, e2_vertex1);
-			VectorCopy(g_dvertexes[pedge_compare->v[1]].point, e2_vertex2);
-
-			if(VectorCompare(e1_vertex1, e2_vertex1) && VectorCompare(e1_vertex2, e2_vertex2)
-				|| VectorCompare(e1_vertex2, e2_vertex1) && VectorCompare(e1_vertex1, e2_vertex2))
+			for(j = 0; j < g_numsurfedges; j++)
 			{
-				if(!pedgeshare->faces[0])
-				{
-					if(pedgeshare_compare->faces[0])
-					{
-						pedgeshare->faces[0] = pedgeshare_compare->faces[0];
-						pedgeshare->separate[0] = true;
+				if(j == i)
+					continue;
 
-						pedgeshare_compare->faces[1] = pedgeshare->faces[1];
-						pedgeshare_compare->separate[1] = true;
+				edgeshare_t* pedgeshare_compare = &g_edgeshare[j];
+				if(!pedgeshare_compare->faces[0] && !pedgeshare_compare->faces[1]
+					|| pedgeshare_compare->faces[0] && pedgeshare_compare->faces[1])
+					continue;
+
+				dedge_t* pedge_compare = &g_dedges[j];
+				VectorCopy(g_dvertexes[pedge_compare->v[0]].point, e2_vertex1);
+				VectorCopy(g_dvertexes[pedge_compare->v[1]].point, e2_vertex2);
+
+				if(VectorCompare(e1_vertex1, e2_vertex1) && VectorCompare(e1_vertex2, e2_vertex2)
+					|| VectorCompare(e1_vertex2, e2_vertex1) && VectorCompare(e1_vertex1, e2_vertex2))
+				{
+					if(!pedgeshare->faces[0])
+					{
+						if(pedgeshare_compare->faces[0])
+						{
+							pedgeshare->faces[0] = pedgeshare_compare->faces[0];
+							pedgeshare->separate[0] = true;
+
+							pedgeshare_compare->faces[1] = pedgeshare->faces[1];
+							pedgeshare_compare->separate[1] = true;
+						}
+						else
+						{
+							pedgeshare->faces[0] = pedgeshare_compare->faces[1];
+							pedgeshare->separate[0] = true;
+
+							pedgeshare_compare->faces[0] = pedgeshare->faces[1];
+							pedgeshare_compare->separate[0] = true;
+						}
 					}
 					else
 					{
-						pedgeshare->faces[0] = pedgeshare_compare->faces[1];
-						pedgeshare->separate[0] = true;
+						if(pedgeshare_compare->faces[0])
+						{
+							pedgeshare->faces[1] = pedgeshare_compare->faces[0];
+							pedgeshare->separate[1] = true;
 
-						pedgeshare_compare->faces[0] = pedgeshare->faces[1];
-						pedgeshare_compare->separate[0] = true;
+							pedgeshare_compare->faces[1] = pedgeshare->faces[0];
+							pedgeshare_compare->separate[1] = true;
+						}
+						else
+						{
+							pedgeshare->faces[1] = pedgeshare_compare->faces[1];
+							pedgeshare->separate[1] = true;
+
+							pedgeshare_compare->faces[0] = pedgeshare->faces[0];
+							pedgeshare_compare->separate[0] = true;
+						}
 					}
+
+					paircount++;
 				}
-				else
-				{
-					if(pedgeshare_compare->faces[0])
-					{
-						pedgeshare->faces[1] = pedgeshare_compare->faces[0];
-						pedgeshare->separate[1] = true;
-
-						pedgeshare_compare->faces[1] = pedgeshare->faces[0];
-						pedgeshare_compare->separate[1] = true;
-					}
-					else
-					{
-						pedgeshare->faces[1] = pedgeshare_compare->faces[1];
-						pedgeshare->separate[1] = true;
-
-						pedgeshare_compare->faces[0] = pedgeshare->faces[0];
-						pedgeshare_compare->separate[0] = true;
-					}
-				}
-
-				paircount++;
 			}
 		}
+
+		Log("Paired %d edges across entities\n", paircount);
+
+		double end = I_FloatTime();
+		LogTimeElapsed(end - start);
 	}
-
-	Log("Paired %d edges across entities\n", paircount);
-
-    double end = I_FloatTime();
-    LogTimeElapsed(end - start);
 
     for(k = 0; k < g_numedges; k++)
     {
@@ -1910,6 +1914,16 @@ void            CreateDirectLights()
 					&& strncmp(name, "night_light", 11))
 					continue;
 
+				if(!strncmp(name, "night_light", 11))
+				{
+					const char* pValue = ValueForKey(e, "style");
+					if(pValue && strlen(pValue) > 0 && strcmp(pValue, "0"))
+					{
+						Log("Warning: %s entity was removed, because 'night' light entities cannot have lightstyles applied.\n", name);
+						continue;
+					}
+				}
+
 				if (!strcmp(name, "light_environment"))
 				{
 					int value = IntForKey(e, "nightmode");
@@ -1920,7 +1934,7 @@ void            CreateDirectLights()
 						{
 							int ir, ig, ib;
 							argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-							Log("Discarded light_environment with color %d %d %d due to -nightmode.\n", ir, ig, ib);
+							Log("Warning: light_environment with color %d %d %d was removed, as it is not set to be used in daystage '%s'.\n", ir, ig, ib, daystage_strings[RAD_DAYSTAGE_NIGHTMODE]);
 						}
 
 						continue;
@@ -1943,7 +1957,7 @@ void            CreateDirectLights()
 						{
 							int ir, ig, ib;
 							argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
-							Log("Discarded light_environment with color %d %d %d due to -daylightreturnmode.\n", ir, ig, ib);
+							Log("Warning: light_environment with color %d %d %d was removed, as it is not set to be used in daystage '%s'.\n", ir, ig, ib, daystage_strings[RAD_DAYSTAGE_DAYLIGHTRETURN]);
 						}
 
 						continue;
@@ -1967,9 +1981,9 @@ void            CreateDirectLights()
 						int ir, ig, ib;
 						argCnt = sscanf(pLight, "%d %d %d", &ir, &ig, &ib);
 						if(IntForKey(e, "daylightreturn") == 1)
-							Log("Discarded light_environment with color %d %d %d due to being set to only work in -daylightreturnmode.\n", ir, ig, ib);
+							Log("Warning: light_environment with color %d %d %d was removed, as it was set to only be used in daystage '%s'.\n", ir, ig, ib, daystage_strings[RAD_DAYSTAGE_DAYLIGHTRETURN]);
 						else
-							Log("Discarded light_environment with color %d %d %d due to being set to only work in -nightmode.\n", ir, ig, ib);
+							Log("Warning: light_environment with color %d %d %d was removed, as it was set to only be used in daystage '%s'.\n", ir, ig, ib, daystage_strings[RAD_DAYSTAGE_NIGHTMODE]);
 					}
 
 					continue;
@@ -4653,6 +4667,9 @@ void            PrecompLightmapOffsets()
     int             i; //LRC
 	patch_t*        patch; //LRC
 
+	// Remember this
+	g_original_lightdatasize = g_lightdatasize;
+
 	// Set all these to their base values
     g_lightdatasize = 0;
 	g_dlightdata_compression = 0;
@@ -5777,6 +5794,7 @@ bool ExportALDData(ald_datatype_t type)
 	// Check the light data size in the original
 	if(poriginal && poriginal->lightdatasize != g_lightdatasize)
 	{
+		Error("Error: Destination ALD file '%s' has an inconsistent light data size(%d bytes) compared to current output(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\nOriginal file was deleted.\n", szpath, poriginal->lightdatasize, g_lightdatasize);
 		delete[] (byte*)poriginal;
 		poriginal = nullptr;
 	}

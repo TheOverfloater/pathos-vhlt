@@ -119,7 +119,7 @@ enum lightmap_layers_t
 #define DEFAULT_ALLOW_OPAQUES       true
 #define DEFAULT_ALLOW_SPREAD		true
 #define DEFAULT_IGNORE_ERR_FILE		false
-
+#define DEFAULT_NO_REDUCE_LIGHTMAPS	false
 // ------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
 

@@ -101,6 +101,9 @@ bool            g_circus = DEFAULT_CIRCUS;
 bool            g_allow_opaques = DEFAULT_ALLOW_OPAQUES;
 bool			g_allow_spread = DEFAULT_ALLOW_SPREAD;
 bool			g_ignore_err_file = DEFAULT_IGNORE_ERR_FILE;
+bool			g_noreduce_lightmaps = DEFAULT_NO_REDUCE_LIGHTMAPS;
+
+extern int		g_original_lightdatasize;
 
 // --------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -2884,8 +2887,8 @@ static void     RadWorld()
 	}
 	MdlLightHack ();
 
-	// Do not reduce bumpmap data
-	ReduceLightmap();
+	if(!g_noreduce_lightmaps)
+		ReduceLightmap();
 
 	if (g_lightdatasize == 0)
 	{
@@ -3020,7 +3023,7 @@ static void     Usage()
 			Log ("%s%s", ((i > 0) ? ", " : ""), daystage_strings[i]);
 		Log(" )\n");
 	}
-
+	Log("	-noreduce      : Don't reduce lightmap data(recommended only for for levels with alternative day stages).\n");
     Log("    mapfile       : The mapfile to compile\n\n");
 
     exit(1);
@@ -3160,7 +3163,8 @@ static void     Settings()
 	Log("no lightdata compression    [ %17s ] [ %17s ]\n", g_nocompress ? "on" : "off", DEFAULT_NOCOMPRESS ? "on" : "off");
 	Log("lightdata compression level [ %17s ] [ %17s ]\n", compressionlevel_strings[g_compressionlevel], compressionlevel_strings[COMPRESSION_LEVEL_DEFAULT]);
 	Log("day stage                   [ %17s ] [ %17s ]\n", daystage_strings[g_daystage], daystage_strings[DEFAULT_DAYSTAGE]);
-	Log("Ignore .err file            [ %17s ] [ %17s ]\n", g_ignore_err_file ? "yes" : "no", DEFAULT_IGNORE_ERR_FILE ? "yes" : "no");
+	Log("ignore .err file            [ %17s ] [ %17s ]\n", g_ignore_err_file ? "yes" : "no", DEFAULT_IGNORE_ERR_FILE ? "yes" : "no");
+	Log("disable lightmap reduction  [ %17s ] [ %17s ]\n", g_noreduce_lightmaps ? "yes" : "no", DEFAULT_NO_REDUCE_LIGHTMAPS ? "yes" : "no");
 
     // ------------------------------------------------------------------------
     // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -3855,6 +3859,10 @@ int             main(const int argc, char** argv)
         {
             g_allow_opaques = false;
         }
+		else if(!strcasecmp(argv[i], "-noreduce"))
+		{
+			g_noreduce_lightmaps = true;
+		}
         else if (!strcasecmp(argv[i], "-dscale"))
         {
             if (i + 1 < argc)	//added "1" .--vluzacn
@@ -4157,6 +4165,10 @@ int             main(const int argc, char** argv)
 
 				g_daystage = (hlrad_daystage_t)j;
 				i++;
+
+				// Enforce noreduce if set
+				if(g_daystage != RAD_DAYSTAGE_NONE)
+					g_noreduce_lightmaps = true;
 			}
 			else
 			{
@@ -4331,6 +4343,10 @@ int             main(const int argc, char** argv)
 
 	if (g_daystage != RAD_DAYSTAGE_NONE)
 	{
+		// Ensure our size matches with the BSP
+		if(g_original_lightdatasize > 0 && g_original_lightdatasize != g_lightdatasize)
+			Error("Error: ALD output produced has an inconsistent light data size(%d bytes) compared to lightdata in BSP(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\n", g_lightdatasize, g_original_lightdatasize);
+
 		char szstagename[256];
 		ald_datatype_t type;
 		switch(g_daystage)
