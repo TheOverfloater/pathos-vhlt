@@ -79,7 +79,7 @@
 //=============================================================================
 
 #define PBSP_HEADER						(('P'<<24)+('S'<<16)+('B'<<8)+'P')
-#define PBSP_VERSION					2
+#define PBSP_VERSION					3
 
 #define TOOLVERSION 2
 
@@ -113,7 +113,11 @@ lump_t;
 #define LUMP_EDGES              15
 #define LUMP_SURFEDGES          16
 #define LUMP_MODELS             17
-#define HEADER_LUMPS            18
+#define LUMP_VERTEX_LIGHTING			18
+#define LUMP_VERTEX_LIGHTING_AMBIENT	19
+#define LUMP_VERTEX_LIGHTING_DIFFUSE	20
+#define LUMP_VERTEX_LIGHTING_VECTORS	21
+#define HEADER_LUMPS            22
 
 typedef struct
 {
@@ -335,6 +339,31 @@ extern int      g_dlightdata_vectors_checksum;
 extern int      g_dlightdata_vectors_compression;
 extern int      g_dlightdata_vectors_compression_level;
 extern int      g_lightdatasize_vectors_actual;
+
+extern int      g_dvertexlightdatasize;
+extern byte* g_dvertexlightdata;
+extern int      g_dvertexlightdata_checksum;
+extern int      g_dvertexlightdata_compression;
+extern int      g_dvertexlightdata_compression_level;
+extern int      g_dvertexlightdatasize_actual;
+
+extern byte* g_dvertexlightdata_ambient;
+extern int      g_dvertexlightdata_ambient_checksum;
+extern int      g_dvertexlightdata_ambient_compression;
+extern int      g_dvertexlightdata_ambient_compression_level;
+extern int      g_dvertexlightdatasize_ambient_actual;
+
+extern byte* g_dvertexlightdata_diffuse;
+extern int      g_dvertexlightdata_diffuse_checksum;
+extern int      g_dvertexlightdata_diffuse_compression;
+extern int      g_dvertexlightdata_diffuse_compression_level;
+extern int      g_dvertexlightdatasize_diffuse_actual;
+
+extern byte* g_dvertexlightdata_vectors;
+extern int      g_dvertexlightdata_vectors_checksum;
+extern int      g_dvertexlightdata_vectors_compression;
+extern int      g_dvertexlightdata_vectors_compression_level;
+extern int      g_dvertexlightdatasize_vectors_actual;
 
 extern int      g_texdatasize;
 extern byte*    g_dtexdata;                                  // (dmiptexlump_t)

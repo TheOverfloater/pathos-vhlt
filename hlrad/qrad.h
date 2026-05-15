@@ -20,6 +20,7 @@
 #include "winding.h"
 #include "compress.h"
 #include "cmdlinecfg.h"
+#include "vertexlight.h"
 
 #ifdef SYSTEM_WIN32
 #pragma warning(disable: 4142 4028)
@@ -67,10 +68,12 @@ extern char* daystage_strings[RAD_NB_DAYSTAGES];
 #define DEFAULT_FASTMODE			false
 #define DEFAULT_METHOD eMethodSparseVismatrix
 #define DEFAULT_LERP_ENABLED        true
+#define DEFAULT_STUDIOSHADOW        true //seedee
+#define DEFAULT_VERTEXLIGHT        true
 #define DEFAULT_FADE                1.0
 #define DEFAULT_BOUNCE              8
 #define DEFAULT_DUMPPATCHES         false
-#define DEFAULT_BUMPMAPS            false
+#define DEFAULT_BUMPMAPS            true
 #define DEFAULT_NOCOMPRESS			false
 #define DEFAULT_COMPRESSION_LEVEL	COMPRESSION_LEVEL_DEFAULT
 #define DEFAULT_AMBIENT_RED         0.0
@@ -502,6 +505,8 @@ extern vec3_t	g_jitter_hack;
 	extern vec_t g_maxdiscardedlight;
 	extern vec3_t g_maxdiscardedpos;
 	extern vec_t g_texlightgap;
+	extern bool g_nocompress;
+	extern compressionlevel_t g_compressionlevel;
 
 extern void     MakeTnodes(dmodel_t* bm);
 extern void     PairEdges();
@@ -650,4 +655,11 @@ extern vec_t	CalcSightArea_SpotLight (const vec3_t receiver_origin, const vec3_t
 					);
 extern void		GetAlternateOrigin (const vec3_t pos, const vec3_t normal, const patch_t *patch, vec3_t &origin);
 extern void		ExportBumpMapData(void);
+
+// studio.cpp
+extern void LoadStudioModels(void);
+extern void FreeStudioModels(void);
+extern bool TestSegmentAgainstStudioList(const vec_t* p1, const vec_t* p2);
+extern bool g_studioshadow;
+
 #endif //HLRAD_H__

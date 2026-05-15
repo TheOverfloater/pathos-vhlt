@@ -10,6 +10,8 @@ All Rights Reserved.
 #ifndef ALDHEADER_H
 #define ALDHEADER_H
 
+#include "datatypes.h"
+
 #define ALD_HEADER_ENCODED		(('D'<<24)+('L'<<16)+('A'<<8)+'P')
 #define ALD_HEADER_VERSION		1
 

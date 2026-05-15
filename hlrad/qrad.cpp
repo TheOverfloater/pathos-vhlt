@@ -42,6 +42,8 @@ extern char* daystage_strings[RAD_NB_DAYSTAGES]
 };
 
 bool			g_fastmode = DEFAULT_FASTMODE;
+bool			g_studioshadow = DEFAULT_STUDIOSHADOW;
+bool            g_vertexlights = DEFAULT_VERTEXLIGHT;
 typedef enum
 {
     eMethodVismatrix,
@@ -60,7 +62,7 @@ eModelLightmodes	g_face_lightmode[MAX_MAP_FACES];
 patch_t*			g_patches;
 entity_t*			g_face_texlights[MAX_MAP_FACES];
 unsigned			g_num_patches;
-bool				g_bumpmaps = false;
+bool				g_bumpmaps = true;
 bool				g_nocompress = false;
 compressionlevel_t	g_compressionlevel = COMPRESSION_LEVEL_DEFAULT;
 
@@ -2816,6 +2818,7 @@ static void     RadWorld()
     // create directlights out of g_patches and lights
     CreateDirectLights();
 
+	LoadStudioModels(); //seedee
     Log("\n");
 	
 	// generate a position map for each face
@@ -2825,9 +2828,6 @@ static void     RadWorld()
     NamedRunThreadsOnIndividual(g_numfaces, g_estimate, BuildFacelights);
 
 	FreePositionMaps ();
-
-    // free up the direct lights now that we have facelights
-    DeleteDirectLights();
 
     if (g_numbounce > 0)
     {
@@ -2878,6 +2878,15 @@ static void     RadWorld()
 		FreeFacelightDependencyList ();
 	}
 
+	//
+    // vertex lighting
+    //
+	if (g_vertexlights)
+	{
+		BuildVertexLights();
+		FinalizeVertexLightBuffers();
+	}
+
 	FreeTriangulations ();
 
     NamedRunThreadsOnIndividual(g_numfaces, g_estimate, FinalLightFace);
@@ -2908,6 +2917,9 @@ static void     RadWorld()
 
 	// Finalize lightmap buffers
 	FinalizeLightmapBuffers();
+
+	// free up the direct lights now that we have facelights
+	DeleteDirectLights();
 }
 
 // =====================================================================================
@@ -2930,6 +2942,8 @@ static void     Usage()
     Log("    -circus         : Enable 'circus' mode for locating unlit lightmaps\n");
 	Log("    -nospread       : Disable sunlight spread angles for this compile\n");
     Log("    -nopaque        : Disable the opaque zhlt_lightflags for this compile\n\n");
+	Log("    -nostudioshadow : Disable opaque studiomodels, ignore zhlt_studioshadow for this compile\n\n");
+	Log("    -vertexlights   : Generate per-vertex lighting for studio models\n");
     Log("    -smooth #       : Set smoothing threshold for blending (in degrees)\n");
 	Log("    -smooth2 #      : Set smoothing threshold between different textures\n");
     Log("    -chop #         : Set radiosity patch size for normal textures\n");
@@ -3007,6 +3021,10 @@ static void     Usage()
 	Log("   -drawnudge     : Show nudged samples.\n");
 	Log("   -drawoverload  : Highlight fullbright spots\n");
 	Log("   -nocompress    : Do not compress BSP lighting data lumps\n");
+	Log("    -dirt          : Enable dirt mapping (Ambient Occlusion)\n");
+	Log("    -dirtdepth #   : Max distance for occlusion rays (default 128)\n");
+	Log("    -dirtscale #   : Scale factor for dirt effect (default 1.0)\n");
+	Log("    -dirtgain #    : Power function factor for dirt (default 1.0)\n");
 
 	{
 	Log("	-compressionlevel : Lightmap compression level ( ");
@@ -3155,10 +3173,12 @@ static void     Settings()
 
     Log("\n");
 	Log("spread angles               [ %17s ] [ %17s ]\n", g_allow_spread ? "on" : "off", DEFAULT_ALLOW_SPREAD ? "on" : "off");
-    Log("opaque entities             [ %17s ] [ %17s ]\n", g_allow_opaques ? "on" : "off", DEFAULT_ALLOW_OPAQUES ? "on" : "off");
+	Log("opaque brush models  [ %17s ] [ %17s ]\n", g_allow_opaques ? "on" : "off", DEFAULT_ALLOW_OPAQUES ? "on" : "off");
+	Log("opaque studio models [ %17s ] [ %17s ]\n", g_studioshadow ? "on" : "off", DEFAULT_STUDIOSHADOW ? "on" : "off");
     Log("sky lighting fix            [ %17s ] [ %17s ]\n", g_sky_lighting_fix ? "on" : "off", DEFAULT_SKY_LIGHTING_FIX ? "on" : "off");
     Log("incremental                 [ %17s ] [ %17s ]\n", g_incremental ? "on" : "off", DEFAULT_INCREMENTAL ? "on" : "off");
     Log("dump                        [ %17s ] [ %17s ]\n", g_dumppatches ? "on" : "off", DEFAULT_DUMPPATCHES ? "on" : "off");
+	Log("vertex lighting             [ %17s ] [ %17s ]\n", g_vertexlights ? "on" : "off", DEFAULT_VERTEXLIGHT ? "on" : "off");
 	Log("bump map info               [ %17s ] [ %17s ]\n", g_bumpmaps ? "on" : "off", DEFAULT_BUMPMAPS ? "on" : "off");
 	Log("no lightdata compression    [ %17s ] [ %17s ]\n", g_nocompress ? "on" : "off", DEFAULT_NOCOMPRESS ? "on" : "off");
 	Log("lightdata compression level [ %17s ] [ %17s ]\n", compressionlevel_strings[g_compressionlevel], compressionlevel_strings[COMPRESSION_LEVEL_DEFAULT]);
@@ -3454,6 +3474,7 @@ int             main(const int argc, char** argv)
     double          start, end;
     const char*     mapname_from_arg = NULL;
     const char*     user_lights = NULL;
+	char temp[_MAX_PATH]; //seedee
 
     g_Program = "hlrad";
 
@@ -3981,7 +4002,14 @@ int             main(const int argc, char** argv)
 				Usage();
 			}
 		}
-
+		else if (!strcasecmp(argv[i], "-nostudioshadow"))
+		{
+			g_studioshadow = false;
+		}
+		else if (!strcasecmp(argv[i], "-vertexlights"))
+		{
+			g_vertexlights = true;
+		}
 		else if (!strcasecmp(argv[i], "-drawpatch"))
 		{
 			g_drawpatch = true;
@@ -4238,6 +4266,8 @@ int             main(const int argc, char** argv)
 
     safe_strncpy(g_Mapname, mapname_from_arg, _MAX_PATH);
     FlipSlashes(g_Mapname);
+	ExtractFilePath(g_Mapname, temp);	// skip mapname
+	ExtractFilePath(temp, g_Wadpath);
     StripExtension(g_Mapname);
     OpenLog(g_clientid);
     atexit(CloseLog);
@@ -4335,6 +4365,7 @@ int             main(const int argc, char** argv)
 
     RadWorld();
 
+	FreeStudioModels(); //seedee
     FreeOpaqueFaceList();
     FreePatches();
 	DeleteOpaqueNodes ();
@@ -4348,6 +4379,7 @@ int             main(const int argc, char** argv)
 			Error("Error: ALD output produced has an inconsistent light data size(%d bytes) compared to lightdata in BSP(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\n", g_lightdatasize, g_original_lightdatasize);
 
 		char szstagename[256];
+		vld_datatype_t vld_type;
 		ald_datatype_t type;
 		switch(g_daystage)
 		{
@@ -4366,6 +4398,14 @@ int             main(const int argc, char** argv)
 			Log("Exported %s lightdata to ALD file, BSP file will not be modified. Exiting.\n", szstagename);
 		else
 			Log("Error when trying to export ALD data.\n");
+
+		if (g_vertexlights)
+		{
+			if (ExportVLDData(vld_type))
+				Log("Exported %s vertex lightdata to VLD file.\n", szstagename);
+			else
+				Log("Error when trying to export VLD data.\n");
+		}
 	}
 	else
 	{

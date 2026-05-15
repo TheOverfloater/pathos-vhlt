@@ -3372,6 +3372,136 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 	}
 }
 
+// Used for baked model lightng
+void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample, vec3_t* sample_ambient, vec3_t* sample_diffuse, vec3_t* sample_lightvectors)
+{
+	int i;
+	vec3_t v_nudged;
+	vec3_t adds[ALLSTYLES];
+	vec3_t adds_ambient[ALLSTYLES];
+	vec3_t adds_diffuse[ALLSTYLES];
+	vec3_t directions[ALLSTYLES];
+	byte styles[ALLSTYLES];
+
+	memset(adds, 0, sizeof(adds));
+	memset(adds_ambient, 0, sizeof(adds_ambient));
+	memset(adds_diffuse, 0, sizeof(adds_diffuse));
+	memset(directions, 0, sizeof(directions));
+	memset(styles, 255, sizeof(styles));
+	styles[0] = 0;
+
+	VectorMA(pos, 0.1f, normal, v_nudged);
+
+	// Direct lighting seems to cause selfshadow artifacts, disable for now
+	bool directlight = 0;
+
+	if(directlight)
+	{
+		for (int step = 0; step < 1; step++)
+		{
+			for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
+			{
+				directlight_t* l = directlights[i];
+				if (!l)
+					continue;
+
+				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
+				{
+					for (; l; l = l->next)
+					{
+						AddLight(l, directions, v_nudged, pvs, normal, 1.0, styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false);
+					}
+				}
+			}
+		}
+
+		if (g_bumpmaps)
+		{
+			for (i = 0; i < ALLSTYLES; i++)
+				VectorNormalize(directions[i]);
+
+			for (int step = 0; step < 1; step++)
+			{
+				for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
+				{
+					directlight_t* l = directlights[i];
+					if (l && (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
+					{
+						for (; l; l = l->next)
+							AddLight(l, directions, pos, pvs, normal, 1.0, styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true);
+					}
+				}
+			}
+		}
+	}
+
+	// Bounced lighting
+	if (g_numbounce > 0)
+	{
+		for (i = 0; i < (int)g_num_patches; i++)
+		{
+			patch_t* p = &g_patches[i];
+			if (p->leafnum != 0 && !(pvs[(p->leafnum - 1) >> 3] & (1 << ((p->leafnum - 1) & 7))))
+				continue;
+
+			vec3_t v_delta;
+			VectorSubtract(p->origin, v_nudged, v_delta);
+			float d2 = DotProduct(v_delta, v_delta);
+			float d = sqrt(d2);
+			if (d < 1.0f)
+				d = 1.0f;
+
+			float dot_rec = DotProduct(v_delta, normal) / d;
+			float dot_em = -DotProduct(v_delta, getPlaneFromFaceNumber(p->faceNumber)->normal) / d;
+
+			if (TestLine(v_nudged, p->origin) != CONTENTS_EMPTY)
+				continue;
+
+			float scale = (dot_rec * dot_em * p->area) / (Q_PI * d2 + p->area);
+
+			vec3_t patch_dir;
+			VectorScale(v_delta, 1.0f / d, patch_dir);
+
+			for (int s = 0; s < MAXLIGHTMAPS && p->totalstyle[s] != 255; s++)
+			{
+				int style = p->totalstyle[s];
+				VectorMA(adds[style], scale, p->totallight[s], adds[style]);
+
+				if (g_bumpmaps)
+				{
+					VectorMA(adds_ambient[style], scale, p->totallight[s], adds_ambient[style]);
+
+					float weight = scale * (p->totallight[s][0] + p->totallight[s][1] + p->totallight[s][2]);
+					VectorMA(directions[style], weight, patch_dir, directions[style]);
+				}
+			}
+		}
+	}
+
+	for (int c = 0; c < 3; c++)
+	{
+		adds[0][c] *= g_direct_scale;
+		adds[0][c] *= g_colour_lightscale[c];
+
+		if (g_colour_qgamma[c] != 1.0f)
+		{
+			adds[0][c] = pow(adds[0][c] / 256.0f, g_colour_qgamma[c]) * 256.0f;
+		}
+
+		if (adds[0][c] < g_minlight)
+			adds[0][c] = g_minlight;
+	}
+
+	VectorCopy(adds[0], sample[0]);
+
+	if (g_bumpmaps && sample_ambient && sample_diffuse && sample_lightvectors)
+	{
+		VectorCopy(adds_ambient[0], sample_ambient[0]);
+		VectorCopy(adds_diffuse[0], sample_diffuse[0]);
+		VectorCopy(directions[0], sample_lightvectors[0]);
+	}
+}
+
 // =====================================================================================
 //  AddSampleToPatch
 //      Take the sample's collected light and add it back into the apropriate patch for the radiosity pass.
