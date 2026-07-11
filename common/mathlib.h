@@ -221,7 +221,4 @@ inline planetypes PlaneTypeForNormal(vec3_t normal)
     return plane_anyz;
 }
 
-unsigned short FloatToHalf(float v);
-float HalfToFloat(unsigned short h);
-
 #endif //MATHLIB_H__

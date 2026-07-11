@@ -10,10 +10,8 @@ All Rights Reserved.
 #ifndef ALDHEADER_H
 #define ALDHEADER_H
 
-#include "datatypes.h"
-
 #define ALD_HEADER_ENCODED		(('D'<<24)+('L'<<16)+('A'<<8)+'P')
-#define ALD_HEADER_VERSION		1
+#define ALD_HEADER_VERSION		2
 
 // Lightmap layers
 enum surf_lmap_layers_t
@@ -25,6 +23,17 @@ enum surf_lmap_layers_t
 
 	// Must be last
 	NB_SURF_LIGHTMAP_LAYERS
+};
+
+// Baked vertex lighting layers
+enum baked_vertexlight_layers_t
+{
+	VERTEX_LIGHTING_VECTORS = 0,
+	VERTEX_LIGHTING_AMBIENT,
+	VERTEX_LIGHTING_DIFFUSE,
+
+	// Must be last
+	NB_BAKED_VERTEXLIGHT_LAYERS
 };
 
 enum aldlumptype_t 
@@ -53,16 +62,18 @@ struct aldheader_t
 		flags(0),
 		lumpoffset(0),
 		numlumps(0),
-		lightdatasize(0)
+		lightdatasize(0),
+		vertexlightdatasize(0)
 		{}
 
-	Int32 header;
-	Int32 version;
-	Int32 flags;
+	int header;
+	int version;
+	int flags;
 
-	Int32 lumpoffset;
-	Int32 numlumps;
-	Int32 lightdatasize;
+	int lumpoffset;
+	int numlumps;
+	int lightdatasize;
+	int vertexlightdatasize;
 };
 
 struct aldlump_t
@@ -70,14 +81,19 @@ struct aldlump_t
 	aldlump_t():
 		type(0)
 	{
-		for(Uint32 i = 0; i < NB_SURF_LIGHTMAP_LAYERS; i++)
-			layeroffsets[i] = 0;
+		for(int i = 0; i < NB_SURF_LIGHTMAP_LAYERS; i++)
+			lmaplayeroffsets[i] = 0;
+
+		for(int i = 0; i < NB_BAKED_VERTEXLIGHT_LAYERS; i++)
+			vertexlightlayeroffsets[i] = 0;
 	}
 
 	// Type of ALD lump
-	Int32 type;
-	// The offsets to each layer
-	Int32 layeroffsets[NB_SURF_LIGHTMAP_LAYERS];
+	int type;
+	// The offsets to each layer of lightmap
+	int lmaplayeroffsets[NB_SURF_LIGHTMAP_LAYERS];
+	// The offsets to each layer of baked vertex lighting
+	int vertexlightlayeroffsets[NB_BAKED_VERTEXLIGHT_LAYERS];
 };
 
 struct aldlayer_t
@@ -89,9 +105,9 @@ struct aldlayer_t
 		datasize(0)
 	{}
 
-	Int32 compression;
-	Int32 compressionlevel;
-	Int32 dataoffset;
-	Int32 datasize;
+	int compression;
+	int compressionlevel;
+	int dataoffset;
+	int datasize;
 };
 #endif

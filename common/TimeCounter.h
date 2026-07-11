@@ -12,13 +12,13 @@ class TimeCounter
 public:
     void start()
     {
-        starttime = I_FloatTime();
+        start = I_FloatTime();
     }
 
     void stop()
     {
         double stop = I_FloatTime();
-        accum += stop - starttime;
+        accum += stop - start;
     }
 
     double getTotal() const
@@ -31,7 +31,7 @@ public:
         memset(this, 0, sizeof(*this));
     }
 
-    // Construction
+// Construction
 public:
     TimeCounter()
     {
@@ -42,8 +42,8 @@ public:
     // Default Copy Operator ok
 
 protected:
-    double starttime;
+    double start;
     double accum;
 };
 
-#endif//TIMECOUNTER_H__
+#endif

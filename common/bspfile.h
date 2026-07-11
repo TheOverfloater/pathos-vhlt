@@ -54,7 +54,7 @@
 // 4Mb of textures is enough especially considering the number of people playing the game
 // still with voodoo1 and 2 class cards with limited local memory.
 
-#define DEFAULT_MAX_MAP_LIGHTDATA	0x3000000 //0x600000 //vluzacn
+#define DEFAULT_MAX_MAP_LIGHTDATA	0x9000000 //0x600000 //vluzacn
 // arbitrary
 
 #define MAX_MAP_VISIBILITY  0x800000 //0x200000 //vluzacn
@@ -79,10 +79,11 @@
 //=============================================================================
 
 #define PBSP_HEADER						(('P'<<24)+('S'<<16)+('B'<<8)+'P')
-#define PBSP_VERSION					3
+#define PBSP_VERSION					2
 
 #define TOOLVERSION 2
 
+#define PBSPV2_FL_HAS_VERTEX_LIGHTING   (1<<1)
 
 //
 // BSP File Structures
@@ -95,29 +96,33 @@ typedef struct
 }
 lump_t;
 
-#define LUMP_ENTITIES           0
-#define LUMP_PLANES             1
-#define LUMP_TEXTURES           2
-#define LUMP_VERTEXES           3
-#define LUMP_VISIBILITY         4
-#define LUMP_NODES              5
-#define LUMP_TEXINFO            6
-#define LUMP_FACES              7
-#define LUMP_LIGHTING           8
-#define LUMP_LIGHTING_AMBIENT   9
-#define LUMP_LIGHTING_DIFFUSE   10
-#define LUMP_LIGHTING_VECTORS   11
-#define LUMP_CLIPNODES          12
-#define LUMP_LEAFS              13
-#define LUMP_MARKSURFACES       14
-#define LUMP_EDGES              15
-#define LUMP_SURFEDGES          16
-#define LUMP_MODELS             17
-#define LUMP_VERTEX_LIGHTING			18
-#define LUMP_VERTEX_LIGHTING_AMBIENT	19
-#define LUMP_VERTEX_LIGHTING_DIFFUSE	20
-#define LUMP_VERTEX_LIGHTING_VECTORS	21
-#define HEADER_LUMPS            22
+enum bsp_lumps_t
+{
+    LUMP_ENTITIES = 0,
+    LUMP_PLANES,
+    LUMP_TEXTURES,
+    LUMP_VERTEXES,
+    LUMP_VISIBILITY,
+    LUMP_NODES,
+    LUMP_TEXINFO,
+    LUMP_FACES,
+    LUMP_LIGHTING,
+    LUMP_LIGHTING_AMBIENT,
+    LUMP_LIGHTING_DIFFUSE,
+    LUMP_LIGHTING_VECTORS,
+    LUMP_CLIPNODES,
+    LUMP_LEAFS,
+    LUMP_MARKSURFACES,
+    LUMP_EDGES,
+    LUMP_SURFEDGES,
+    LUMP_MODELS,
+    LUMP_VERTEX_LIGHTING_AMBIENT,
+    LUMP_VERTEX_LIGHTING_DIFFUSE,
+    LUMP_VERTEX_LIGHTING_VECTORS,
+
+    // Must be last
+    HEADER_LUMPS
+};
 
 typedef struct
 {
@@ -340,30 +345,24 @@ extern int      g_dlightdata_vectors_compression;
 extern int      g_dlightdata_vectors_compression_level;
 extern int      g_lightdatasize_vectors_actual;
 
-extern int      g_dvertexlightdatasize;
-extern byte* g_dvertexlightdata;
-extern int      g_dvertexlightdata_checksum;
-extern int      g_dvertexlightdata_compression;
-extern int      g_dvertexlightdata_compression_level;
-extern int      g_dvertexlightdatasize_actual;
-
-extern byte* g_dvertexlightdata_ambient;
+extern int		g_dvertexlightdatasize;
+extern byte*	g_dvertexlightdata_ambient;
 extern int      g_dvertexlightdata_ambient_checksum;
-extern int      g_dvertexlightdata_ambient_compression;
-extern int      g_dvertexlightdata_ambient_compression_level;
-extern int      g_dvertexlightdatasize_ambient_actual;
-
-extern byte* g_dvertexlightdata_diffuse;
+extern int		g_dvertexlightdata_ambient_compression;
+extern int		g_dvertexlightdata_ambient_compression_level;
+extern int		g_dvertexlightdatasize_ambient_actual;
+ 
+extern byte*	g_dvertexlightdata_diffuse;
 extern int      g_dvertexlightdata_diffuse_checksum;
-extern int      g_dvertexlightdata_diffuse_compression;
-extern int      g_dvertexlightdata_diffuse_compression_level;
-extern int      g_dvertexlightdatasize_diffuse_actual;
-
-extern byte* g_dvertexlightdata_vectors;
+extern int		g_dvertexlightdata_diffuse_compression;
+extern int		g_dvertexlightdata_diffuse_compression_level;
+extern int		g_dvertexlightdatasize_diffuse_actual;
+ 
+extern byte*	g_dvertexlightdata_vectors;
 extern int      g_dvertexlightdata_vectors_checksum;
-extern int      g_dvertexlightdata_vectors_compression;
-extern int      g_dvertexlightdata_vectors_compression_level;
-extern int      g_dvertexlightdatasize_vectors_actual;
+extern int		g_dvertexlightdata_vectors_compression;
+extern int		g_dvertexlightdata_vectors_compression_level;
+extern int		g_dvertexlightdatasize_vectors_actual;
 
 extern int      g_texdatasize;
 extern byte*    g_dtexdata;                                  // (dmiptexlump_t)
@@ -449,6 +448,7 @@ typedef struct
     int             firstbrush;
     int             numbrushes;
     epair_t*        epairs;
+    int             extradataindex;
 }
 entity_t;
 

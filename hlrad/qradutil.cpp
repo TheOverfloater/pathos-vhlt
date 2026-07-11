@@ -503,6 +503,7 @@ static bool IsPositionValid (positionmap_t *map, const vec3_t &pos_st, vec3_t &p
 		if (TestSegmentAgainstOpaqueList (pos, test
 				, transparency
 				, opaquestyle
+				, true
 				) == true
 			|| opaquestyle != -1
 			)

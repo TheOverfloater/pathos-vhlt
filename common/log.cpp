@@ -38,7 +38,6 @@
 
 char*           g_Program = "Uninitialized variable ::g_Program";
 char            g_Mapname[_MAX_PATH] = "Uninitialized variable ::g_Mapname";
-char            g_Wadpath[_MAX_PATH] = "Uninitialized variable ::g_Wadpath";
 
 developer_level_t g_developer = DEFAULT_DEVELOPER;
 bool            g_verbose = DEFAULT_VERBOSE;
@@ -147,6 +146,7 @@ void            ResetErrorLog()
 
 void            CheckForErrorLog()
 {
+
     if (g_log)
     {
         char            logfilename[_MAX_PATH];

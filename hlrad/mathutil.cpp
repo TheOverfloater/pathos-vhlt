@@ -1,4 +1,6 @@
 #include "qrad.h"
+#include "studio_util.h"
+#include "vbmcache.h"
 
 // =====================================================================================
 //  point_in_winding
@@ -287,48 +289,142 @@ inline bool LineSegmentIntersectsBounds (const vec3_t p1, const vec3_t p2, const
 	return LineSegmentIntersectsBounds_r (p1, p2, mins, maxs, 3);
 }
 
+inline bool CheckMinsMaxs( const vec3_t& mins1, const vec3_t& maxs1, const vec3_t& mins2, const vec3_t& maxs2 )
+{
+	if (mins1[0] > maxs2[0]) 
+		return true;
+
+	if (mins1[1] > maxs2[1]) 
+		return true;
+
+	if (mins1[2] > maxs2[2]) 
+		return true;
+
+	if (maxs1[0] < mins2[0]) 
+		return true;
+
+	if (maxs1[1] < mins2[1]) 
+		return true;
+
+	if (maxs1[2] < mins2[2]) 
+		return true;
+
+	return false;
+}
+
 // =====================================================================================
 //  TestSegmentAgainstOpaqueList
 //      Returns true if the segment intersects an item in the opaque list
 // =====================================================================================
 bool            TestSegmentAgainstOpaqueList(const vec_t* p1, const vec_t* p2
-	, vec3_t& scaleout
-	, int& opaquestyleout // light must convert to this style. -1 = no convert
-)
+					, vec3_t &scaleout
+					, int &opaquestyleout // light must convert to this style. -1 = no convert
+					, bool novbm
+					)
 {
 	int x;
-	VectorFill(scaleout, 1.0);
+	VectorFill (scaleout, 1.0);
 	opaquestyleout = -1;
-	for (x = 0; x < g_opaque_face_count; x++)
+
+    for (x = 0; x < g_opaque_face_count; x++)
 	{
-		if (!TestLineOpaque(g_opaque_face_list[x].modelnum, g_opaque_face_list[x].origin, p1, p2))
+		if (!TestLineOpaque (g_opaque_face_list[x].modelnum, g_opaque_face_list[x].origin, p1, p2))
 		{
 			continue;
 		}
+
 		if (g_opaque_face_list[x].transparency)
 		{
-			VectorMultiply(scaleout, g_opaque_face_list[x].transparency_scale, scaleout);
+			VectorMultiply (scaleout, g_opaque_face_list[x].transparency_scale, scaleout);
 			continue;
 		}
+
 		if (g_opaque_face_list[x].style != -1 && (opaquestyleout == -1 || g_opaque_face_list[x].style == opaquestyleout))
 		{
 			opaquestyleout = g_opaque_face_list[x].style;
 			continue;
 		}
-		VectorFill(scaleout, 0.0);
+
+		VectorFill (scaleout, 0.0);
 		opaquestyleout = -1;
 		return true;
 	}
-	if (TestSegmentAgainstStudioList(p1, p2)) //seedee
+
+	if(g_vbmshadows && !novbm)
 	{
-		VectorFill(scaleout, 0.0);
-		opaquestyleout = -1;
-		return true;
+		vec3_t traceMins, traceMaxs;
+		for(int i = 0; i < 3; i++)
+		{
+			traceMins[i] = MAX_FLOAT_VALUE;
+			traceMaxs[i] = -MAX_FLOAT_VALUE;
+		}
+
+		for(int i = 0; i < 2; i++)
+		{
+			vec3_t tmp;
+			if(i == 0)
+			{
+				VectorCopy(p1, tmp);
+			}
+			else
+			{
+				VectorCopy(p2, tmp);
+			}
+
+			for(int j = 0; j < 3; j++)
+			{
+				if(tmp[j] < traceMins[j])
+					traceMins[j] = tmp[j];
+				
+				if(tmp[j] > traceMaxs[j])
+					traceMaxs[j] = tmp[j];			
+			}
+		}
+
+		vec3_t local_start;
+		vec3_t local_end;
+
+		vec3_t start, end;
+		VectorCopy(p2, start);
+		VectorCopy(p1, end);
+
+		vec3_t normdirection;
+		VectorSubtract(end, start, normdirection);
+		VectorNormalize(normdirection);
+
+		for(int i = 0; i < g_numEntityLightingInfos; i++)
+		{
+			entity_lightinginfo_t& entityinfo = g_entityLightingInfos[i];
+
+			// Entities without a BVH are the ones that don't shadow
+			if(entityinfo.bvhindex == -1)
+				continue;
+
+			// Check if ray intersects mins/maxs
+			const vec3_t& mins = entityinfo.bvhmins;
+			const vec3_t& maxs = entityinfo.bvhmaxs;
+			if(CheckMinsMaxs(traceMins, traceMaxs, mins, maxs))
+				continue;
+
+			if(!LineSegmentIntersectsBounds(p1, p2, mins, maxs))
+				continue;
+
+			if(!IntersectBBoxPoint(start, end, mins, maxs, normdirection))
+				continue;
+
+			// Transform ray to local space
+			VectorInverseTransform(start, entityinfo.worldlocalmatrix, local_start);
+			VectorInverseTransform(end, entityinfo.worldlocalmatrix, local_end);
+
+			CVBMBVH* pBVH = gVBMCache.GetBVHByIndex(entityinfo.bvhindex);
+			if(pBVH)
+			{
+				if(pBVH->TraceLine(local_start, local_end, entityinfo.body, entityinfo.skin))
+					return true;
+			}
+		}
 	}
-	if (scaleout[0] < 0.01 && scaleout[1] < 0.01 && scaleout[2] < 0.01)
-	{
-		return true; //so much shadowing that result is same as with normal opaque face
-	}
+
 	return false;
 }
 

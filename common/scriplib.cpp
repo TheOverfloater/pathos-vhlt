@@ -360,3 +360,215 @@ bool            TokenAvailable()
 
     return true;
 }
+
+//=============================================
+// @brief Extracts the filename from a path string
+//
+// @param pstrin Input string's pointer
+// @param pstrout Output string's pointer
+//=============================================
+void COM_Basename( const char *pstrin, char *pstrout )
+{
+	int lastdot = 0;
+	int lastbar = 0;
+	int pathlength = 0;
+
+	for(int i = 0; i < strlen(pstrin); i++)
+	{
+		if(pstrin[i] == '/' || pstrin[i] == '\\')
+			lastbar = i+1;
+
+		if( pstrin[i] == '.' )
+			lastdot = i;
+	}
+
+	if(!lastdot)
+		lastdot = (int)strlen(pstrin);
+
+	for(int i = lastbar; i < strlen(pstrin); i++)
+	{
+		if(i == lastdot)
+			break;
+
+		pstrout[pathlength] = pstrin[i];
+		pathlength++;
+	}
+
+	pstrout[pathlength] = 0;
+}
+
+//=============================================
+// @brief Tells if a character is a break character
+//
+// @param character Character to check
+// @param pbreakchars Array of break characters
+// @return TRUE if break character, FALSE otherwise
+//=============================================
+bool COM_IsBreakCharacter( char character, const char* pbreakchars )
+{
+	if(!pbreakchars)
+		return false;
+
+	const char* pstr = pbreakchars;
+	while((*pstr))
+	{
+		if(character == (*pstr))
+			return true;
+
+		pstr++;
+	}
+
+	return false;
+}
+
+//=============================================
+// @brief Parses a token from an input string into another string
+//
+// @param pstr String to parse
+// @param pdest Destination character array
+// @param pstring Output string
+// @param pbreakchars Special characters to break on
+// @param ignoreComma Tells if commas should be ignored
+// @param checkCurlyBrackets If true, curly brackets are treated like quotes
+// @return Rest of the string or null if reached end
+//=============================================
+const char* COM_Parse( const char *pstr, char* pdest, const char* pbreakchars, bool ignoreComma, bool checkCurlyBrackets )
+{
+	bool includeSpaces = false;
+	int strLength = 0;
+	const char* ppstr = pstr;
+
+	// skip whitespaces
+	while(*ppstr && isspace(*ppstr) && !COM_IsBreakCharacter((*ppstr), pbreakchars))
+		ppstr++;
+
+	while(*ppstr)
+	{
+		if(*ppstr == '/' && *(ppstr+1) == '/')
+		{
+			while(*ppstr != '\0' && *ppstr != '\n')
+				ppstr++;
+
+			if(*ppstr == '\0')
+				break;
+
+			ppstr++;
+		}
+
+		if(*ppstr == '/' && *(ppstr+1) == '*')
+		{
+			while(*ppstr != '*' && *(ppstr+1) != '/')
+				ppstr++;
+
+			ppstr += 2;
+		}
+
+		if(!includeSpaces && isspace(*ppstr) && !COM_IsBreakCharacter((*ppstr), pbreakchars))
+			break;
+
+		if(COM_IsBreakCharacter((*ppstr), pbreakchars))
+			break;
+
+		if(*ppstr != '\"')
+		{
+			if(strLength == MAX_PARSE_LENGTH)
+			{
+				// Fail if we reached the limit
+				pdest[0] = '\0';
+				return nullptr;
+			}
+
+			pdest[strLength] = *ppstr;
+			strLength++; 
+		}
+
+		if(*ppstr == '\"' || checkCurlyBrackets && (*ppstr == '(' || *ppstr == ')'))
+		{
+			if(!includeSpaces)
+				includeSpaces = true;
+			else if(*ppstr == '\"')
+			{
+				ppstr++;
+				break;
+			}
+			else
+				includeSpaces = false;
+		}
+
+		if(!includeSpaces && *ppstr == ',' && !ignoreComma)
+			break;
+
+		ppstr++;
+	}
+
+	pdest[strLength] = '\0';
+
+	// skip whitespaces
+	while(*ppstr && isspace(*ppstr) && !COM_IsBreakCharacter((*ppstr), pbreakchars))
+		ppstr++;
+
+	if(*ppstr == '\0')
+		ppstr =  nullptr;
+
+	return ppstr;
+}
+
+//=============================================
+// @brief Tells if a string represents an integer number
+//
+// @param pstr Input string's pointer
+//=============================================
+bool COM_IsNumber( const char *pstr )
+{
+	const char* ppstr = pstr;
+	while(*ppstr)
+	{
+		if(!isdigit(*ppstr) && *ppstr != '.')
+			return false;
+
+		ppstr++;
+	}
+
+	return true;
+}
+
+//=============================================
+// @brief Parses an entire line from an input string into another string
+//
+// @param pstr String to parse
+// @param pdest Destination string object
+//=============================================
+const char* COM_ReadLine( const char* pstr, char* pdest )
+{
+	char* ppdest = pdest;
+	const char* ppstr = pstr;
+
+	while(*ppstr && *ppstr != '\n' && *ppstr != '\r')
+	{
+		if((ppdest - pdest) >= MAX_LINE_LENGTH)
+		{
+			pdest[0] = '\0';
+			return nullptr;
+		}
+
+		*ppdest = *ppstr;
+		ppdest++; ppstr++;
+	}
+
+	*ppdest = '\0';
+
+	// skip whitespaces
+	while(*ppstr && isspace(*ppstr) && *ppstr != '\n' && *ppstr != '\r')
+		ppstr++;
+	
+	// Skip newline characters
+	if(ppstr[0] == '\r' && ppstr[1] == '\n')
+		ppstr += 2;
+	else if(ppstr[0] == '\n')
+		ppstr++;
+
+	if(*ppstr == '\0')
+		ppstr =  nullptr;
+
+	return ppstr;
+}

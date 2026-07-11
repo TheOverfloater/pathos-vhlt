@@ -81,6 +81,7 @@ static bool     CheckVisBitNoVismatrix(unsigned patchnum1, unsigned patchnum2
 				origin1, origin2
 				, transparency
 				, opaquestyle
+				, true
 				))
 			{
 				return false;
@@ -148,6 +149,7 @@ static bool     CheckVisBitNoVismatrix(unsigned patchnum1, unsigned patchnum2
 				backorigin, emitorigin
 				, transparency
 				, opaquestyle
+				, true
 				))
 			{
 				return false;

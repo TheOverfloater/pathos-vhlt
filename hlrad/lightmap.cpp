@@ -3,6 +3,10 @@
 #include "datatypes.h"
 #include "aldformat.h"
 #include "miniz.h"
+#include <string>
+#include "vbmcache.h"
+#include "studio_util.h"
+#include "md5.h"
 
 edgeshare_t     g_edgeshare[MAX_MAP_EDGES];
 vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP_FACES]?
@@ -12,8 +16,116 @@ extern bool					g_nocompress;
 extern compressionlevel_t	g_compressionlevel;
 // Original lightdata size loaded from BSP
 int				g_original_lightdatasize = 0;
+extern char            g_modDir[_MAX_PATH];
 
 //#define TEXTURE_STEP   16.0
+
+static const int MAX_THREAD_VERTEXES = 1024;
+
+struct vbaked_threadinfo_t
+{
+	vbaked_threadinfo_t():
+		plightinfo(nullptr),
+		pcache(nullptr),
+		firstvertexindex(0),
+		numvertexes(0),
+		pnumstyles(nullptr),
+		pent_styles(nullptr),
+		psamples_amb(nullptr),
+		psamples_diff(nullptr),
+		psamples_vecs(nullptr)
+	{
+	}
+
+	void setvertexcount( int _numvertexes )
+	{
+		numvertexes = _numvertexes;
+
+		psamples_amb = new vec3_t*[numvertexes];
+		for(int i = 0; i < numvertexes; i++)
+		{
+			psamples_amb[i] = new vec3_t[1];
+			memset(psamples_amb[i], 0, sizeof(vec3_t));
+		}
+
+		psamples_diff = new vec3_t*[numvertexes];
+		for(int i = 0; i < numvertexes; i++)
+		{
+			psamples_diff[i] = new vec3_t[1];
+			memset(psamples_diff[i], 0, sizeof(vec3_t));
+		}
+
+		psamples_vecs = new vec3_t*[numvertexes];
+		for(int i = 0; i < numvertexes; i++)
+		{
+			psamples_vecs[i] = new vec3_t[1];
+			memset(psamples_vecs[i], 0, sizeof(vec3_t));
+		}
+
+		pent_styles = new byte*[numvertexes];
+		for(int i = 0; i < numvertexes; i++)
+		{
+			pent_styles[i] = new byte[1];
+			pent_styles[i][0] = 0;
+		}
+
+		pnumstyles = new int[numvertexes];
+		for(int i = 0; i < numvertexes; i++)
+			pnumstyles[i] = 1;
+	}
+
+	~vbaked_threadinfo_t()
+	{
+		if(pent_styles)
+		{
+			for(int i = 0; i < numvertexes; i++)
+				delete[] pent_styles[i];
+
+			delete[] pent_styles;
+		}
+
+		if(psamples_amb)
+		{
+			for(int i = 0; i < numvertexes; i++)
+				delete[] psamples_amb[i];
+
+			delete[] psamples_amb;
+		}
+
+		if(psamples_diff)
+		{
+			for(int i = 0; i < numvertexes; i++)
+				delete[] psamples_diff[i];
+
+			delete[] psamples_diff;
+		}
+
+		if(psamples_vecs)
+		{
+			for(int i = 0; i < numvertexes; i++)
+				delete[] psamples_vecs[i];
+
+			delete[] psamples_vecs;
+		}
+
+		if(pnumstyles)
+			delete[] pnumstyles;
+	}
+
+	entity_lightinginfo_t* plightinfo;
+	CVBMCache::vertexcache_t* pcache;
+	int firstvertexindex;
+	int numvertexes;
+	int* pnumstyles;
+
+	byte** pent_styles;
+	vec3_t **psamples_amb;
+	vec3_t **psamples_diff;
+	vec3_t **psamples_vecs;
+};
+
+vbaked_threadinfo_t* g_pBakedVertexThreadInfos = nullptr;
+int g_numBakedVertexThreadInfos = 0;
 
 // =====================================================================================
 //  PairEdges
@@ -302,37 +414,62 @@ void            PairEdges()
             }
         }
     }
-	if(!g_fastmode)
+
+	if(!g_fastmode && !g_no_global_smooth)
 	{
 		double start = I_FloatTime();
 		int paircount = 0;
 		Log("Pairing single edges across entities\n");
 		vec3_t e1_vertex1, e1_vertex2;
 		vec3_t e2_vertex1, e2_vertex2;
+
+		int lastprint = 0;
 		for(i = 0; i < g_numsurfedges; i++)
 		{
 			edgeshare_t* pedgeshare = &g_edgeshare[i];
+			if(pedgeshare->faces[0] && pedgeshare->faces[1])
+				continue;
+
 			if(!pedgeshare->faces[0] && !pedgeshare->faces[1]
 				|| pedgeshare->faces[0] && pedgeshare->faces[1])
 				continue;
 
 			dedge_t* pedge = &g_dedges[i];
-			VectorCopy(g_dvertexes[pedge->v[0]].point, e1_vertex1);
-			VectorCopy(g_dvertexes[pedge->v[1]].point, e1_vertex2);
 
-			for(j = 0; j < g_numsurfedges; j++)
+			int e1_v1 = pedge->v[0];
+			int e1_v2 = pedge->v[1];
+
+			assert(e1_v1 < g_numvertexes);
+			assert(e1_v1 >= 0);
+
+			assert(e1_v2 < g_numvertexes);
+			assert(e1_v2 >= 0);
+
+			VectorCopy(g_dvertexes[e1_v1].point, e1_vertex1);
+			VectorCopy(g_dvertexes[e1_v2].point, e1_vertex2);
+
+			for(j = i+1; j < g_numsurfedges; j++)
 			{
-				if(j == i)
+				edgeshare_t* pedgeshare_compare = &g_edgeshare[j];
+				if(pedgeshare_compare->faces[0] && pedgeshare_compare->faces[1])
 					continue;
 
-				edgeshare_t* pedgeshare_compare = &g_edgeshare[j];
 				if(!pedgeshare_compare->faces[0] && !pedgeshare_compare->faces[1]
 					|| pedgeshare_compare->faces[0] && pedgeshare_compare->faces[1])
 					continue;
 
 				dedge_t* pedge_compare = &g_dedges[j];
-				VectorCopy(g_dvertexes[pedge_compare->v[0]].point, e2_vertex1);
-				VectorCopy(g_dvertexes[pedge_compare->v[1]].point, e2_vertex2);
+				int e2_v1 = pedge_compare->v[0];
+				int e2_v2 = pedge_compare->v[1];
+
+				assert(e2_v1 < g_numvertexes);
+				assert(e2_v1 >= 0);
+
+				assert(e2_v2 < g_numvertexes);
+				assert(e2_v2 >= 0);
+
+				VectorCopy(g_dvertexes[e2_v1].point, e2_vertex1);
+				VectorCopy(g_dvertexes[e2_v2].point, e2_vertex2);
 
 				if(VectorCompare(e1_vertex1, e2_vertex1) && VectorCompare(e1_vertex2, e2_vertex2)
 					|| VectorCompare(e1_vertex2, e2_vertex1) && VectorCompare(e1_vertex1, e2_vertex2))
@@ -342,42 +479,51 @@ void            PairEdges()
 						if(pedgeshare_compare->faces[0])
 						{
 							pedgeshare->faces[0] = pedgeshare_compare->faces[0];
-							pedgeshare->separate[0] = true;
 
-							pedgeshare_compare->faces[1] = pedgeshare->faces[1];
-							pedgeshare_compare->separate[1] = true;
+							if(pedgeshare->faces[1])
+								pedgeshare_compare->faces[1] = pedgeshare->faces[1];
+
 						}
-						else
+						else if(pedgeshare_compare->faces[1])
 						{
 							pedgeshare->faces[0] = pedgeshare_compare->faces[1];
-							pedgeshare->separate[0] = true;
 
-							pedgeshare_compare->faces[0] = pedgeshare->faces[1];
-							pedgeshare_compare->separate[0] = true;
+							if(pedgeshare->faces[1])
+								pedgeshare_compare->faces[0] = pedgeshare->faces[1];
 						}
+
+						paircount++;
 					}
 					else
 					{
 						if(pedgeshare_compare->faces[0])
 						{
 							pedgeshare->faces[1] = pedgeshare_compare->faces[0];
-							pedgeshare->separate[1] = true;
 
-							pedgeshare_compare->faces[1] = pedgeshare->faces[0];
-							pedgeshare_compare->separate[1] = true;
+							if(pedgeshare->faces[0])
+								pedgeshare_compare->faces[1] = pedgeshare->faces[0];
 						}
-						else
+						else if(pedgeshare_compare->faces[1])
 						{
 							pedgeshare->faces[1] = pedgeshare_compare->faces[1];
-							pedgeshare->separate[1] = true;
 
-							pedgeshare_compare->faces[0] = pedgeshare->faces[0];
-							pedgeshare_compare->separate[0] = true;
+							if(pedgeshare->faces[0])
+								pedgeshare_compare->faces[0] = pedgeshare->faces[0];
 						}
+
+						paircount++;
 					}
 
-					paircount++;
+					// Stop pairing for outer edge
+					break;
 				}
+			}
+
+			int percentagecount = g_numsurfedges / 100;
+			if((i - lastprint) > percentagecount)
+			{
+				Log("Pairing %d%% done\r", (int)(((float)i / (float)g_numsurfedges) * 100));
+				lastprint = i;
 			}
 		}
 
@@ -1103,11 +1249,11 @@ void ChopFrag (samplefrag_t *frag)
 
 		if (es->faces[e->edgeside] - g_dfaces != frag->facenum)
 		{
-			if(!es->separate[e->edgeside])
-			{
+			//if(!es->separate[e->edgeside])
+			//{
 				// Ignore this for faces from separate entities
 				Error ("internal error 1 in GrowSingleSampleFrag");
-			}
+			//}
 		}
 
 		m = &es->textotex[e->edgeside];
@@ -1758,6 +1904,538 @@ static facelight_t facelight[MAX_MAP_FACES];
 static int      numdlights;
 
 extern hlrad_daystage_t g_daystage;
+
+static const int ENVMODEL_SF_NO_SHADOWS				= (1<<4);
+static const int ENVMODEL_RENDERFX_SCALED			= 117;
+static const int ENVMODEL_RENDERFX_SCALED_PORTAL	= 118;
+static const int ENVMODEL_RENDERFX_SCALED_SKY		= 72;
+
+extern vec_t GetBrightestSample( vec3_t& add, vec3_t& add_ambient, vec3_t& add_diffuse );
+extern void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, byte*& styles, vec3_t*& sample_ambient, vec3_t*& sample_diffuse, vec3_t*& sample_lightvectors, int& numstyles);
+
+// =====================================================================================
+//  LoadEntityVBMModels
+// =====================================================================================
+void            LoadEntityVBMModels()
+{
+	if(!strlen(g_modDir))
+	{
+		Warning("No mod folder specified, VBM models will not have shadows. Use '-moddir' to specify the mod directory.\n");
+		return;
+	}
+
+	// Set the mod directory
+	gVBMCache.SetModDirectoryPath(g_modDir);
+
+	// Go throuch each entity and load VBMs, set up BVHs
+    for (int i = 0; i < g_numentities; i++)
+	{
+        entity_t* pentity = &g_entities[i];
+        const char* pstrClassname = ValueForKey(pentity, "classname");
+		if(!pstrClassname)
+			continue;
+
+		// Ensure it's an env_model
+		if(strcmp(pstrClassname, "env_model") != 0)
+			continue;
+
+		// Fetch targetname. If it's there, we can't use this entity
+		const char* pstr = ValueForKey(pentity, "targetname");
+		if(pstr && strlen(pstr) > 0)
+			continue;
+
+		// Get model
+		pstr = ValueForKey(pentity, "model");
+		if(!pstr || strlen(pstr) <= 0)
+			continue;
+
+		const CVBMCache::vbmcache_t* pcache = gVBMCache.LoadModel(pstr);
+		if(!pcache)
+		{
+			const char* pstrorigin = ValueForKey(pentity, "origin");
+			Warning("Couldn't load model '%s' for entity at position '%s' with classname '%s'.\n", pstr, pstrorigin, pstrClassname);
+			pentity->extradataindex = -1;
+			continue;
+		}
+
+		// Now build the vertex cache, we'll need it for lighting
+		// Get values we'll need
+		int sequence = IntForKey(pentity, "sequence");
+		if(sequence && sequence > pcache->pstudiohdr->numseq)
+			sequence = 0;
+
+		vec3_t origin;
+		GetVectorForKey(pentity, "origin", origin);
+
+		vec3_t angles;
+		GetVectorForKey(pentity, "angles", angles);
+
+		float scale = 1.0;
+		int renderfx = IntForKey(pentity, "renderfx");
+		if(renderfx == ENVMODEL_RENDERFX_SCALED
+			|| renderfx == ENVMODEL_RENDERFX_SCALED_PORTAL
+			|| renderfx == ENVMODEL_RENDERFX_SCALED_SKY)
+			scale = FloatForKey(pentity, "scale");
+
+		// Call on the class to build the vertex cache
+		const CVBMCache::vertexcache_t* pvertexcache = gVBMCache.BuildVertexCache(pcache, origin, angles, sequence, scale);
+		if(!pvertexcache)
+			continue;
+
+		int body = IntForKey(pentity, "body");
+		int skin = IntForKey(pentity, "skin");
+
+		// Create entry for this entity
+		pentity->extradataindex = g_numEntityLightingInfos;
+		g_numEntityLightingInfos++;
+
+		entity_lightinginfo_t& lightingInfo = g_entityLightingInfos[pentity->extradataindex];
+		lightingInfo.entindex = i;
+		lightingInfo.vcacheindex = pvertexcache->index;
+		lightingInfo.modelindex = pcache->cacheindex;
+		lightingInfo.body = body;
+		lightingInfo.skin = skin;
+
+		VectorCopy(origin, lightingInfo.origin);
+		VectorCopy(angles, lightingInfo.angles);
+
+		for(int j = 0; j < 3; j++)
+		{
+			lightingInfo.mins[j] = MAX_FLOAT_VALUE;
+			lightingInfo.maxs[j] = -MAX_FLOAT_VALUE;
+		}
+
+		// Calculate vertex cache mins/maxs, cache vertexes
+		// will be in real space coords
+		for(int j = 0; j < pvertexcache->numvertexes; j++)
+		{
+			CVBMCache::cachevertex_t* pvertex = &pvertexcache->pvertexes[j];
+			for(int k = 0; k < 3; k++)
+			{
+				if(lightingInfo.mins[k] > pvertex->origin[k])
+					lightingInfo.mins[k] = pvertex->origin[k];
+
+				if(lightingInfo.maxs[k] < pvertex->origin[k])
+					lightingInfo.maxs[k] = pvertex->origin[k];
+			}
+		}
+
+		// Set up world to local matrix
+		vec3_t _angles;
+		VectorCopy(angles, _angles);
+		_angles[PITCH] = -angles[PITCH];
+
+		AngleMatrix(_angles, lightingInfo.worldlocalmatrix);
+		for(int j = 0; j < 3; j++)
+			lightingInfo.worldlocalmatrix[j][3] = origin[j];
+
+		// Check spawnflags for no shadowing flag, and if not present, create BVH
+		int spawnflags = IntForKey(pentity, "spawnflags");
+		if(!(spawnflags & ENVMODEL_SF_NO_SHADOWS))
+		{
+			CVBMBVH* pBVH = gVBMCache.BuildBVHForEntity(pcache, sequence, scale);
+			if(!pBVH)
+			{
+				Warning("Couldn't create BVH for entity with model '%s' at position '%.4f %.4f %.4f' with classname '%s'.\n", pcache->name.c_str(), origin[0], origin[1], origin[2], pstrClassname);
+				lightingInfo.bvhindex = -1;
+			}
+			else
+			{
+				// Transform BVH mins/maxs to entity space
+				TransformMinsMaxs(lightingInfo.worldlocalmatrix, pBVH->GetMins(), pBVH->GetMaxs(), lightingInfo.bvhmins, lightingInfo.bvhmaxs);
+				// Set the index of the BVH
+				lightingInfo.bvhindex = pBVH->GetCacheIndex();
+			}
+		}
+	}
+}
+
+// =====================================================================================
+//  CalcVertexLighting
+// =====================================================================================
+void CalcVertexLighting( int threadInfoIndex )
+{
+	vbaked_threadinfo_t& threadInfo = g_pBakedVertexThreadInfos[threadInfoIndex];
+	CVBMCache::vertexcache_t* pvertexcache = threadInfo.pcache;
+
+	// Calculate lighting for the vertexes
+	for(int i = 0; i < threadInfo.numvertexes; i++)
+	{
+		int vertexindex = threadInfo.firstvertexindex + i;
+		CVBMCache::cachevertex_t* pvertex = &pvertexcache->pvertexes[vertexindex];
+
+		dleaf_t* leaf = PointInLeaf(pvertex->origin);
+		byte pvs[(MAX_MAP_LEAFS + 7) / 8];
+		if (leaf->visofs != -1)
+			DecompressVis(&g_dvisdata[leaf->visofs], pvs, sizeof(pvs));
+		else
+			memset(pvs, 0xFF, sizeof(pvs));
+
+		GatherVertexLight(pvertex->origin, pvs, pvertex->normal, threadInfo.pent_styles[i], threadInfo.psamples_amb[i], threadInfo.psamples_diff[i], threadInfo.psamples_vecs[i], threadInfo.pnumstyles[i]);
+	}
+}
+
+// =====================================================================================
+//  BuildVertexLights
+// =====================================================================================
+void FinalizeVBMModelLighting( CVBMCache::vertexcache_t* pvertexcache, entity_lightinginfo_t& lightingInfo, byte* ent_styles )
+{
+	byte			v_styles[ALLSTYLES];
+	sample_t		*v_samples[ALLSTYLES];
+
+	memset(v_styles, 255, sizeof(v_styles));
+	v_styles[0] = 0;
+
+	// Allocate samples
+	for(int i = 0; i < ALLSTYLES; i++)
+	{
+		v_samples[i] = new sample_t[pvertexcache->numvertexes];
+		memset(v_samples[i], 0, sizeof(sample_t)*pvertexcache->numvertexes);
+	}
+
+	for(int i = 0; i < lightingInfo.numthreadinfos; i++)
+	{
+		int infoindex = lightingInfo.firsthreadinfoindex + i;
+		vbaked_threadinfo_t& threadInfo = g_pBakedVertexThreadInfos[infoindex];
+
+		for(int j = 0; j < threadInfo.numvertexes; j++)
+		{
+			int vertexindex = threadInfo.firstvertexindex + j;
+			CVBMCache::cachevertex_t& vertex = pvertexcache->pvertexes[vertexindex];
+
+			for (int style = 0; style < threadInfo.pnumstyles[j]; ++style)
+			{
+				vec3_t null;
+				VectorClear(null);
+
+				vec_t samplebrightness = GetBrightestSample(null, threadInfo.psamples_amb[j][style], threadInfo.psamples_diff[j][style]);
+				if (samplebrightness > g_corings[style] * 0.1)
+				{
+					int style_index;
+					int seekstyle = threadInfo.pent_styles[j][style];
+					for (style_index = 0; style_index < ALLSTYLES; style_index++)
+					{
+						if (v_styles[style_index] == seekstyle || v_styles[style_index] == 255)
+						{
+							break;
+						}
+					}
+
+					if (style_index == ALLSTYLES) // shouldn't happen
+					{
+						if (++stylewarningcount >= stylewarningnext)
+						{
+							stylewarningnext = stylewarningcount * 2;
+							Warning("Too many direct light styles on an entity(%f,%f,%f)", vertex.origin[0], vertex.origin[1], vertex.origin[2]);
+							Warning(" total %d warnings for too many styles", stylewarningcount);
+						}
+						return;
+					}
+
+					if (v_styles[style_index] == 255)
+						v_styles[style_index] = seekstyle;
+
+					VectorCopy(threadInfo.psamples_amb[j][style], v_samples[style_index][vertexindex].light_ambient);
+					VectorCopy(threadInfo.psamples_diff[j][style], v_samples[style_index][vertexindex].light_diffuse);
+					VectorCopy(threadInfo.psamples_vecs[j][style], v_samples[style_index][vertexindex].light_vector);
+				}
+			}
+		}
+	}
+
+	// Determine lightstyles
+	vec_t maxlights[ALLSTYLES];
+	for (int j = 0; j < ALLSTYLES && v_styles[j] != 255; j++)
+	{
+		maxlights[j] = 0;
+		for (int i = 0; i < pvertexcache->numvertexes; i++)
+		{
+			vec_t b = GetBrightestSample(v_samples[j][i].light, v_samples[j][i].light_ambient, v_samples[j][i].light_diffuse);
+			maxlights[j] = qmax(maxlights[j], b);
+		}
+
+		if (maxlights[j] <= g_corings[v_styles[j]] * 0.1) // light is too dim, discard this style to reduce RAM usage
+			maxlights[j] = 0;
+	}
+
+	for (int k = 0; k < MAXLIGHTMAPS; k++)
+	{
+		int bestindex = -1;
+		if (k == 0)
+		{
+			bestindex = 0;
+		}
+		else
+		{
+			vec_t bestmaxlight = 0;
+			for (int j = 1; j < ALLSTYLES && v_styles[j] != 255; j++)
+			{
+				if (maxlights[j] > bestmaxlight + NORMAL_EPSILON)
+				{
+					bestmaxlight = maxlights[j];
+					bestindex = j;
+				}
+			}
+		}
+
+		if (bestindex != -1)
+		{
+			maxlights[bestindex] = 0;
+			ent_styles[k] = v_styles[bestindex];
+
+			for(int i = 0; i < pvertexcache->numvertexes; i++)
+			{
+				VectorCopy(v_samples[bestindex][i].light_ambient, lightingInfo.plightdata[k][VERTEX_LIGHTING_AMBIENT][i]);
+				VectorCopy(v_samples[bestindex][i].light_diffuse, lightingInfo.plightdata[k][VERTEX_LIGHTING_DIFFUSE][i]);
+				VectorCopy(v_samples[bestindex][i].light_vector, lightingInfo.plightdata[k][VERTEX_LIGHTING_VECTORS][i]);
+			}
+		}
+		else
+		{
+			ent_styles[k] = 255;
+		}
+	}
+
+	// Release data we allocated
+	for(int i = 0; i < ALLSTYLES; i++)
+		delete[] v_samples[i];
+}
+
+// =====================================================================================
+//  BuildVertexLights
+// =====================================================================================
+void BuildVertexLights()
+{
+	// Calculate required data and it's total amount
+	g_numBakedVertexThreadInfos = 0;
+	for (int i = 0; i < g_numEntityLightingInfos; i++)
+	{
+		entity_lightinginfo_t& lightingInfo = g_entityLightingInfos[i];
+		if(lightingInfo.vcacheindex == -1)
+			continue;
+
+		CVBMCache::vertexcache_t* pvertexcache = gVBMCache.GetVertexCacheByIndex(lightingInfo.vcacheindex);
+		if(!pvertexcache)
+			continue;
+
+		int numthreadinfos = ceil(static_cast<Float>(pvertexcache->numvertexes) / static_cast<Float>(MAX_THREAD_VERTEXES));
+		g_numBakedVertexThreadInfos += numthreadinfos;
+	}
+
+	if(!g_numBakedVertexThreadInfos)
+		return;
+
+	// Allocate info array
+	g_pBakedVertexThreadInfos = new vbaked_threadinfo_t[g_numBakedVertexThreadInfos];
+
+	int infoIndex = 0;
+	for (int i = 0; i < g_numEntityLightingInfos; i++)
+	{
+		entity_lightinginfo_t& lightingInfo = g_entityLightingInfos[i];
+		if(lightingInfo.vcacheindex == -1)
+			continue;
+
+		CVBMCache::vertexcache_t* pvertexcache = gVBMCache.GetVertexCacheByIndex(lightingInfo.vcacheindex);
+		if(!pvertexcache)
+			continue;
+
+		lightingInfo.firsthreadinfoindex = infoIndex;
+
+		int offset = 0;
+		lightingInfo.numthreadinfos = ceil(static_cast<Float>(pvertexcache->numvertexes) / static_cast<Float>(MAX_THREAD_VERTEXES));
+		for(int j = 0; j < lightingInfo.numthreadinfos; j++)
+		{
+			vbaked_threadinfo_t& threadInfo = g_pBakedVertexThreadInfos[infoIndex];
+			CVBMCache::cachevertex_t* pvertex = &pvertexcache->pvertexes[j];
+			threadInfo.firstvertexindex = offset;
+
+			offset += MAX_THREAD_VERTEXES;
+			if(offset > pvertexcache->numvertexes)
+				offset = pvertexcache->numvertexes;
+
+			int vertexcount = offset - threadInfo.firstvertexindex;
+			threadInfo.setvertexcount(vertexcount);
+
+			threadInfo.plightinfo = &lightingInfo;
+			threadInfo.pcache = pvertexcache;
+			infoIndex++;		
+		}
+
+	}
+
+	// generate a position map for each face
+	NamedRunThreadsOnIndividual(g_numBakedVertexThreadInfos, g_estimate, CalcVertexLighting);
+
+	// Size of vertex lighting buffer
+	int vertexbuffersize = 0;
+	// Calculate required data and it's total amount. We need to do this separately because
+	// we need the final number of styles after we're done calculating lighting and styles
+	for (int i = 0; i < g_numEntityLightingInfos; i++)
+	{
+		entity_lightinginfo_t& lightingInfo = g_entityLightingInfos[i];
+		if(lightingInfo.vcacheindex == -1)
+			continue;
+
+		CVBMCache::vertexcache_t* pvertexcache = gVBMCache.GetVertexCacheByIndex(lightingInfo.vcacheindex);
+		if(!pvertexcache)
+			continue;
+
+		const CVBMCache::vbmcache_t* pvbmcache = gVBMCache.GetVBMCacheByIndex(lightingInfo.modelindex);
+		if(!pvbmcache)
+			continue;
+
+		for(int j = 0; j < MAXLIGHTMAPS; j++)
+		{
+			for(int k = 0; k < NB_BAKED_VERTEXLIGHT_LAYERS; k++)
+			{
+				lightingInfo.plightdata[j][k] = new vec3_t[pvertexcache->numvertexes];
+				memset(lightingInfo.plightdata[j][k], 0, sizeof(vec3_t)*pvertexcache->numvertexes);
+			}
+
+			lightingInfo.styles[j] = 255;
+		}
+
+		// Always mark as 0
+		lightingInfo.styles[0] = 0;
+
+		FinalizeVBMModelLighting(pvertexcache, lightingInfo, lightingInfo.styles);
+
+		int stylecount = 1;
+		for(int j = 1; j < MAXLIGHTMAPS; j++)
+		{
+			if(lightingInfo.styles[j] != 255)
+				stylecount++;
+		}
+
+		lightingInfo.bufferoffset = vertexbuffersize;
+		vertexbuffersize += sizeof(byte) * 3 * pvertexcache->numvertexes * stylecount;
+
+		// Set keyvalues in entity
+		entity_t* pentity = &g_entities[lightingInfo.entindex];
+
+		// Set offset into lighting data
+		char szString[256];
+		sprintf(szString, "%d", lightingInfo.bufferoffset);
+		SetKeyValue(pentity, "vlight_offset", szString);
+
+		// Set vertex hash value
+		const vbmvertex_t* pvertexdata = pvbmcache->pvbmheader->getVertexes();
+		int vertexdatasize = sizeof(vbmvertex_t)*pvbmcache->pvbmheader->numverts;
+		CMD5 vertexHash(reinterpret_cast<const byte*>(pvertexdata), vertexdatasize);
+		std::string finalHash = vertexHash.HexDigest();
+		SetKeyValue(pentity, "vlight_hash", finalHash.c_str());
+
+		// Set vertex count
+		sprintf(szString, "%d", pvertexcache->numvertexes);
+		SetKeyValue(pentity, "vlight_vertexcount", szString);
+
+		// Set styles
+		sprintf(szString, "%d;%d;%d;%d", lightingInfo.styles[0], lightingInfo.styles[1], lightingInfo.styles[2], lightingInfo.styles[3]);
+		SetKeyValue(pentity, "vlight_styles", szString);
+	}
+
+	if(g_pBakedVertexThreadInfos)
+		delete[] g_pBakedVertexThreadInfos;
+
+	if(!vertexbuffersize)
+		return;
+
+	// Create vertex lighting buffers
+	g_dvertexlightdatasize = vertexbuffersize * sizeof(byte) * 3;
+
+	// Set up ambient
+	g_dvertexlightdata_ambient = new byte[g_dvertexlightdatasize];
+	g_dvertexlightdata_ambient_compression = 0;
+	g_dvertexlightdata_ambient_compression_level = 0;
+	g_dvertexlightdata_ambient_checksum = 0;
+	g_dvertexlightdatasize_ambient_actual = 0;
+
+	// Set up diffuse
+	g_dvertexlightdata_diffuse = new byte[g_dvertexlightdatasize];
+	g_dvertexlightdata_diffuse_compression = 0;
+	g_dvertexlightdata_diffuse_compression_level = 0;
+	g_dvertexlightdata_diffuse_checksum = 0;
+	g_dvertexlightdatasize_diffuse_actual = 0;
+
+	// Set up vectors
+	g_dvertexlightdata_vectors = new byte[g_dvertexlightdatasize];
+	g_dvertexlightdata_vectors_compression = 0;
+	g_dvertexlightdata_vectors_compression_level = 0;
+	g_dvertexlightdata_vectors_checksum = 0;
+	g_dvertexlightdatasize_vectors_actual = 0;
+
+	for (int i = 0; i < g_numEntityLightingInfos; i++)
+	{
+		entity_lightinginfo_t& lightingInfo = g_entityLightingInfos[i];
+		if(lightingInfo.bufferoffset == -1)
+			continue;
+
+		CVBMCache::vertexcache_t* pvertexcache = gVBMCache.GetVertexCacheByIndex(lightingInfo.vcacheindex);
+		if(!pvertexcache)
+			continue;
+
+		// Finalize data
+		int styleoffset = 0;
+		for(int j = 0; j < MAXLIGHTMAPS; j++)
+		{
+			if(lightingInfo.styles[j] == 255)
+				continue;
+
+			int current_offset = lightingInfo.bufferoffset + (styleoffset * pvertexcache->numvertexes * 3);
+
+			for (int k = 0; k < pvertexcache->numvertexes; k++)
+			{
+				for (int l = 0; l < 3; l++)
+				{
+					// Multiply ambient color by lightscale
+					float amb = lightingInfo.plightdata[j][VERTEX_LIGHTING_AMBIENT][k][l];
+					amb *= g_colour_lightscale[l];
+					if (amb < g_minlight)
+						amb = g_minlight;
+
+					// Apply color gamma to diffuse layer
+					if (g_colour_qgamma[l] != 1.0)
+						amb = (float)pow(amb / 256.0f, g_colour_qgamma[l]) * 256.0f;
+
+					int iamb = amb;
+					if(iamb < 0)
+						iamb = 0;
+					else if(iamb > 255)
+						iamb = 255;
+
+					// Multibly diffuse light by color lightscale
+					float diff = lightingInfo.plightdata[j][VERTEX_LIGHTING_DIFFUSE][k][l];
+					diff *= g_colour_lightscale[l];
+					if (diff < g_minlight)
+						diff = g_minlight;
+
+					// Apply color gamma to diffuse layer
+					if (g_colour_qgamma[l] != 1.0)
+						diff = (float)pow(diff / 256.0f, g_colour_qgamma[l]) * 256.0f;
+
+					int idiff = diff;
+					if(idiff < 0)
+						idiff = 0;
+					else if(idiff > 255)
+						idiff = 255;
+
+					float vec = lightingInfo.plightdata[j][VERTEX_LIGHTING_VECTORS][k][l];
+					int ivec = (vec + 1.0f) * 127.5f;
+					if(ivec < 0)
+						ivec = 0;
+					else if(ivec > 255)
+						ivec = 255;
+
+					g_dvertexlightdata_ambient[current_offset + (k * 3) + l] = iamb;
+					g_dvertexlightdata_diffuse[current_offset + (k * 3) + l] = idiff;
+					g_dvertexlightdata_vectors[current_offset + (k * 3) + l] = ivec;
+				}
+			}
+
+			styleoffset++;
+		}
+	}
+}
 
 // =====================================================================================
 //  CreateDirectLights
@@ -2708,7 +3386,7 @@ void BuildDiffuseNormals ()
 	free (triangles);
 }
 
-static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec3_t normal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass)
+static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec3_t normal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass, bool createbumpmapdata)
 {
 	vec3_t			add_one_ambient, add_one_diffuse;
 	vec3_t          delta, delta_bump;
@@ -2800,7 +3478,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 					VectorAdd(padds[style], add_one, padds[style]);
 				}
 
-				if (g_bumpmaps)
+				if (createbumpmapdata)
 				{
 					// Inverse the light for the sun and copy it
 					VectorCopy(delta, delta_bump);
@@ -2875,13 +3553,15 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 
 				vec3_t transparency;
 				int opaquestyle;
-				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle))
+				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle, true))
 					continue;
 
 				vec_t factor = qmin (qmax (0.0, (1 - DotProduct (l->normal, skynormals[j])) / 2), 1.0); // how far this piece of sky has deviated from the sun
 				VectorScale (l->diffuse_intensity, 1 - factor, sky_intensity);
 				VectorMA (sky_intensity, factor, l->diffuse_intensity2, sky_intensity);
 				VectorScale (sky_intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity);
+				
+				float dot_bump = 1.0;
 				vec3_t add_one;
 				if (lighting_diversify)
 					dot = lighting_scale * pow (dot, lighting_power);
@@ -2903,7 +3583,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 					// Contribute to default lightmap
 					VectorAdd(padds[style], add_one, padds[style]);
 				}
-				else if(g_bumpmaps)
+				else
 				{
 					// Contribute to ambient only
 					VectorAdd(padds_ambient[style], add_one, padds_ambient[style]);
@@ -3153,7 +3833,7 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 			VectorAdd(padds[style], add, padds[style]);
 
 		// Special calculations
-		if (g_bumpmaps)
+		if (createbumpmapdata)
 		{
 			// Normalize the light direction
 			VectorCopy(delta, delta_bump);
@@ -3163,7 +3843,12 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 			{
 				// Contribution comes from correlation between
 				// the gathered light vector and the light direction
-				float dotn = pow(qmax(0, DotProduct(pdirections[style], delta_bump)), 16) * normalfactor;
+				vec3_t dir_norm;
+				VectorCopy(pdirections[style], dir_norm);
+				VectorNormalize(dir_norm);
+
+				float dotn = qmax(0, DotProduct(pdirections[style], delta_bump));
+				dotn = pow(dotn, 16) * normalfactor;
 				ratio_bump = qmax(0, ratio_bump);
 
 				// Calculate the lighting for ambient and diffuse
@@ -3192,17 +3877,13 @@ static void     AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos
 vec_t GetBrightestSample( vec3_t& add, vec3_t& add_ambient, vec3_t& add_diffuse )
 {
 	vec_t sampleadd = VectorMaximum(add);
+	vec_t sampleadd_ambient = VectorMaximum(add_ambient);
+	vec_t sampleadd_diffuse = VectorMaximum(add_diffuse);
 
-	if(g_bumpmaps)
-	{
-		vec_t sampleadd_ambient = VectorMaximum(add_ambient);
-		vec_t sampleadd_diffuse = VectorMaximum(add_diffuse);
-
-		if(sampleadd_diffuse > sampleadd_ambient && sampleadd_diffuse > sampleadd)
-			return sampleadd_diffuse;
-		else if(sampleadd_ambient > sampleadd)
-			return sampleadd_ambient;
-	}
+	if(sampleadd_diffuse > sampleadd_ambient && sampleadd_diffuse > sampleadd)
+		return sampleadd_diffuse;
+	else if(sampleadd_ambient > sampleadd)
+		return sampleadd_ambient;
 
 	return sampleadd;
 }
@@ -3211,7 +3892,7 @@ unsigned char GetBrightestSample( unsigned char* add, unsigned char* add_ambient
 {
 	unsigned char sampleadd = VectorMaximum(add);
 
-	if(g_bumpmaps && add_ambient && add_diffuse)
+	if(add_ambient && add_diffuse)
 	{
 		unsigned char sampleadd_ambient = VectorMaximum(add_ambient);
 		unsigned char sampleadd_diffuse = VectorMaximum(add_diffuse);
@@ -3289,7 +3970,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				for (; l; l = l->next)
 				{
 					// Add in this light
-					AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, false);
+					AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, false, g_bumpmaps);
 				}
 			}
 		}
@@ -3312,7 +3993,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
 				{
 					for (; l; l = l->next)
-						AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, true);
+						AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, true, g_bumpmaps);
 				}
 			}
 		}
@@ -3373,132 +4054,184 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 }
 
 // Used for baked model lightng
-void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample, vec3_t* sample_ambient, vec3_t* sample_diffuse, vec3_t* sample_lightvectors)
+void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, byte*& styles, vec3_t*& sample_ambient, vec3_t*& sample_diffuse, vec3_t*& sample_lightvectors, int& numstyles)
 {
 	int i;
-	vec3_t v_nudged;
+	byte add_styles[ALLSTYLES];
 	vec3_t adds[ALLSTYLES];
 	vec3_t adds_ambient[ALLSTYLES];
 	vec3_t adds_diffuse[ALLSTYLES];
 	vec3_t directions[ALLSTYLES];
-	byte styles[ALLSTYLES];
 
 	memset(adds, 0, sizeof(adds));
 	memset(adds_ambient, 0, sizeof(adds_ambient));
 	memset(adds_diffuse, 0, sizeof(adds_diffuse));
 	memset(directions, 0, sizeof(directions));
-	memset(styles, 255, sizeof(styles));
-	styles[0] = 0;
+	memset(add_styles, 0, sizeof(add_styles));
+	add_styles[0] = 0;
 
-	VectorMA(pos, 0.1f, normal, v_nudged);
-
-	// Direct lighting seems to cause selfshadow artifacts, disable for now
-	bool directlight = 0;
-
-	if(directlight)
+	for (int step = 0; step < 1; step++)
 	{
-		for (int step = 0; step < 1; step++)
+		for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
 		{
-			for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
-			{
-				directlight_t* l = directlights[i];
-				if (!l)
-					continue;
+			directlight_t* l = directlights[i];
+			if (!l)
+				continue;
 
-				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
+			if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
+			{
+				for (; l; l = l->next)
 				{
-					for (; l; l = l->next)
-					{
-						AddLight(l, directions, v_nudged, pvs, normal, 1.0, styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false);
-					}
+					AddLight(l, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false, true);
 				}
 			}
 		}
+	}
 
-		if (g_bumpmaps)
+	for (i = 0; i < ALLSTYLES; i++)
+		VectorNormalize(directions[i]);
+
+	for (int step = 0; step < 1; step++)
+	{
+		for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
 		{
-			for (i = 0; i < ALLSTYLES; i++)
-				VectorNormalize(directions[i]);
-
-			for (int step = 0; step < 1; step++)
+			directlight_t* l = directlights[i];
+			if (l && (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
 			{
-				for (i = 0; i < 1 + g_dmodels[0].visleafs; i++)
-				{
-					directlight_t* l = directlights[i];
-					if (l && (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
-					{
-						for (; l; l = l->next)
-							AddLight(l, directions, pos, pvs, normal, 1.0, styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true);
-					}
-				}
+				for (; l; l = l->next)
+					AddLight(l, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true, true);
 			}
 		}
 	}
 
 	// Bounced lighting
-	if (g_numbounce > 0)
+	for (i = 0; i < (int)g_num_patches; i++)
 	{
-		for (i = 0; i < (int)g_num_patches; i++)
+		patch_t* p = &g_patches[i];
+		if (p->leafnum != 0 && !(pvs[(p->leafnum - 1) >> 3] & (1 << ((p->leafnum - 1) & 7))))
+			continue;
+
+		vec3_t v_delta;
+		VectorSubtract(p->origin, pos, v_delta);
+		float d2 = DotProduct(v_delta, v_delta);
+		float d = sqrt(d2);
+		if (d < 1.0f)
+			d = 1.0f;
+
+		float dot_rec = DotProduct(v_delta, normal) / d;
+		if(dot_rec < 0)
+			continue;
+
+		float dot_em = -DotProduct(v_delta, getPlaneFromFaceNumber(p->faceNumber)->normal) / d;
+		if(dot_em < 0)
+			continue;
+
+		float scale = (dot_rec * dot_em * p->area) / (Q_PI * d2 + p->area);
+		if(scale <= 0)
+			continue;
+
+		if (TestLine(pos, p->origin) != CONTENTS_EMPTY)
+			continue;
+
+		vec3_t transparency;
+		int opaquestyle;
+		if (TestSegmentAgainstOpaqueList(pos, p->origin, transparency, opaquestyle, true))
+			continue;
+
+		vec3_t patch_dir;
+		VectorScale(v_delta, 1.0f / d, patch_dir);
+
+		for (int j = 0; j < MAXLIGHTMAPS && p->totalstyle[j] != 255; j++)
 		{
-			patch_t* p = &g_patches[i];
-			if (p->leafnum != 0 && !(pvs[(p->leafnum - 1) >> 3] & (1 << ((p->leafnum - 1) & 7))))
-				continue;
-
-			vec3_t v_delta;
-			VectorSubtract(p->origin, v_nudged, v_delta);
-			float d2 = DotProduct(v_delta, v_delta);
-			float d = sqrt(d2);
-			if (d < 1.0f)
-				d = 1.0f;
-
-			float dot_rec = DotProduct(v_delta, normal) / d;
-			float dot_em = -DotProduct(v_delta, getPlaneFromFaceNumber(p->faceNumber)->normal) / d;
-
-			if (TestLine(v_nudged, p->origin) != CONTENTS_EMPTY)
-				continue;
-
-			float scale = (dot_rec * dot_em * p->area) / (Q_PI * d2 + p->area);
-
-			vec3_t patch_dir;
-			VectorScale(v_delta, 1.0f / d, patch_dir);
-
-			for (int s = 0; s < MAXLIGHTMAPS && p->totalstyle[s] != 255; s++)
+			int bouncestyle = p->totalstyle[j];
+			if (opaquestyle != -1)
 			{
-				int style = p->totalstyle[s];
-				VectorMA(adds[style], scale, p->totallight[s], adds[style]);
+				if (bouncestyle == 0 || bouncestyle == opaquestyle)
+					bouncestyle = opaquestyle;
+				else
+					continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
+			}
+			
+			vec3_t patch_add;
+			VectorMA(adds_ambient[bouncestyle], scale, p->totallight[j], patch_add);
+			VectorMultiply(patch_add, transparency, adds_ambient[bouncestyle]);
+		}
+	}
 
-				if (g_bumpmaps)
+	// Clear this out
+	memset(adds, 0, sizeof(adds));
+
+	for (int style = 0; style < ALLSTYLES; ++style)
+	{
+		vec_t samplebrightness = GetBrightestSample(adds[style], adds_ambient[style], adds_diffuse[style]);
+		if (samplebrightness > g_corings[style] * 0.1)
+		{
+			int style_index;
+			for (style_index = 0; style_index < numstyles; style_index++)
+			{
+				if (styles[style_index] == style)
+					break;
+			}
+
+			if (style_index == ALLSTYLES) // shouldn't happen
+			{
+				if (++stylewarningcount >= stylewarningnext)
 				{
-					VectorMA(adds_ambient[style], scale, p->totallight[s], adds_ambient[style]);
-
-					float weight = scale * (p->totallight[s][0] + p->totallight[s][1] + p->totallight[s][2]);
-					VectorMA(directions[style], weight, patch_dir, directions[style]);
+					stylewarningnext = stylewarningcount * 2;
+					Warning("Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2]);
+					Warning(" total %d warnings for too many styles", stylewarningcount);
 				}
+				return;
+			}
+			else if(style_index == numstyles)
+			{
+				int newcount = numstyles + 1;
+
+				vec3_t* pnew = new vec3_t[newcount];
+				memcpy(pnew, sample_lightvectors, sizeof(vec3_t)*numstyles);
+				memset(pnew[style_index], 0, sizeof(vec3_t));
+				delete[] sample_lightvectors;
+				sample_lightvectors = pnew;
+
+				pnew = new vec3_t[newcount];
+				memcpy(pnew, sample_diffuse, sizeof(vec3_t)*numstyles);
+				memset(pnew[style_index], 0, sizeof(vec3_t));
+				delete[] sample_diffuse;
+				sample_diffuse = pnew;
+
+				pnew = new vec3_t[newcount];
+				memcpy(pnew, sample_ambient, sizeof(vec3_t)*numstyles);
+				memset(pnew[style_index], 0, sizeof(vec3_t));
+				delete[] sample_ambient;
+				sample_ambient = pnew;
+
+				byte* pnewstyles = new byte[newcount];
+				memcpy(pnewstyles, styles, sizeof(byte)*numstyles);
+				pnewstyles[style_index] = style;
+				delete[] styles;
+				styles = pnewstyles;
+
+				numstyles = newcount;
+			}
+
+			// Add the bump maps components as well
+			VectorCopy(directions[style], sample_lightvectors[style_index]);
+			VectorAdd(sample_diffuse[style_index], adds_diffuse[style], sample_diffuse[style_index]);
+			VectorAdd(sample_ambient[style_index], adds_ambient[style], sample_ambient[style_index]);
+		}
+		else
+		{
+			if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+			{
+				ThreadLock();
+				if (VectorMaximum(adds[style]) > g_maxdiscardedlight + NORMAL_EPSILON)
+				{
+					g_maxdiscardedlight = VectorMaximum(adds[style]);
+					VectorCopy(pos, g_maxdiscardedpos);
+				}
+				ThreadUnlock();
 			}
 		}
-	}
-
-	for (int c = 0; c < 3; c++)
-	{
-		adds[0][c] *= g_direct_scale;
-		adds[0][c] *= g_colour_lightscale[c];
-
-		if (g_colour_qgamma[c] != 1.0f)
-		{
-			adds[0][c] = pow(adds[0][c] / 256.0f, g_colour_qgamma[c]) * 256.0f;
-		}
-
-		if (adds[0][c] < g_minlight)
-			adds[0][c] = g_minlight;
-	}
-
-	VectorCopy(adds[0], sample[0]);
-
-	if (g_bumpmaps && sample_ambient && sample_diffuse && sample_lightvectors)
-	{
-		VectorCopy(adds_ambient[0], sample_ambient[0]);
-		VectorCopy(adds_diffuse[0], sample_diffuse[0]);
-		VectorCopy(directions[0], sample_lightvectors[0]);
 	}
 }
 
@@ -5707,9 +6440,9 @@ void            FinalLightFace(const int facenum)
 					}
 					else
 					{
-						tmp[0] = 0;
-						tmp[1] = 0;
-						tmp[2] = 0.5;
+						tmp[0] = 0.5;
+						tmp[1] = 0.5;
+						tmp[2] = 1.0;
 					}
 
 					// Make sure the vector is normalized
@@ -5795,8 +6528,10 @@ void            FinalLightFace(const int facenum)
 						}
 					}
 					for (i = 0; i < 3; ++i)
+					{
 						if (lb[i] < g_minlight)
 							lb[i] = g_minlight;
+					}
 					// ------------------------------------------------------------------------
 					for (i = 0; i < 3; ++i)
 					{
@@ -5922,11 +6657,21 @@ bool ExportALDData(ald_datatype_t type)
 	}
 
 	// Check the light data size in the original
-	if(poriginal && poriginal->lightdatasize != g_lightdatasize)
+	if(poriginal)
 	{
-		Error("Error: Destination ALD file '%s' has an inconsistent light data size(%d bytes) compared to current output(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\nOriginal file was deleted.\n", szpath, poriginal->lightdatasize, g_lightdatasize);
-		delete[] (byte*)poriginal;
-		poriginal = nullptr;
+		if(poriginal->lightdatasize != g_lightdatasize)
+		{
+			Error("Error: Destination ALD file '%s' has an inconsistent light data size(%d bytes) compared to current output(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\nOriginal file was deleted.\n", szpath, poriginal->lightdatasize, g_lightdatasize);
+			delete[] (byte*)poriginal;
+			poriginal = nullptr;
+		}
+
+		if(poriginal->vertexlightdatasize != g_dvertexlightdatasize)
+		{
+			Error("Error: Destination ALD file '%s' has an inconsistent baked vertex light data size(%d bytes) compared to current output(%d bytes).\nDid you forget to specify '-noreduce' to disable lightmap reduction?\nOriginal file was deleted.\n", szpath, poriginal->vertexlightdatasize, g_dvertexlightdatasize);
+			delete[] (byte*)poriginal;
+			poriginal = nullptr;
+		}
 	}
 
 	int compressionlevel;
@@ -5980,10 +6725,20 @@ bool ExportALDData(ald_datatype_t type)
 
 				for(int j = 0; j < NB_LIGHTMAP_LAYERS; j++)
 				{
-					if(plump->layeroffsets[j] != 0)
+					if(plump->lmaplayeroffsets[j] != 0)
 					{
 						// Add layer and it's data to the total size
-						aldlayer_t* player = (aldlayer_t*)((byte*)poriginal + plump->layeroffsets[j]);
+						aldlayer_t* player = (aldlayer_t*)((byte*)poriginal + plump->lmaplayeroffsets[j]);
+						totalsize += sizeof(aldlayer_t) + player->datasize;
+					}
+				}
+
+				for(int j = 0; j < NB_BAKED_VERTEXLIGHT_LAYERS; j++)
+				{
+					if(plump->vertexlightlayeroffsets[j] != 0)
+					{
+						// Add layer and it's data to the total size
+						aldlayer_t* player = (aldlayer_t*)((byte*)poriginal + plump->vertexlightlayeroffsets[j]);
 						totalsize += sizeof(aldlayer_t) + player->datasize;
 					}
 				}
@@ -5994,35 +6749,35 @@ bool ExportALDData(ald_datatype_t type)
 	}
 
 	// These hold the compressed data
-	byte *pdatasources[NB_SURF_LIGHTMAP_LAYERS];
-	int datasizes_noncompressed[NB_SURF_LIGHTMAP_LAYERS];
-	int datasizes_compressed[NB_SURF_LIGHTMAP_LAYERS];
+	byte *plmapdatasources[NB_SURF_LIGHTMAP_LAYERS];
+	int lmap_datasizes_noncompressed[NB_SURF_LIGHTMAP_LAYERS];
+	int lmap_datasizes_compressed[NB_SURF_LIGHTMAP_LAYERS];
 
 	// Add our current one
-	pdatasources[SURF_LIGHTMAP_DEFAULT] = g_dlightdata;
-	datasizes_noncompressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize;
-	datasizes_compressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize_actual;
+	plmapdatasources[SURF_LIGHTMAP_DEFAULT] = g_dlightdata;
+	lmap_datasizes_noncompressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize;
+	lmap_datasizes_compressed[SURF_LIGHTMAP_DEFAULT] = g_lightdatasize_actual;
 	totalsize += sizeof(aldlump_t) + sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_actual;
 
 	int layernumber;
 	if(g_bumpmaps)
 	{
 		// Add ambient
-		pdatasources[SURF_LIGHTMAP_AMBIENT] = g_dlightdata_ambient;
-		datasizes_noncompressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize;
-		datasizes_compressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize_ambient_actual;
+		plmapdatasources[SURF_LIGHTMAP_AMBIENT] = g_dlightdata_ambient;
+		lmap_datasizes_noncompressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize;
+		lmap_datasizes_compressed[SURF_LIGHTMAP_AMBIENT] = g_lightdatasize_ambient_actual;
 		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_ambient_actual);
 
 		// Add diffuse
-		pdatasources[SURF_LIGHTMAP_DIFFUSE] = g_dlightdata_diffuse;
-		datasizes_noncompressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize;
-		datasizes_compressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize_diffuse_actual;
+		plmapdatasources[SURF_LIGHTMAP_DIFFUSE] = g_dlightdata_diffuse;
+		lmap_datasizes_noncompressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize;
+		lmap_datasizes_compressed[SURF_LIGHTMAP_DIFFUSE] = g_lightdatasize_diffuse_actual;
 		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_diffuse_actual);
 
 		// Add vectors
-		pdatasources[SURF_LIGHTMAP_VECTORS] = g_dlightdata_vectors;
-		datasizes_noncompressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize;
-		datasizes_compressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize_vectors_actual;
+		plmapdatasources[SURF_LIGHTMAP_VECTORS] = g_dlightdata_vectors;
+		lmap_datasizes_noncompressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize;
+		lmap_datasizes_compressed[SURF_LIGHTMAP_VECTORS] = g_lightdatasize_vectors_actual;
 		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_lightdatasize_vectors_actual);
 
 		// Set layer nb
@@ -6032,6 +6787,32 @@ bool ExportALDData(ald_datatype_t type)
 	{
 		// No additional layers
 		layernumber = 1;
+	}
+
+	// Collect vertex lighting layers
+	byte *pvlightdatasources[NB_BAKED_VERTEXLIGHT_LAYERS];
+	int vlight_datasizes_noncompressed[NB_BAKED_VERTEXLIGHT_LAYERS];
+	int vlight_datasizes_compressed[NB_BAKED_VERTEXLIGHT_LAYERS];
+
+	if(g_dvertexlightdatasize > 0)
+	{
+		// Add ambient vertex lighting
+		pvlightdatasources[VERTEX_LIGHTING_AMBIENT] = g_dvertexlightdata_ambient;
+		vlight_datasizes_noncompressed[VERTEX_LIGHTING_AMBIENT] = g_dvertexlightdatasize;
+		vlight_datasizes_compressed[VERTEX_LIGHTING_AMBIENT] = g_dvertexlightdatasize_ambient_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_dvertexlightdatasize_ambient_actual);
+
+		// Add diffuse vertex lighting
+		pvlightdatasources[VERTEX_LIGHTING_DIFFUSE] = g_dvertexlightdata_diffuse;
+		vlight_datasizes_noncompressed[VERTEX_LIGHTING_DIFFUSE] = g_dvertexlightdatasize;
+		vlight_datasizes_compressed[VERTEX_LIGHTING_DIFFUSE] = g_dvertexlightdatasize_diffuse_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_dvertexlightdatasize_diffuse_actual);
+
+		// Add vectors vertex lighting
+		pvlightdatasources[VERTEX_LIGHTING_VECTORS] = g_dvertexlightdata_vectors;
+		vlight_datasizes_noncompressed[VERTEX_LIGHTING_VECTORS] = g_dvertexlightdatasize;
+		vlight_datasizes_compressed[VERTEX_LIGHTING_VECTORS] = g_dvertexlightdatasize_vectors_actual;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * g_dvertexlightdatasize_vectors_actual);
 	}
 
 	newnumlumps++;
@@ -6048,6 +6829,7 @@ bool ExportALDData(ald_datatype_t type)
 	pnewhdr->numlumps = newnumlumps;
 	pnewhdr->lumpoffset = fileoffset;
 	pnewhdr->lightdatasize = g_lightdatasize;
+	pnewhdr->vertexlightdatasize = g_dvertexlightdatasize;
 
 	aldlump_t* pnewlump = nullptr;
 	if (poriginal)
@@ -6067,15 +6849,45 @@ bool ExportALDData(ald_datatype_t type)
 			int k = 0;
 			for(; k < NB_LIGHTMAP_LAYERS; k++)
 			{
-				if(!psrclump->layeroffsets[k])
+				if(!psrclump->lmaplayeroffsets[k])
 					break;
 
 				// Get original layer
-				const aldlayer_t* psrclayer = (const aldlayer_t*)((const byte*)poriginal + psrclump->layeroffsets[k]);
+				const aldlayer_t* psrclayer = (const aldlayer_t*)((const byte*)poriginal + psrclump->lmaplayeroffsets[k]);
 
 				// Get layer to write to
-				pnewlumps[j].layeroffsets[k] = fileoffset;
-				aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlumps[j].layeroffsets[k]);
+				pnewlumps[j].lmaplayeroffsets[k] = fileoffset;
+				aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlumps[j].lmaplayeroffsets[k]);
+				fileoffset += sizeof(aldlayer_t);
+
+				poutlayer->compression = psrclayer->compression;
+				poutlayer->compressionlevel = psrclayer->compressionlevel;
+				poutlayer->datasize = psrclayer->datasize;
+				poutlayer->dataoffset = fileoffset;
+				fileoffset += psrclayer->datasize;
+
+				// copy data
+				byte* psrclumpdata = ((byte*)poriginal + psrclayer->dataoffset);
+				byte* pdestlumpdata = pfilebuffer + poutlayer->dataoffset;
+				memcpy(pdestlumpdata, psrclumpdata, psrclayer->datasize);
+			}
+
+			// Fill rest with zero offsets
+			for(; k < NB_BAKED_VERTEXLIGHT_LAYERS; k++)
+				pnewlumps[j].lmaplayeroffsets[k] = 0;
+
+			k = 0;
+			for(; k < NB_BAKED_VERTEXLIGHT_LAYERS; k++)
+			{
+				if(!psrclump->vertexlightlayeroffsets[k])
+					break;
+
+				// Get original layer
+				const aldlayer_t* psrclayer = (const aldlayer_t*)((const byte*)poriginal + psrclump->vertexlightlayeroffsets[k]);
+
+				// Get layer to write to
+				pnewlumps[j].vertexlightlayeroffsets[k] = fileoffset;
+				aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlumps[j].vertexlightlayeroffsets[k]);
 				fileoffset += sizeof(aldlayer_t);
 
 				poutlayer->compression = psrclayer->compression;
@@ -6092,7 +6904,7 @@ bool ExportALDData(ald_datatype_t type)
 
 			// Fill rest with zero offsets
 			for(; k < NB_LIGHTMAP_LAYERS; k++)
-				pnewlumps[j].layeroffsets[k] = 0;
+				pnewlumps[j].vertexlightlayeroffsets[k] = 0;
 
 			j++;
 		}
@@ -6113,19 +6925,19 @@ bool ExportALDData(ald_datatype_t type)
 			break;
 
 		pnewlump->type = lumptype;
-		pnewlump->layeroffsets[i] = fileoffset;
+		pnewlump->lmaplayeroffsets[i] = fileoffset;
 
 		// Copy data to destination
-		byte* psrc = pdatasources[i];
+		byte* psrc = plmapdatasources[i];
 
 		// Get layer
-		aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlump->layeroffsets[i]);
+		aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlump->lmaplayeroffsets[i]);
 		fileoffset += sizeof(aldlayer_t);
 
 		poutlayer->compression = g_nocompress ? PBSPV2_LMAP_COMPRESSION_NONE : PBSPV2_LMAP_COMPRESSION_MINIZ;
 		poutlayer->compressionlevel = compressionlevel;
 		poutlayer->dataoffset = fileoffset;
-		poutlayer->datasize = datasizes_compressed[i];
+		poutlayer->datasize = lmap_datasizes_compressed[i];
 		fileoffset += poutlayer->datasize;
 
 		byte* pdestdata = pfilebuffer + poutlayer->dataoffset;
@@ -6134,7 +6946,33 @@ bool ExportALDData(ald_datatype_t type)
 
 	// Fill rest with zero offsets
 	for(; i < NB_LIGHTMAP_LAYERS; i++)
-		pnewlump->layeroffsets[i] = 0;
+		pnewlump->lmaplayeroffsets[i] = 0;
+
+	if(g_dvertexlightdatasize > 0)
+	{
+		i = 0;
+		for(; i < NB_BAKED_VERTEXLIGHT_LAYERS; i++)
+		{
+			pnewlump->type = lumptype;
+			pnewlump->vertexlightlayeroffsets[i] = fileoffset;
+
+			// Copy data to destination
+			byte* psrc = pvlightdatasources[i];
+
+			// Get layer
+			aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlump->vertexlightlayeroffsets[i]);
+			fileoffset += sizeof(aldlayer_t);
+
+			poutlayer->compression = g_nocompress ? PBSPV2_LMAP_COMPRESSION_NONE : PBSPV2_LMAP_COMPRESSION_MINIZ;
+			poutlayer->compressionlevel = compressionlevel;
+			poutlayer->dataoffset = fileoffset;
+			poutlayer->datasize = vlight_datasizes_compressed[i];
+			fileoffset += poutlayer->datasize;
+
+			byte* pdestdata = pfilebuffer + poutlayer->dataoffset;
+			memcpy(pdestdata, psrc, poutlayer->datasize);
+		}
+	}
 
 	if (fileoffset != totalsize)
 	{

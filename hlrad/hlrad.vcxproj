@@ -1,6 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
       <Configuration>Release</Configuration>
       <Platform>Win32</Platform>
@@ -11,38 +19,62 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <VCProjectVersion>17.0</VCProjectVersion>
+    <SccProjectName />
+    <SccLocalPath />
     <ProjectGuid>{3B5F6C9B-1238-1ECF-14D8-01E4C3AB0EE1}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v143</PlatformToolset>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v143</PlatformToolset>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup>
-    <_ProjectFileVersion>17.0.35506.110</_ProjectFileVersion>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\Release\</OutDir>
+    <IntDir>.\Release\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>.\Release\</OutDir>
     <IntDir>.\Release\</IntDir>
     <LinkIncremental>false</LinkIncremental>
@@ -52,99 +84,200 @@
     <IntDir>.\Release_x64\</IntDir>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>.\Debug_x64\</OutDir>
+    <IntDir>.\Debug_x64\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <Optimization>MaxSpeed</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_32BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
+      <BrowseInformation>true</BrowseInformation>
+      <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Release\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release\</ProgramDataBaseFileName>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
     <Midl>
       <TypeLibraryName>.\Release\hlrad.tlb</TypeLibraryName>
     </Midl>
-    <ClCompile>
-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLRAD;VERSION_32BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <StringPooling>true</StringPooling>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
-      <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
-      <ObjectFileName>.\Release\</ObjectFileName>
-      <ProgramDataBaseFileName>.\Release\</ProgramDataBaseFileName>
-      <BrowseInformation>true</BrowseInformation>
-      <WarningLevel>Level3</WarningLevel>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <Optimization>MaxSpeed</Optimization>
-      <WholeProgramOptimization>true</WholeProgramOptimization>
-    </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
-    <Link>
-      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>.\Release\hlrad.exe</OutputFile>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <SubSystem>Console</SubSystem>
-      <StackReserveSize>4194304</StackReserveSize>
-      <StackCommitSize>1048576</StackCommitSize>
-      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <EnableUAC>false</EnableUAC>
-    </Link>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <OutputFile>.\Release\hlrad.bsc</OutputFile>
     </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <OutputFile>.\Release\hlrad.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <StackReserveSize>4194304</StackReserveSize>
+      <StackCommitSize>1048576</StackCommitSize>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <Optimization>MaxSpeed</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_32BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
+      <BrowseInformation>true</BrowseInformation>
+      <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Release\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release\</ProgramDataBaseFileName>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <Midl>
+      <TypeLibraryName>.\Release\hlrad.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Release\hlrad.bsc</OutputFile>
+    </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <OutputFile>.\Release\hlrad.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <StackReserveSize>4194304</StackReserveSize>
+      <StackCommitSize>1048576</StackCommitSize>
+      <EnableUAC>false</EnableUAC>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <Optimization>MaxSpeed</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Release_x64\</AssemblerListingLocation>
+      <BrowseInformation>true</BrowseInformation>
+      <PrecompiledHeaderOutputFile>.\Release_x64\hlrad.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Release_x64\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release_x64\</ProgramDataBaseFileName>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
     <Midl>
       <TypeLibraryName>.\Release_x64\hlrad.tlb</TypeLibraryName>
     </Midl>
-    <ClCompile>
-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <StringPooling>true</StringPooling>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <PrecompiledHeaderOutputFile>.\Release_x64\hlrad.pch</PrecompiledHeaderOutputFile>
-      <AssemblerListingLocation>.\Release_x64\</AssemblerListingLocation>
-      <ObjectFileName>.\Release_x64\</ObjectFileName>
-      <ProgramDataBaseFileName>.\Release_x64\</ProgramDataBaseFileName>
-      <BrowseInformation>true</BrowseInformation>
-      <WarningLevel>Level3</WarningLevel>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <Optimization>MaxSpeed</Optimization>
-      <WholeProgramOptimization>true</WholeProgramOptimization>
-    </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
-    <Link>
-      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>.\Release_x64\hlrad.exe</OutputFile>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <SubSystem>Console</SubSystem>
-      <StackReserveSize>4194304</StackReserveSize>
-      <StackCommitSize>1048576</StackCommitSize>
-      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <EnableUAC>false</EnableUAC>
-    </Link>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <OutputFile>.\Release_x64\hlrad.bsc</OutputFile>
     </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <OutputFile>.\Release_x64\hlrad.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <StackReserveSize>4194304</StackReserveSize>
+      <StackCommitSize>1048576</StackCommitSize>
+      <EnableUAC>false</EnableUAC>
+      <AssemblyDebug>true</AssemblyDebug>
+      <GenerateMapFile>true</GenerateMapFile>
+    </Link>
+    <CustomBuildStep>
+      <Command>copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "$(SolutionDir)../../../compile/$(TargetName)$(TargetExt)"</Command>
+      <Message>Copy '$(TargetName)$(TargetExt)' to directory '$(SolutionDir)../../../compile/$(TargetName)$(TargetExt)'</Message>
+      <Outputs>hlrad.exe</Outputs>
+    </CustomBuildStep>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <StringPooling>true</StringPooling>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <Optimization>Disabled</Optimization>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <WarningLevel>Level3</WarningLevel>
+      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;DEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Debug_x64\</AssemblerListingLocation>
+      <BrowseInformation>true</BrowseInformation>
+      <PrecompiledHeaderOutputFile>.\Debug_x64\hlrad.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Debug_x64\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Debug_x64\</ProgramDataBaseFileName>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+    <Midl>
+      <TypeLibraryName>.\Release_x64\hlrad.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <Culture>0x0409</Culture>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\Debug_x64\hlrad.bsc</OutputFile>
+    </Bscmake>
+    <Link>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <SubSystem>Console</SubSystem>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <OutputFile>.\Debug_x64\hlrad.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <StackReserveSize>4194304</StackReserveSize>
+      <StackCommitSize>1048576</StackCommitSize>
+      <EnableUAC>false</EnableUAC>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateMapFile>true</GenerateMapFile>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\common\miniz.c" />
     <ClCompile Include="..\common\blockmem.cpp" />
     <ClCompile Include="..\common\bspfile.cpp" />
     <ClCompile Include="..\common\cmdlib.cpp" />
     <ClCompile Include="..\common\cmdlinecfg.cpp" />
+    <ClCompile Include="..\common\dds.cpp" />
     <ClCompile Include="..\common\filelib.cpp" />
     <ClCompile Include="..\common\log.cpp" />
     <ClCompile Include="..\common\mathlib.cpp" />
+    <ClCompile Include="..\common\md5.cpp" />
     <ClCompile Include="..\common\messages.cpp" />
+    <ClCompile Include="..\common\miniz.c" />
+    <ClCompile Include="..\common\s3tc.cpp" />
     <ClCompile Include="..\common\scriplib.cpp" />
+    <ClCompile Include="..\common\studio_util.cpp" />
+    <ClCompile Include="..\common\tga.cpp" />
     <ClCompile Include="..\common\threads.cpp" />
     <ClCompile Include="..\common\winding.cpp" />
     <ClCompile Include="compress.cpp" />
@@ -152,54 +285,47 @@
     <ClCompile Include="lightmap.cpp" />
     <ClCompile Include="loadtextures.cpp" />
     <ClCompile Include="mathutil.cpp" />
-    <ClCompile Include="meshtrace.cpp" />
     <ClCompile Include="nomatrix.cpp" />
     <ClCompile Include="qrad.cpp" />
     <ClCompile Include="qradutil.cpp" />
     <ClCompile Include="sparse.cpp" />
-    <ClCompile Include="stringlib.cpp" />
-    <ClCompile Include="studio.cpp" />
     <ClCompile Include="trace.cpp" />
     <ClCompile Include="transfers.cpp" />
     <ClCompile Include="transparency.cpp" />
-    <ClCompile Include="vertexlight.cpp" />
+    <ClCompile Include="vbmbvh.cpp" />
+    <ClCompile Include="vbmcache.cpp" />
     <ClCompile Include="vismatrix.cpp" />
     <ClCompile Include="vismatrixutil.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\aldformat.h" />
     <ClInclude Include="..\common\anorms.h" />
+    <ClInclude Include="..\common\dds.h" />
+    <ClInclude Include="..\common\md5.h" />
+    <ClInclude Include="..\common\miniz.h" />
+    <ClInclude Include="..\common\s3tc.h" />
+    <ClInclude Include="..\common\studio_util.h" />
+    <ClInclude Include="..\common\tga.h" />
+    <ClInclude Include="..\template\basictypes.h" />
     <ClInclude Include="..\common\blockmem.h" />
     <ClInclude Include="..\common\boundingbox.h" />
     <ClInclude Include="..\common\bspfile.h" />
     <ClInclude Include="..\common\cmdlib.h" />
     <ClInclude Include="..\common\cmdlinecfg.h" />
+    <ClInclude Include="compress.h" />
     <ClInclude Include="..\common\filelib.h" />
     <ClInclude Include="..\common\hlassert.h" />
     <ClInclude Include="..\common\log.h" />
     <ClInclude Include="..\common\mathlib.h" />
     <ClInclude Include="..\common\mathtypes.h" />
     <ClInclude Include="..\common\messages.h" />
+    <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />
     <ClInclude Include="..\common\win32fix.h" />
     <ClInclude Include="..\common\winding.h" />
-    <ClInclude Include="..\template\basictypes.h" />
-    <ClInclude Include="compress.h" />
-    <ClInclude Include="list.h" />
-    <ClInclude Include="meshdesc.h" />
-    <ClInclude Include="meshtrace.h" />
-    <ClInclude Include="qrad.h" />
-    <ClInclude Include="vertexlight.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="meshdesc.cpp‎">
-      <FileType>Document</FileType>
-      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-      </DeploymentContent>
-    </ClCompile>
-    <ClCompile Include="progmesh.cpp‎">
-      <FileType>Document</FileType>
-    </ClCompile>
+    <ClInclude Include="vbmbvh.h" />
+    <ClInclude Include="vbmcache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

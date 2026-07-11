@@ -20,7 +20,7 @@
 #include "winding.h"
 #include "compress.h"
 #include "cmdlinecfg.h"
-#include "vertexlight.h"
+#include "aldformat.h"
 
 #ifdef SYSTEM_WIN32
 #pragma warning(disable: 4142 4028)
@@ -68,12 +68,12 @@ extern char* daystage_strings[RAD_NB_DAYSTAGES];
 #define DEFAULT_FASTMODE			false
 #define DEFAULT_METHOD eMethodSparseVismatrix
 #define DEFAULT_LERP_ENABLED        true
-#define DEFAULT_STUDIOSHADOW        true //seedee
-#define DEFAULT_VERTEXLIGHT        true
+#define DEFAULT_VBM_SHADOWS			true
+#define DEFAULT_VERTEX_LIGHTING     true
 #define DEFAULT_FADE                1.0
 #define DEFAULT_BOUNCE              8
 #define DEFAULT_DUMPPATCHES         false
-#define DEFAULT_BUMPMAPS            true
+#define DEFAULT_BUMPMAPS            false
 #define DEFAULT_NOCOMPRESS			false
 #define DEFAULT_COMPRESSION_LEVEL	COMPRESSION_LEVEL_DEFAULT
 #define DEFAULT_AMBIENT_RED         0.0
@@ -123,6 +123,7 @@ enum lightmap_layers_t
 #define DEFAULT_ALLOW_SPREAD		true
 #define DEFAULT_IGNORE_ERR_FILE		false
 #define DEFAULT_NO_REDUCE_LIGHTMAPS	false
+#define DEFAULT_NO_GLOBAL_SMOOTHING	false
 // ------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
 
@@ -283,6 +284,57 @@ typedef struct
     unsigned index : 20;
 } transfer_index_t;
 
+struct entity_lightinginfo_t
+{
+	entity_lightinginfo_t():
+		skin(0),
+		body(0),
+		modelindex(-1),
+		bvhindex(-1),
+		vcacheindex(-1),
+		bufferoffset(-1),
+		firsthreadinfoindex(-1),
+		numthreadinfos(0)
+	{
+		memset(mins, 0, sizeof(mins));
+		memset(maxs, 0, sizeof(maxs));
+		memset(origin, 0, sizeof(origin));
+		memset(angles, 0, sizeof(angles));
+		memset(bvhmins, 0, sizeof(bvhmins));
+		memset(bvhmaxs, 0, sizeof(bvhmaxs));
+		memset(worldlocalmatrix, 0, sizeof(worldlocalmatrix));
+		memset(plightdata, 0, sizeof(plightdata));
+		memset(styles, 0, sizeof(styles));
+		styles[0] = 0;
+	}
+
+	vec3_t			mins;
+	vec3_t			maxs;
+
+	vec3_t			origin;
+	vec3_t			angles;
+
+	int				skin;
+	int				body;
+	int				entindex;
+
+	vec3_t			bvhmins;
+	vec3_t			bvhmaxs;
+
+    int             modelindex;
+    int             bvhindex;
+    int             vcacheindex;
+
+	float			worldlocalmatrix[3][4];
+
+	byte			styles[MAXLIGHTMAPS];
+	vec3_t			*plightdata[MAXLIGHTMAPS][NB_BAKED_VERTEXLIGHT_LAYERS];
+	int				bufferoffset;
+
+	int				firsthreadinfoindex;
+	int				numthreadinfos;
+};
+
 typedef unsigned transfer_raw_index_t;
 typedef unsigned char transfer_data_t;
 
@@ -293,6 +345,12 @@ typedef unsigned char rgb_transfer_data_t;
 #define	MAX_PATCHES	(65535*16) // limited by transfer_index_t
 #define MAX_VISMATRIX_PATCHES 65535
 #define MAX_SPARSE_VISMATRIX_PATCHES MAX_PATCHES
+
+extern entity_lightinginfo_t	g_entityLightingInfos[MAX_MAP_ENTITIES];
+extern int						g_numEntityLightingInfos;
+
+extern bool						g_vbmshadows;
+extern bool						g_vertexlighting;
 
 typedef enum
 {
@@ -363,7 +421,6 @@ typedef struct
 	bool			smooth;
 	facelist_t*		vertex_facelist[2]; //possible smooth faces, not include faces[0] and faces[1]
 	matrix_t		textotex[2]; // how we translate texture coordinates from one face to the other face
-	bool			separate[2];
 } edgeshare_t;
 
 extern edgeshare_t g_edgeshare[MAX_MAP_EDGES];
@@ -435,6 +492,7 @@ extern void     MakeShadowSplits();
 //==============================================
 
 extern bool		g_fastmode;
+extern bool		g_no_global_smooth;
 extern bool     g_extra;
 extern vec3_t   g_ambient;
 extern vec_t    g_direct_scale;
@@ -505,8 +563,6 @@ extern vec3_t	g_jitter_hack;
 	extern vec_t g_maxdiscardedlight;
 	extern vec3_t g_maxdiscardedpos;
 	extern vec_t g_texlightgap;
-	extern bool g_nocompress;
-	extern compressionlevel_t g_compressionlevel;
 
 extern void     MakeTnodes(dmodel_t* bm);
 extern void     PairEdges();
@@ -565,6 +621,7 @@ extern int		TestPointOpaque (int modelnum, const vec3_t modelorigin, bool solid,
 #endif
 extern void     CreateDirectLights();
 extern void     DeleteDirectLights();
+extern void		LoadEntityVBMModels();
 extern void     GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnormal); // added "const" --vluzacn
 
 typedef bool (*funcCheckVisBit) (unsigned, unsigned
@@ -636,6 +693,7 @@ extern void FreeTriangulations ();
 extern bool     TestSegmentAgainstOpaqueList(const vec_t* p1, const vec_t* p2
 					, vec3_t &scaleout
 					, int &opaquestyleout
+					, bool novbm = false
 					);
 extern bool     intersect_line_plane(const dplane_t* const plane, const vec_t* const p1, const vec_t* const p2, vec3_t point);
 extern bool     intersect_linesegment_plane(const dplane_t* const plane, const vec_t* const p1, const vec_t* const p2,vec3_t point);
@@ -655,11 +713,4 @@ extern vec_t	CalcSightArea_SpotLight (const vec3_t receiver_origin, const vec3_t
 					);
 extern void		GetAlternateOrigin (const vec3_t pos, const vec3_t normal, const patch_t *patch, vec3_t &origin);
 extern void		ExportBumpMapData(void);
-
-// studio.cpp
-extern void LoadStudioModels(void);
-extern void FreeStudioModels(void);
-extern bool TestSegmentAgainstStudioList(const vec_t* p1, const vec_t* p2);
-extern bool g_studioshadow;
-
 #endif //HLRAD_H__

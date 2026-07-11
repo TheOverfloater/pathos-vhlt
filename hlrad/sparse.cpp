@@ -260,6 +260,7 @@ static void     TestPatchToFace(const unsigned patchnum, const int facenum, cons
 						origin1, origin2
 						, transparency
 						, opaquestyle
+                        , true
 					))
 					{
 						continue;

@@ -2,22 +2,55 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
-      <UniqueIdentifier>{9db913c6-f552-4f2b-842a-b7976761fc28}</UniqueIdentifier>
+      <UniqueIdentifier>{a0cf76ae-75aa-499a-b918-b2a6557e35d7}</UniqueIdentifier>
       <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat;for;f90</Extensions>
     </Filter>
     <Filter Include="Source Files\common">
-      <UniqueIdentifier>{0ac96f2f-3249-4b4c-b323-76f429dd7451}</UniqueIdentifier>
+      <UniqueIdentifier>{4848509b-0f96-431d-a338-8ad8791f845b}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files">
-      <UniqueIdentifier>{6225059b-652d-42c4-a6bc-434e19160886}</UniqueIdentifier>
+      <UniqueIdentifier>{a32bc9fa-c773-4831-bbb7-b1e2b7aadf9f}</UniqueIdentifier>
       <Extensions>h;hpp;hxx;hm;inl;fi;fd</Extensions>
     </Filter>
     <Filter Include="Resource Files">
-      <UniqueIdentifier>{ccce3ef7-5be6-46ff-837e-1d4b4fa34372}</UniqueIdentifier>
+      <UniqueIdentifier>{115941c5-3fdd-402d-bbb3-96f9eef34328}</UniqueIdentifier>
       <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;cnt;rtf;gif;jpg;jpeg;jpe</Extensions>
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\common\blockmem.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\bspfile.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlib.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlinecfg.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\filelib.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\log.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\messages.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\scriplib.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\threads.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\winding.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
     <ClCompile Include="compress.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -60,59 +93,29 @@
     <ClCompile Include="vismatrixutil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\blockmem.cpp">
+    <ClCompile Include="..\common\miniz.c">
       <Filter>Source Files\common</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\bspfile.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\cmdlib.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\cmdlinecfg.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\filelib.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\log.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\mathlib.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\messages.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\scriplib.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\threads.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\winding.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="stringlib.cpp">
-      <Filter>Source Files\common</Filter>
-    </ClCompile>
-    <ClCompile Include="meshtrace.cpp">
+    <ClCompile Include="vbmcache.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="studio.cpp">
+    <ClCompile Include="vbmbvh.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="meshdesc.cpp‎">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\common\s3tc.cpp">
+      <Filter>Source Files\common</Filter>
     </ClCompile>
-    <ClCompile Include="progmesh.cpp‎">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\common\tga.cpp">
+      <Filter>Source Files\common</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\common\miniz.c">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\common\dds.cpp">
+      <Filter>Source Files\common</Filter>
     </ClCompile>
-    <ClCompile Include="vertexlight.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\common\studio_util.cpp">
+      <Filter>Source Files\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\md5.cpp">
+      <Filter>Source Files\common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -173,16 +176,31 @@
     <ClInclude Include="..\common\winding.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="list.h">
+    <ClInclude Include="..\common\aldformat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="meshdesc.h">
+    <ClInclude Include="..\common\miniz.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="meshtrace.h">
+    <ClInclude Include="vbmcache.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vertexlight.h">
+    <ClInclude Include="vbmbvh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\s3tc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\tga.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\dds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\studio_util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\md5.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
