@@ -20,6 +20,9 @@ typedef vec_t   vec4_t[4];                                 // x,y,z, w
 #define M_PI			3.14159265358979323846
 #endif // M_PI
 
+// Max floating point value
+static constexpr float MAX_FLOAT_VALUE = 1e30f;
+
 //=============================================
 // @brief Converts bytes to short
 //

@@ -19,6 +19,8 @@
 #include "qrad.h"
 #include "miniz.h"
 #include "vbmcache.h"
+#include "vertexlight.h"
+#include "lightgrid.h"
 
 /*
  * NOTES
@@ -44,6 +46,8 @@ extern char* daystage_strings[RAD_NB_DAYSTAGES]
 bool			g_fastmode = DEFAULT_FASTMODE;
 bool			g_vbmshadows = DEFAULT_VBM_SHADOWS;
 bool            g_vertexlighting = DEFAULT_VERTEX_LIGHTING;
+int				g_lightgriddistance = DEFAULT_LIGHTGRID_DISTANCE;
+
 typedef enum
 {
     eMethodVismatrix,
@@ -2756,7 +2760,6 @@ static void ExtendLightmapBuffer ()
 // =====================================================================================
 //  RadWorld
 // =====================================================================================
-extern void BuildVertexLights();
 static void     RadWorld()
 {
     unsigned        i;
@@ -2937,6 +2940,9 @@ static void     RadWorld()
 		BuildVertexLights();
 		UnparseEntities();
 	}
+
+	// Create light grid
+	BuildLightGrid();
 
 	// Finalize lightmap buffers
 	FinalizeLightmapBuffers();
@@ -3253,6 +3259,7 @@ static void     Settings()
 	Log("blur size                   [ %17s ] [ %17s ]\n", buf1, buf2);
 	Log("no emitter range            [ %17s ] [ %17s ]\n", g_noemitterrange ? "on" : "off", DEFAULT_NOEMITTERRANGE ? "on" : "off");
 	Log("wall bleeding fix           [ %17s ] [ %17s ]\n", g_bleedfix ? "on" : "off", DEFAULT_BLEEDFIX ? "on" : "off");
+	Log("light grid distance         [ %17d ] [ %17d ]\n", g_lightgriddistance, DEFAULT_LIGHTGRID_DISTANCE );
 	Log("mod directory               [ %39s ]\n", strlen(g_modDir) > 0 ? g_modDir : "Not set");
 
     Log("\n\n");
@@ -4264,6 +4271,17 @@ int             main(const int argc, char** argv)
 			else
 			{
 				Usage();
+			}
+		}
+		else if (!strcasecmp (argv[i], "-lightgriddistance"))
+		{
+			if (i + 1 < argc)
+			{
+				g_lightgriddistance = atof (argv[++i]);
+			}
+			else
+			{
+				Usage ();
 			}
 		}
 		else if (!strcasecmp(argv[i], "-moddir"))

@@ -117,6 +117,12 @@
     <ClCompile Include="..\common\md5.cpp">
       <Filter>Source Files\common</Filter>
     </ClCompile>
+    <ClCompile Include="lightgrid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vertexlight.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\anorms.h">
@@ -201,6 +207,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\common\md5.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lightgrid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vertexlight.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

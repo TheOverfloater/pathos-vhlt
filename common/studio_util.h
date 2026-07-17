@@ -15,9 +15,6 @@ All Rights Reserved.
 #include "mathtypes.h"
 #include "studio.h"
 
-// Max floating point value
-static constexpr float MAX_FLOAT_VALUE = 1e30f;
-
 struct bonematrix_t
 {
 	bonematrix_t()

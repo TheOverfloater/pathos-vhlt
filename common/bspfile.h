@@ -84,6 +84,8 @@
 #define TOOLVERSION 2
 
 #define PBSPV2_FL_HAS_VERTEX_LIGHTING   (1<<1)
+#define PBSPV2_FL_HAS_LIGHTGRID_DATA    (1<<2)
+#define PBSPV2_FL_HAS_SMOOTHING_GROUPS  (1<<3)
 
 //
 // BSP File Structures
@@ -119,6 +121,7 @@ enum bsp_lumps_t
     LUMP_VERTEX_LIGHTING_AMBIENT,
     LUMP_VERTEX_LIGHTING_DIFFUSE,
     LUMP_VERTEX_LIGHTING_VECTORS,
+    LUMP_LIGHTGRID_DATA,
 
     // Must be last
     HEADER_LUMPS
@@ -303,6 +306,87 @@ struct dlmapdata_t
 	int noncompressedsize;
 };
 
+struct dlightgridlumpheader_t
+{
+    dlightgridlumpheader_t():
+        rootnodeindex(0),
+        leafsoffset(-1),
+        numleafs(0),
+        nodesoffset(-1),
+        numnodes(0),
+        sampleoffset(-1),
+        numsamples(0),
+        rawsampledatasize(0),
+        ambientdataoffset(-1),
+        diffusedataoffset(-1),
+        lightvectorsoffset(-1)
+    {
+        memset(grid_distance, 0, sizeof(grid_distance));
+        memset(grid_size, 0, sizeof(grid_size));
+        memset(grid_mins, 0, sizeof(grid_mins));
+    }
+
+    int grid_distance[3];
+    int grid_size[3];
+    vec3_t grid_mins;
+    int rootnodeindex;
+
+    int leafsoffset;
+    int numleafs;
+
+    int nodesoffset;
+    int numnodes;
+
+    int sampleoffset;
+    int numsamples;
+
+    int rawsampledatasize;
+    int ambientdataoffset;
+    int diffusedataoffset;
+    int lightvectorsoffset;
+};
+
+struct dlightgridnode_t
+{
+    dlightgridnode_t()
+    {
+        memset(divisionpoint, 0, sizeof(divisionpoint));
+        memset(children, 0, sizeof(children));
+    }
+
+    int divisionpoint[3];
+    int children[8];
+};
+
+struct dlightgridleaf_t
+{
+    dlightgridleaf_t():
+        firstsample(-1),
+        numsamples(0)
+    {
+        memset(mins, 0, sizeof(mins));
+        memset(size, 0, sizeof(size));
+    }
+
+	int mins[3];
+	int size[3];
+    
+    int firstsample;
+    int numsamples;
+};
+
+struct dlightgridsample_t
+{
+    dlightgridsample_t():
+        rawsampleoffset(-1)
+    {
+        memset(styles, 0, sizeof(styles));
+    }
+
+	byte styles[MAXLIGHTMAPS];
+    int rawsampleoffset;
+};
+
 //============================================================================
 
 #define ANGLE_UP    -1.0 //#define ANGLE_UP    -1 //--vluzacn
@@ -363,6 +447,10 @@ extern int      g_dvertexlightdata_vectors_checksum;
 extern int		g_dvertexlightdata_vectors_compression;
 extern int		g_dvertexlightdata_vectors_compression_level;
 extern int		g_dvertexlightdatasize_vectors_actual;
+
+extern int		g_dlightgriddatasize;
+extern byte*	g_dlightgriddata;
+extern int		g_dlightgriddata_checksum;
 
 extern int      g_texdatasize;
 extern byte*    g_dtexdata;                                  // (dmiptexlump_t)

@@ -1521,6 +1521,9 @@ static localtriangulation_t *CreateLocalTriangulation (const facetriangulation_t
 
 	facenum = facetrian->facenum;
 	patch = &g_patches[patchnum];
+	if(!patch->winding)
+		return nullptr;
+
 	lt = new localtriangulation_t;
 
 	// Fill basic information for this local triangulation
@@ -1802,35 +1805,35 @@ void CreateTriangulations (int facenum)
 {
 	try
 	{
+		facetriangulation_t *facetrian;
+		int patchnum;
+		const patch_t *patch;
+		localtriangulation_t *lt;
 
-	facetriangulation_t *facetrian;
-	int patchnum;
-	const patch_t *patch;
-	localtriangulation_t *lt;
+		g_facetriangulations[facenum] = new facetriangulation_t;
+		facetrian = g_facetriangulations[facenum];
 
-	g_facetriangulations[facenum] = new facetriangulation_t;
-	facetrian = g_facetriangulations[facenum];
+		facetrian->facenum = facenum;
 
-	facetrian->facenum = facenum;
+		// Find neighbors
+		FindNeighbors (facetrian);
 
-	// Find neighbors
-	FindNeighbors (facetrian);
+		// Build walls
+		BuildWalls (facetrian);
 
-	// Build walls
-	BuildWalls (facetrian);
+		// Create local triangulation around each patch
+		facetrian->localtriangulations.resize (0);
+		for (patch = g_face_patches[facenum]; patch; patch = patch->next)
+		{
+			patchnum = patch - g_patches;
+			lt = CreateLocalTriangulation (facetrian, patchnum);
 
-	// Create local triangulation around each patch
-	facetrian->localtriangulations.resize (0);
-	for (patch = g_face_patches[facenum]; patch; patch = patch->next)
-	{
-		patchnum = patch - g_patches;
-		lt = CreateLocalTriangulation (facetrian, patchnum);
-		facetrian->localtriangulations.push_back (lt);
-	}
+			if(lt)
+				facetrian->localtriangulations.push_back (lt);
+		}
 
-	// Collect used patches
-	CollectUsedPatches (facetrian);
-
+		// Collect used patches
+		CollectUsedPatches (facetrian);
 	}
 	catch (std::bad_alloc)
 	{

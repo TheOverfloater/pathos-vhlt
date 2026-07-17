@@ -80,6 +80,7 @@ extern char* daystage_strings[RAD_NB_DAYSTAGES];
 #define DEFAULT_AMBIENT_GREEN       0.0
 #define DEFAULT_AMBIENT_BLUE        0.0
 #define DEFAULT_DAYSTAGE			RAD_DAYSTAGE_NONE
+#define DEFAULT_LIGHTGRID_DISTANCE	32
 
 // 188 is the fullbright threshold for Goldsrc, regardless of the brightness and gamma settings in the graphic options.
 // However, hlrad can only control the light values of each single light style. So the final in-game brightness may exceed 188 if you have set a high value in the "custom appearance" of the light, or if the face receives light from different styles.
@@ -351,6 +352,7 @@ extern int						g_numEntityLightingInfos;
 
 extern bool						g_vbmshadows;
 extern bool						g_vertexlighting;
+extern int						g_lightgriddistance;
 
 typedef enum
 {
@@ -424,6 +426,17 @@ typedef struct
 } edgeshare_t;
 
 extern edgeshare_t g_edgeshare[MAX_MAP_EDGES];
+
+typedef struct
+{
+    vec3_t          pos;
+    vec3_t          light;
+	vec3_t			light_ambient;
+	vec3_t			light_diffuse;
+	vec3_t			light_vector;
+	int				surface; // this sample can grow into another face
+}
+sample_t;
 
 //
 // lerp.c stuff
@@ -621,7 +634,6 @@ extern int		TestPointOpaque (int modelnum, const vec3_t modelorigin, bool solid,
 #endif
 extern void     CreateDirectLights();
 extern void     DeleteDirectLights();
-extern void		LoadEntityVBMModels();
 extern void     GetPhongNormal(int facenum, const vec3_t spot, vec3_t phongnormal); // added "const" --vluzacn
 
 typedef bool (*funcCheckVisBit) (unsigned, unsigned

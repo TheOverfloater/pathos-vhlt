@@ -43,3 +43,23 @@
   - Added safeguard so light data size between BSP and ALD, and output to ALD is checked for consistency.
   - Added -noreduce parameter to disable lightdata reduction for multi daystage compiles.
   - Using any kind of nonstandard daystage will now enable -noreduce by default.
+
+2026 July 11th:
+ - Merge baked vertex lighting code by valina354.
+ - Remove PBSPV3 format and reduce to V2.
+ - Add multithreading for processing vertex batches.
+ - Add caching of VBM and studiomodel files.
+ - Add caching of vertexes to calculate lighting for.
+ - Replace Uncle Mike code with original implementation based on actual VBM and PMF data and Bounding Volume Hierarchies.
+ - Move baked vertex lighting data into ALD file instead of a new file format.
+ - Resolve self-shadowing issues by accounting for minor differences in vertex positions due to local space transforms.
+ - Add lightstyle support to vertex lighting.
+ - Add support for loading TGA and DDS files as raw RGBA data.
+ - Add "-moddir" command to specify the mod directory to use.
+ - Add MD5 hash generation to ensure data consistency for static lighting data in case model changes.
+
+2026 July 17th:
+ - Add light grid feature implementation.
+ - Fix issues related to ALD consistency checks.
+ - Separate vertex lighting related code into it's own files.
+ - Fix 64-bit Debug compile to use it's own directories.

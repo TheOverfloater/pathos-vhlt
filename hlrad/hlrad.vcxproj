@@ -282,6 +282,7 @@
     <ClCompile Include="..\common\winding.cpp" />
     <ClCompile Include="compress.cpp" />
     <ClCompile Include="lerp.cpp" />
+    <ClCompile Include="lightgrid.cpp" />
     <ClCompile Include="lightmap.cpp" />
     <ClCompile Include="loadtextures.cpp" />
     <ClCompile Include="mathutil.cpp" />
@@ -294,6 +295,7 @@
     <ClCompile Include="transparency.cpp" />
     <ClCompile Include="vbmbvh.cpp" />
     <ClCompile Include="vbmcache.cpp" />
+    <ClCompile Include="vertexlight.cpp" />
     <ClCompile Include="vismatrix.cpp" />
     <ClCompile Include="vismatrixutil.cpp" />
   </ItemGroup>
@@ -319,6 +321,7 @@
     <ClInclude Include="..\common\mathlib.h" />
     <ClInclude Include="..\common\mathtypes.h" />
     <ClInclude Include="..\common\messages.h" />
+    <ClInclude Include="lightgrid.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />
@@ -326,6 +329,7 @@
     <ClInclude Include="..\common\winding.h" />
     <ClInclude Include="vbmbvh.h" />
     <ClInclude Include="vbmcache.h" />
+    <ClInclude Include="vertexlight.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

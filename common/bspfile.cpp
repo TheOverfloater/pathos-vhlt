@@ -68,6 +68,10 @@ int				g_dvertexlightdata_vectors_compression;
 int				g_dvertexlightdata_vectors_compression_level;
 int				g_dvertexlightdatasize_vectors_actual;
 
+int				g_dlightgriddatasize;
+byte*			g_dlightgriddata;
+int				g_dlightgriddata_checksum;
+
 int             g_texdatasize;
 byte*           g_dtexdata;                                  // (dmiptexlump_t)
 int             g_dtexdata_checksum;
@@ -548,15 +552,26 @@ void            LoadBSPImage(dheader_t* const header)
 	if(header->lumps[LUMP_LIGHTING_VECTORS].filelen)
 		CopyLightingLump(LUMP_LIGHTING_VECTORS, g_dlightdata_vectors, 1, header, g_dlightdata_vectors_compression, g_dlightdata_vectors_compression_level, g_lightdatasize_vectors_actual);
 
-	if (header->lumps[LUMP_VERTEX_LIGHTING_AMBIENT].filelen)
-		CopyLightingLump(LUMP_VERTEX_LIGHTING_AMBIENT, g_dvertexlightdata_ambient, 1, header, g_dvertexlightdata_ambient_compression, g_dvertexlightdata_ambient_compression_level, g_dvertexlightdatasize_ambient_actual);
+	if(header->flags & PBSPV2_FL_HAS_VERTEX_LIGHTING)
+	{
+		if (header->lumps[LUMP_VERTEX_LIGHTING_AMBIENT].filelen)
+			CopyLightingLump(LUMP_VERTEX_LIGHTING_AMBIENT, g_dvertexlightdata_ambient, 1, header, g_dvertexlightdata_ambient_compression, g_dvertexlightdata_ambient_compression_level, g_dvertexlightdatasize_ambient_actual);
 
-	if (header->lumps[LUMP_VERTEX_LIGHTING_DIFFUSE].filelen)
-		CopyLightingLump(LUMP_VERTEX_LIGHTING_DIFFUSE, g_dvertexlightdata_diffuse, 1, header, g_dvertexlightdata_diffuse_compression, g_dvertexlightdata_diffuse_compression_level, g_dvertexlightdatasize_diffuse_actual);
+		if (header->lumps[LUMP_VERTEX_LIGHTING_DIFFUSE].filelen)
+			CopyLightingLump(LUMP_VERTEX_LIGHTING_DIFFUSE, g_dvertexlightdata_diffuse, 1, header, g_dvertexlightdata_diffuse_compression, g_dvertexlightdata_diffuse_compression_level, g_dvertexlightdatasize_diffuse_actual);
 
-	if (header->lumps[LUMP_VERTEX_LIGHTING_VECTORS].filelen)
-		CopyLightingLump(LUMP_VERTEX_LIGHTING_VECTORS, g_dvertexlightdata_vectors, 1, header, g_dvertexlightdata_vectors_compression, g_dvertexlightdata_vectors_compression_level, g_dvertexlightdatasize_vectors_actual);
+		if (header->lumps[LUMP_VERTEX_LIGHTING_VECTORS].filelen)
+			CopyLightingLump(LUMP_VERTEX_LIGHTING_VECTORS, g_dvertexlightdata_vectors, 1, header, g_dvertexlightdata_vectors_compression, g_dvertexlightdata_vectors_compression_level, g_dvertexlightdatasize_vectors_actual);
+	}
 
+	if(header->flags & PBSPV2_FL_HAS_LIGHTGRID_DATA)
+	{
+		if (header->lumps[LUMP_LIGHTGRID_DATA].filelen)
+		{
+			g_dlightgriddata = new byte[header->lumps[LUMP_LIGHTGRID_DATA].filelen];
+			g_dlightgriddatasize = CopyLump(LUMP_LIGHTGRID_DATA, g_dlightgriddata, 1, header);
+		}
+	}
 
     Free(header);                                          // everything has been copied out
 
@@ -596,8 +611,8 @@ void            LoadBSPImage(dheader_t* const header)
 	if (g_dvertexlightdata_diffuse)
 		g_dvertexlightdata_diffuse_checksum = FastChecksum(g_dvertexlightdata_diffuse, g_dvertexlightdatasize_diffuse_actual);
 
-	if (g_dvertexlightdata_vectors)
-		g_dvertexlightdata_vectors_checksum = FastChecksum(g_dvertexlightdata_vectors, g_dvertexlightdatasize_vectors_actual);
+	if (g_dlightgriddata)
+		g_dlightgriddata_checksum = FastChecksum(g_dlightgriddata, g_dlightgriddatasize);
 }
 
 //
@@ -671,7 +686,7 @@ void            WriteBSPFile(const char* const filename)
 
 	header->id = PBSP_HEADER;
 	header->version = LittleLong(PBSP_VERSION);
-	header->flags |= PBSPV2_FL_HAS_VERTEX_LIGHTING;
+	header->flags |= (PBSPV2_FL_HAS_VERTEX_LIGHTING|PBSPV2_FL_HAS_LIGHTGRID_DATA);
 
     bspfile = SafeOpenWrite(filename);
     SafeWrite(bspfile, header, sizeof(dheader_t));         // overwritten later
@@ -715,6 +730,8 @@ void            WriteBSPFile(const char* const filename)
 	if (g_dvertexlightdata_vectors)
 		AddLightingLump(LUMP_VERTEX_LIGHTING_VECTORS, g_dvertexlightdata_vectors, g_dvertexlightdatasize, g_dvertexlightdatasize_vectors_actual, g_dvertexlightdata_vectors_compression, g_dvertexlightdata_vectors_compression_level, header, bspfile);
 
+	// Add lightgrid lump
+	AddLump(LUMP_LIGHTGRID_DATA, g_dlightgriddata, g_dlightgriddatasize, header, bspfile);
 
     fseek(bspfile, 0, SEEK_SET);
     SafeWrite(bspfile, header, sizeof(dheader_t));
@@ -1250,6 +1267,7 @@ void            PrintBSPFileSizes()
     totalmemory += GlobUsage("lightdata", g_lightdatasize, g_max_map_lightdata);
     totalmemory += GlobUsage("visdata", g_visdatasize, sizeof(g_dvisdata));
     totalmemory += GlobUsage("entdata", g_entdatasize, sizeof(g_dentdata));
+	totalmemory += GlobUsage("lightgridlump", g_dlightgriddatasize, g_dlightgriddatasize);
 
 	if(g_lightdatasize_ambient_actual)
 		totalmemory += GlobUsage("lightdata", g_lightdatasize_ambient_actual, g_max_map_lightdata);
