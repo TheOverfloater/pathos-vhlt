@@ -63,3 +63,11 @@
  - Fix issues related to ALD consistency checks.
  - Separate vertex lighting related code into it's own files.
  - Fix 64-bit Debug compile to use it's own directories.
+
+2026 July 18th:
+ - Add miniz compression support to light grid sample data.
+ - Optimize bump map, vertex lighting and light grid calculations using bitsets.
+ - Fix for issue with light grid samples nudged out of solids not being actually using the proper position for light sample calculations.
+ - Update logging of light data compression, etc to show percentages.
+ - Make light grid logging properly print the number of occluded samples.
+ - Make sure occluded samples in light grid data are properly marked with a -1 sample data offset.
