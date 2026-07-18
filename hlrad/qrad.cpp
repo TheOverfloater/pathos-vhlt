@@ -2545,7 +2545,7 @@ static void     FreeTransfers()
     }
 }
 
-static void CompressLightmapData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int* plightdatasize_out )
+void CompressLightData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int* plightdatasize_out )
 {
 	int destsize = compressBound(lightdatasize);
 	byte* pdestination = (byte*)malloc(destsize);
@@ -2591,7 +2591,7 @@ static void CompressLightmapData ( int lightdatasize, byte*& plightdataptr, int&
 		(*plightdatasize_out) = lightdatasize;
 }
 
-static void FinalizeLightmapData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int& compression_type, int* plightdatasize_out )
+void FinalizeLightData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int& compression_type, int* plightdatasize_out )
 {
 	if(g_nocompress)
 	{
@@ -2606,7 +2606,7 @@ static void FinalizeLightmapData ( int lightdatasize, byte*& plightdataptr, int&
 	else
 	{
 		// Compress using miniz
-		CompressLightmapData(lightdatasize, plightdataptr, lightdatasize_actual, compression_level, plightdatasize_out);
+		CompressLightData(lightdatasize, plightdataptr, lightdatasize_actual, compression_level, plightdatasize_out);
 		compression_type = PBSPV2_LMAP_COMPRESSION_MINIZ;
 	}
 }
@@ -2626,8 +2626,8 @@ static void FinalizeLightmapBuffers ()
 		Log("Compressing default lightmap data\n");
 	}
 
-	FinalizeLightmapData(lightdatasize_original, g_dlightdata, g_lightdatasize_actual, g_dlightdata_compression_level, g_dlightdata_compression, &g_lightdatasize);
-	Log("Done compressing default lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_actual);
+	FinalizeLightData(lightdatasize_original, g_dlightdata, g_lightdatasize_actual, g_dlightdata_compression_level, g_dlightdata_compression, &g_lightdatasize);
+	Log("Done compressing default lightmap data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_lightdatasize_actual, static_cast<float>((static_cast<float>(g_lightdatasize_actual) / static_cast<float>(lightdatasize_original))*100));
 
 	if(!g_nocompress)
 	{
@@ -2645,11 +2645,11 @@ static void FinalizeLightmapBuffers ()
 			Log("Compressing ambient lightmap data\n");
 		}
 		
-		FinalizeLightmapData(lightdatasize_original, g_dlightdata_ambient, g_lightdatasize_ambient_actual, g_dlightdata_ambient_compression_level, g_dlightdata_ambient_compression, nullptr);
+		FinalizeLightData(lightdatasize_original, g_dlightdata_ambient, g_lightdatasize_ambient_actual, g_dlightdata_ambient_compression_level, g_dlightdata_ambient_compression, nullptr);
 		
 		if(!g_nocompress)
 		{
-			Log("Done compressing ambient lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_ambient_actual);
+			Log("Done compressing ambient lightmap data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_lightdatasize_ambient_actual, static_cast<float>((static_cast<float>(g_lightdatasize_ambient_actual) / static_cast<float>(lightdatasize_original))*100));
 
 			end = I_FloatTime();
 			LogTimeElapsed(end - start);
@@ -2662,11 +2662,11 @@ static void FinalizeLightmapBuffers ()
 			Log("Compressing diffuse lightmap data\n");
 		}
 		
-		FinalizeLightmapData(lightdatasize_original, g_dlightdata_diffuse, g_lightdatasize_diffuse_actual, g_dlightdata_diffuse_compression_level, g_dlightdata_diffuse_compression, nullptr);
+		FinalizeLightData(lightdatasize_original, g_dlightdata_diffuse, g_lightdatasize_diffuse_actual, g_dlightdata_diffuse_compression_level, g_dlightdata_diffuse_compression, nullptr);
 		
 		if(!g_nocompress)
 		{	
-			Log("Done compressing diffuse lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_diffuse_actual);
+			Log("Done compressing diffuse lightmap data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_lightdatasize_diffuse_actual, static_cast<float>((static_cast<float>(g_lightdatasize_diffuse_actual) / static_cast<float>(lightdatasize_original))*100));
 
 			end = I_FloatTime();
 			LogTimeElapsed(end - start);
@@ -2679,11 +2679,11 @@ static void FinalizeLightmapBuffers ()
 			Log("Compressing vectors lightmap data\n");
 		}
 		
-		FinalizeLightmapData(lightdatasize_original, g_dlightdata_vectors, g_lightdatasize_vectors_actual, g_dlightdata_vectors_compression_level, g_dlightdata_vectors_compression, nullptr);
+		FinalizeLightData(lightdatasize_original, g_dlightdata_vectors, g_lightdatasize_vectors_actual, g_dlightdata_vectors_compression_level, g_dlightdata_vectors_compression, nullptr);
 		
 		if(!g_nocompress)
 		{
-			Log("Done compressing vectors lightmap data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_vectors_actual);
+			Log("Done compressing vectors lightmap data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_lightdatasize_vectors_actual, static_cast<float>((static_cast<float>(g_lightdatasize_vectors_actual) / static_cast<float>(lightdatasize_original))*100));
 
 			end = I_FloatTime();
 			LogTimeElapsed(end - start);
@@ -2694,14 +2694,14 @@ static void FinalizeLightmapBuffers ()
 	{
 		int vertexlightdatasize_original = g_dvertexlightdatasize;
 
-		FinalizeLightmapData(vertexlightdatasize_original, g_dvertexlightdata_ambient, g_dvertexlightdatasize_ambient_actual, g_dvertexlightdata_ambient_compression_level, g_dvertexlightdata_ambient_compression, &g_dvertexlightdatasize);
-		Log("Done compressing vertex lighting ambient light data from %d to %d bytes\n", lightdatasize_original, g_lightdatasize_actual);
+		FinalizeLightData(vertexlightdatasize_original, g_dvertexlightdata_ambient, g_dvertexlightdatasize_ambient_actual, g_dvertexlightdata_ambient_compression_level, g_dvertexlightdata_ambient_compression, &g_dvertexlightdatasize);
+		Log("Done compressing vertex lighting ambient light data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_dvertexlightdatasize, static_cast<float>((static_cast<float>(g_lightdatasize_actual) / static_cast<float>(lightdatasize_original))*100));
 
-		FinalizeLightmapData(vertexlightdatasize_original, g_dvertexlightdata_diffuse, g_dvertexlightdatasize_diffuse_actual, g_dvertexlightdata_diffuse_compression_level, g_dvertexlightdata_diffuse_compression, nullptr);
-		Log("Done compressing vertex lighting diffuse light data from %d to %d bytes\n", lightdatasize_original, g_dvertexlightdatasize_diffuse_actual);
+		FinalizeLightData(vertexlightdatasize_original, g_dvertexlightdata_diffuse, g_dvertexlightdatasize_diffuse_actual, g_dvertexlightdata_diffuse_compression_level, g_dvertexlightdata_diffuse_compression, nullptr);
+		Log("Done compressing vertex lighting diffuse light data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_dvertexlightdatasize_diffuse_actual, static_cast<float>((static_cast<float>(g_dvertexlightdatasize_diffuse_actual) / static_cast<float>(lightdatasize_original))*100));
 
-		FinalizeLightmapData(vertexlightdatasize_original, g_dvertexlightdata_vectors, g_dvertexlightdatasize_vectors_actual, g_dvertexlightdata_vectors_compression_level, g_dvertexlightdata_vectors_compression, nullptr);
-		Log("Done compressing vertex lighting vectors light data from %d to %d bytes\n", lightdatasize_original, g_dvertexlightdatasize_vectors_actual);
+		FinalizeLightData(vertexlightdatasize_original, g_dvertexlightdata_vectors, g_dvertexlightdatasize_vectors_actual, g_dvertexlightdata_vectors_compression_level, g_dvertexlightdata_vectors_compression, nullptr);
+		Log("Done compressing vertex lighting vectors light data from %d bytes to %d bytes(%.2f%%)\n", lightdatasize_original, g_dvertexlightdatasize_vectors_actual, static_cast<float>((static_cast<float>(g_dvertexlightdatasize_vectors_actual) / static_cast<float>(lightdatasize_original))*100));
 	}
 
 	if(!g_nocompress)

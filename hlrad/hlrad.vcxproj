@@ -265,6 +265,7 @@
   <ItemGroup>
     <ClCompile Include="..\common\blockmem.cpp" />
     <ClCompile Include="..\common\bspfile.cpp" />
+    <ClCompile Include="..\common\cbitset.cpp" />
     <ClCompile Include="..\common\cmdlib.cpp" />
     <ClCompile Include="..\common\cmdlinecfg.cpp" />
     <ClCompile Include="..\common\dds.cpp" />
@@ -302,6 +303,8 @@
   <ItemGroup>
     <ClInclude Include="..\common\aldformat.h" />
     <ClInclude Include="..\common\anorms.h" />
+    <ClInclude Include="..\common\cbitset.h" />
+    <ClInclude Include="..\common\cbitset_inline.hpp" />
     <ClInclude Include="..\common\dds.h" />
     <ClInclude Include="..\common\md5.h" />
     <ClInclude Include="..\common\miniz.h" />

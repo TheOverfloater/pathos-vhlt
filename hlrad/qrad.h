@@ -245,6 +245,8 @@ emittype_t;
 
 typedef struct directlight_s
 {
+	int				index;
+	int				envindex;
     struct directlight_s* next;
 	entity_t* pentity;
     emittype_t      type;
@@ -725,4 +727,6 @@ extern vec_t	CalcSightArea_SpotLight (const vec3_t receiver_origin, const vec3_t
 					);
 extern void		GetAlternateOrigin (const vec3_t pos, const vec3_t normal, const patch_t *patch, vec3_t &origin);
 extern void		ExportBumpMapData(void);
+extern void		CompressLightData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int* plightdatasize_out );
+extern void		FinalizeLightData ( int lightdatasize, byte*& plightdataptr, int& lightdatasize_actual, int& compression_level, int& compression_type, int* plightdatasize_out );
 #endif //HLRAD_H__

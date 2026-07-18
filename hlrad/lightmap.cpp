@@ -7,6 +7,7 @@
 #include "vbmcache.h"
 #include "studio_util.h"
 #include "md5.h"
+#include "cbitset.h"
 
 edgeshare_t     g_edgeshare[MAX_MAP_EDGES];
 vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP_FACES]?
@@ -1783,7 +1784,8 @@ facelight_t;
 
 directlight_t* directlights[MAX_MAP_LEAFS];
 static facelight_t facelight[MAX_MAP_FACES];
-static int      numdlights;
+int      numdlights;
+int		numenvlights;
 
 extern hlrad_daystage_t g_daystage;
 
@@ -1806,6 +1808,7 @@ void            CreateDirectLights()
 
 
     numdlights = 0;
+	numenvlights = 0;
 	int styleused[ALLSTYLES];
 	memset (styleused, 0, ALLSTYLES * sizeof(styleused[0]));
 	styleused[0] = true;
@@ -1832,8 +1835,9 @@ void            CreateDirectLights()
 				&& FloatForKey (g_face_texlights[p->faceNumber], "_scale") <= 0)
 			) //LRC
         {
-            numdlights++;
-            dl = (directlight_t*)calloc(1, sizeof(directlight_t));
+            dl = (directlight_t*)calloc(1, sizeof(directlight_t)); 
+			dl->index = numdlights;
+			numdlights++;
 
 			hlassume (dl != NULL, assume_NoMemory);
 
@@ -1904,9 +1908,10 @@ void            CreateDirectLights()
 			dface_t *f = &g_dfaces[p->faceNumber];
 			if (g_face_entity[p->faceNumber] - g_entities != 0 && !strncasecmp (GetTextureByNumber (f->texinfo), "!", 1))
 			{
-				directlight_t *dl2;
+				directlight_t *dl2 = (directlight_t *)calloc (1, sizeof (directlight_t));
+				dl2->index = numdlights;
 				numdlights++;
-				dl2 = (directlight_t *)calloc (1, sizeof (directlight_t));
+				
 				hlassume (dl2 != NULL, assume_NoMemory);
 				*dl2 = *dl;
 				VectorMA (dl->origin, -2, dl->normal, dl2->origin);
@@ -2061,8 +2066,9 @@ void            CreateDirectLights()
 			continue;
 		}
 
-        numdlights++;
         dl = (directlight_t*)calloc(1, sizeof(directlight_t));
+		dl->index = numdlights;
+        numdlights++;
 
 		hlassume (dl != NULL, assume_NoMemory);
 
@@ -2310,6 +2316,10 @@ void            CreateDirectLights()
 				{
 					Error ("Invalid spread angle '%s'. Please use a number between 0 and 180.\n", ValueForKey (e, "_spread"));
 				}
+
+				dl->envindex = numenvlights;
+				numenvlights++;
+
 				if (dl->sunspreadangle > 0.0)
 				{
 					int i;
@@ -2336,6 +2346,7 @@ void            CreateDirectLights()
 						{
 							Error ("collect spread normals: internal error: can not collect enough normals.");
 						}
+
 						dl->numsunnormals = count;
 						dl->sunnormals = (vec3_t *)malloc (count * sizeof (vec3_t));
 						dl->sunnormalweights = (vec_t *)malloc (count * sizeof (vec_t));
@@ -2736,7 +2747,7 @@ void BuildDiffuseNormals ()
 	free (triangles);
 }
 
-void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec_t* pnormal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass, bool createbumpmapdata, bool softsky)
+void AddLight(directlight_t* l, CBitSet& directLightTraceBitset, CBitSet& directLightTraceSetBitset, std::vector<CBitSet>& envLightsBitset, std::vector<CBitSet>& envLightsSetBitset, std::vector<CBitSet>& envSkyLightBitset, std::vector<CBitSet>& envSkyLightSetBitset, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec_t* pnormal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass, bool createbumpmapdata, bool softsky)
 {
 	vec3_t			add_one_ambient, add_one_diffuse;
 	vec3_t          delta, delta_bump;
@@ -2783,6 +2794,16 @@ void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byt
 			if (!(l->intensity[0] || l->intensity[1] || l->intensity[2]))
 				continue;
 
+			// Records traceline results
+			CBitSet& envLightBitset = envLightsBitset[l->envindex];
+			if(!envLightBitset.size())
+				envLightBitset.resize(l->numsunnormals);
+
+			// Records that tracelines were performed
+			CBitSet& envLightSetBitset = envLightsSetBitset[l->envindex];
+			if(!envLightSetBitset.size())
+				envLightSetBitset.resize(l->numsunnormals);
+
 			// loop over the normals
 			for (int j = 0; j < l->numsunnormals; j++)
 			{
@@ -2804,13 +2825,39 @@ void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byt
 				vec3_t skyhit;
 				VectorCopy (delta, skyhit);
 
-				if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
-					continue;                      // occluded
-
 				vec3_t transparency;
-				int opaquestyle;
-				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle))
+				int opaquestyle = -1;
+				if(!envLightSetBitset.test(j))
+				{
+					if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
+					{
+						envLightSetBitset.set(j);
+						continue;                      // occluded
+					}
+
+					if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle))
+					{
+						envLightSetBitset.set(j);
+						continue;
+					}
+
+					// Only set the bitset if transparency and opaque style are defaults
+					if(opaquestyle == -1 && transparency[0] == 1 && transparency[1] == 1 && transparency[2] == 1)
+					{
+						envLightSetBitset.set(j);
+						envLightBitset.set(j);
+					}
+				}
+				else if(!envLightBitset.test(j))
+				{
+					// Failed during first series
 					continue;
+				}
+				else
+				{
+					// Fill transparency to full
+					VectorFill(transparency, 1);
+				}
 
 				vec3_t add_one;
 
@@ -2889,11 +2936,22 @@ void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byt
 				continue;
 
 			vec3_t sky_intensity;
+			int numskynormals = g_numskynormals[softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
+
+			// Records traceline results
+			CBitSet& skyLightBitset = envSkyLightBitset[l->envindex];
+			if(!skyLightBitset.size())
+				skyLightBitset.resize(numskynormals);
+
+			// Records that tracelines were performed
+			CBitSet& skyLightSetBitset = envSkyLightSetBitset[l->envindex];
+			if(!skyLightSetBitset.size())
+				skyLightSetBitset.resize(numskynormals);
 
 			// loop over the normals
 			vec3_t *skynormals = g_skynormals[softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
 			vec_t *skyweights = g_skynormalsizes[softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF];
-			for (int j = 0; j < g_numskynormals[softsky?SKYLEVEL_SOFTSKYON:SKYLEVEL_SOFTSKYOFF]; j++)
+			for (int j = 0; j < numskynormals; j++)
 			{
 				// make sure the angle is okay
 				if(pnormal)
@@ -2912,13 +2970,40 @@ void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byt
 				VectorAdd(pos, delta, delta);
 				vec3_t skyhit;
 				VectorCopy (delta, skyhit);
-				if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
-					continue;                                  // occluded
 
 				vec3_t transparency;
-				int opaquestyle;
-				if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle, true))
+				int opaquestyle = -1;
+				if(!skyLightSetBitset.test(j))
+				{
+					if (TestLine(pos, delta, skyhit) != CONTENTS_SKY)
+					{
+						skyLightSetBitset.set(j);
+						continue;                                  // occluded
+					}
+
+					if (TestSegmentAgainstOpaqueList(pos, skyhit, transparency, opaquestyle, true))
+					{
+						skyLightSetBitset.set(j);
+						continue;
+					}
+
+					// Only set the bitset if transparency and opaque style are defaults
+					if(opaquestyle == -1 && transparency[0] == 1 && transparency[1] == 1 && transparency[2] == 1)
+					{
+						skyLightSetBitset.set(j);
+						skyLightBitset.set(j);
+					}
+				}
+				else if(!skyLightBitset.test(j))
+				{
+					// Failed during first series
 					continue;
+				}
+				else
+				{
+					// Fill transparency to full
+					VectorFill(transparency, 1);
+				}
 
 				vec_t factor = qmin (qmax (0.0, (1 - DotProduct (l->normal, skynormals[j])) / 2), 1.0); // how far this piece of sky has deviated from the sun
 				VectorScale (l->diffuse_intensity, 1 - factor, sky_intensity);
@@ -3219,13 +3304,39 @@ void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byt
 			}
         }
 
-		if (TestLine (pos, testline_origin) != CONTENTS_EMPTY)
-			return;
-
 		vec3_t transparency;
-		int opaquestyle;
-		if (TestSegmentAgainstOpaqueList (pos, testline_origin, transparency, opaquestyle))
+		int opaquestyle = -1;
+		if(!directLightTraceSetBitset.test(l->index))
+		{
+			if (TestLine (pos, testline_origin) != CONTENTS_EMPTY)
+			{
+				directLightTraceSetBitset.set(l->index);
+				return;
+			}
+
+			if (TestSegmentAgainstOpaqueList (pos, testline_origin, transparency, opaquestyle))
+			{
+				directLightTraceSetBitset.set(l->index);
+				return;
+			}
+
+			// Only set this if transparency and opaquestyle are defaults
+			if(opaquestyle == -1 && transparency[0] == 1 && transparency[1] == 1 && transparency[2] == 1)
+			{
+				directLightTraceSetBitset.set(l->index);
+				directLightTraceBitset.set(l->index);
+			}
+		}
+		else if(!directLightTraceBitset.test(l->index))
+		{
+			// Failed first series of tests
 			return;
+		}
+		else
+		{
+			// Fill transparency to full
+			VectorFill(transparency, 1);
+		}
 
 		if (!bumpinfopass)
 		{
@@ -3371,6 +3482,16 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 	if(normalfactor < 0)
 		normalfactor = 0;
 
+	// Bitsets for optimizing traces
+	CBitSet directLightTraceSetBitset(numdlights);
+	CBitSet directLightTraceBitset(numdlights);
+
+	std::vector<CBitSet> envLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> envLightsBitset(numenvlights);
+
+	std::vector<CBitSet> skyLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> skyLightsBitset(numenvlights);
+
 	//
 	// First step - Calculate regular lighting
 	// For Bump maps - Get combined light vector to all lights hitting this surface
@@ -3385,7 +3506,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				for (; l; l = l->next)
 				{
 					// Add in this light
-					AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, false, g_bumpmaps, g_softsky);
+					AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, false, g_bumpmaps, g_softsky);
 				}
 			}
 		}
@@ -3408,7 +3529,7 @@ static void     GatherSampleLight(const vec3_t pos, const byte* const pvs, const
 				if (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7)))
 				{
 					for (; l; l = l->next)
-						AddLight(l, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, true, g_bumpmaps, g_softsky);
+						AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, normal, normalfactor, styles, step, miptex, texlightgap_surfacenum, adds, adds_ambient, adds_diffuse, adds_lightvectors, texlightgap_textoworld, true, g_bumpmaps, g_softsky);
 				}
 			}
 		}
@@ -6080,26 +6201,30 @@ bool ExportALDData(ald_datatype_t type)
 
 	// Collect light grid sample layers
 	byte *plightgriddatasources[NB_LIGHTGRID_DATA_LAYERS];
-	int lightgrid_datasize;
+	int lightgrid_datasizes_noncompressed[NB_LIGHTGRID_DATA_LAYERS];
+	int lightgrid_datasizes_compressed[NB_LIGHTGRID_DATA_LAYERS];
 
 	if(g_dlightgriddatasize > 0)
 	{
 		const dlightgridlumpheader_t* plightgridhdr = reinterpret_cast<const dlightgridlumpheader_t*>(g_dlightgriddata);
 	
 		// Add vectors
-		plightgriddatasources[LIGHTGRID_LAYER_VECTORS] = g_dlightgriddata + plightgridhdr->lightvectorsoffset;
-		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->rawsampledatasize);
+		plightgriddatasources[LIGHTGRID_LAYER_VECTORS] = g_dlightgriddata + plightgridhdr->vectorsdataoffset;
+		lightgrid_datasizes_noncompressed[LIGHTGRID_LAYER_VECTORS] = plightgridhdr->rawsampledatasize;
+		lightgrid_datasizes_compressed[LIGHTGRID_LAYER_VECTORS] = plightgridhdr->vectorscompressedsize;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->vectorscompressedsize);
 
 		// Add ambient
 		plightgriddatasources[LIGHTGRID_LAYER_AMBIENT] = g_dlightgriddata + plightgridhdr->ambientdataoffset;
-		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->rawsampledatasize);
+		lightgrid_datasizes_noncompressed[LIGHTGRID_LAYER_AMBIENT] = plightgridhdr->rawsampledatasize;
+		lightgrid_datasizes_compressed[LIGHTGRID_LAYER_AMBIENT] = plightgridhdr->ambientcompressedsize;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->ambientcompressedsize);
 
 		// Add diffuse
 		plightgriddatasources[LIGHTGRID_LAYER_DIFFUSE] = g_dlightgriddata + plightgridhdr->diffusedataoffset;
-		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->rawsampledatasize);
-
-		// Set base size
-		lightgrid_datasize = plightgridhdr->rawsampledatasize;
+		lightgrid_datasizes_noncompressed[LIGHTGRID_LAYER_DIFFUSE] = plightgridhdr->rawsampledatasize;
+		lightgrid_datasizes_compressed[LIGHTGRID_LAYER_DIFFUSE] = plightgridhdr->diffusecompressedsize;
+		totalsize += (sizeof(aldlayer_t) + sizeof(byte) * plightgridhdr->diffusecompressedsize);
 	}
 
 	newnumlumps++;
@@ -6314,10 +6439,10 @@ bool ExportALDData(ald_datatype_t type)
 			aldlayer_t* poutlayer = (aldlayer_t*)((byte*)pfilebuffer + pnewlump->lightgridlayeroffsets[i]);
 			fileoffset += sizeof(aldlayer_t);
 
-			poutlayer->compression = PBSPV2_LMAP_COMPRESSION_NONE;
-			poutlayer->compressionlevel = 0;
+			poutlayer->compression = g_nocompress ? PBSPV2_LMAP_COMPRESSION_NONE : PBSPV2_LMAP_COMPRESSION_MINIZ;
+			poutlayer->compressionlevel = compressionlevel;
 			poutlayer->dataoffset = fileoffset;
-			poutlayer->datasize = lightgrid_datasize;
+			poutlayer->datasize = lightgrid_datasizes_compressed[i];
 			fileoffset += poutlayer->datasize;
 
 			byte* pdestdata = pfilebuffer + poutlayer->dataoffset;

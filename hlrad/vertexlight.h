@@ -14,6 +14,7 @@ All Rights Reserved.
 #include "vbmcache.h"
 #include "mathlib.h"
 #include "mathtypes.h"
+#include "cbitset.h"
 
 // Number of vertices per thread
 static const int MAX_THREAD_VERTEXES = 1024;
@@ -124,7 +125,7 @@ struct vbaked_threadinfo_t
 
 extern vec_t GetBrightestSample( vec3_t& add, vec3_t& add_ambient, vec3_t& add_diffuse );
 extern void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t normal, byte*& styles, vec3_t*& sample_ambient, vec3_t*& sample_diffuse, vec3_t*& sample_lightvectors, int& numstyles);
-extern void AddLight(directlight_t* l, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec_t *pnormal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass, bool createbumpmapdata, bool softsky);
+extern void AddLight(directlight_t* l, CBitSet& directLightTraceBitset, CBitSet& directLightTraceSetBitset, std::vector<CBitSet>& envLightsBitset, std::vector<CBitSet>& envLightsSetBitset, std::vector<CBitSet>& envSkyLightBitset, std::vector<CBitSet>& envSkyLightSetBitset, vec3_t* pdirections, const vec3_t pos, const byte* const pvs, const vec_t* pnormal, float normalfactor, byte* styles, int step, int miptex, int texlightgap_surfacenum, vec3_t* padds, vec3_t* padds_ambient, vec3_t* padds_diffuse, vec3_t* padds_lightvectors, vec3_t* ptexlightgap_textoworld, bool bumpinfopass, bool createbumpmapdata, bool softsky);
 extern void BuildVertexLights( void );
 extern void LoadEntityVBMModels( void );
 

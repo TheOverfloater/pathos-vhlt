@@ -13,6 +13,7 @@ All Rights Reserved.
 #include "mathlib.h"
 #include "qrad.h"
 #include "vertexlight.h"
+#include "cbitset.h"
 
 #include <vector>
 
@@ -23,9 +24,9 @@ All Rights Reserved.
 // Vector containing all of our light grid sample data
 std::vector<lightgrid_sample_t>	g_lightGridSamplesVector;
 // Vector containing all leaves
-std::vector<octree_leaf_t> g_octreeLeavesVector;
+std::vector<octree_leaf_t>		g_octreeLeavesVector;
 // Vector containing all nodes
-std::vector<octree_node_t> g_octreeNodesVector;
+std::vector<octree_node_t>		g_octreeNodesVector;
 
 // Grid size in terms of sample counts
 int								g_gridSize[3];
@@ -33,13 +34,17 @@ int								g_gridSize[3];
 vec3_t							g_gridMinsCoords;
 // Direct lights
 extern directlight_t*			directlights[MAX_MAP_LEAFS];
+// Number of direct lights		
+extern int						numdlights;
+// Number of light_env lights
+extern int						numenvlights;
 
 // Max depth of the octree
 static constexpr int			MAX_OCTREE_DEPTH = 5;
 // If any axis is fewer than this many grid points, make them a leaf
 static constexpr int			MIN_NODE_DIMENSION = 4;
 // Number of samples per thread
-static constexpr int			SAMPLES_PER_THREAD = 1024;
+static constexpr int			SAMPLES_PER_THREAD = 256;
 
 // Thread info structure
 std::vector<lightgrid_threadinfo_t> g_sampleThreadInfos;
@@ -72,7 +77,6 @@ void DumpSMD_LightGrid( void )
 
 		fprintf(pf, "null.tga\n");
 
-		vec3_t v[3];
 		for(Uint32 j = 0; j < 3; j++)
 		{
 			vec3_t v1;
@@ -215,10 +219,15 @@ void ProcessGridSamplePoints( int threadInfoIndex )
 		if(occluded)
 		{
 			vec3_t resultpos;
-			if(!FixLightOnFace(worldmodel, worldPosition, 2.0f, resultpos))
+			if(FixLightOnFace(worldmodel, worldPosition, 2.0f, resultpos))
 			{
-				gridSample.occluded = true;
+				// We were able to nudge this out of a solids
 				VectorCopy(resultpos, worldPosition);
+			}
+			else
+			{
+				// We couldn't nudge the sample, so don't bother
+				gridSample.occluded = true;
 			}
 		}
 
@@ -284,7 +293,7 @@ bool IsPointInSolidRecursive( const dmodel_t& model, int nodeindex, const vec3_t
 //  
 //  Determine light grid mins/maxs based on visible surfaces
 // =====================================================================================
-bool FixLightOnFace( const dmodel_t& model, const vec3_t& point, float distance, vec3_t outpos )
+bool FixLightOnFace( const dmodel_t& model, const vec3_t& point, float distance, vec3_t& outpos )
 {
 	if(!IsPointInSolidRecursive(model, model.headnode[0], point))
 	{
@@ -395,6 +404,15 @@ void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sa
 	memset(add_styles, 0, sizeof(add_styles));
 	add_styles[0] = 0;
 
+	CBitSet directLightTraceSetBitset(numdlights);
+	CBitSet directLightTraceBitset(numdlights);
+
+	std::vector<CBitSet> envLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> envLightsBitset(numenvlights);
+
+	std::vector<CBitSet> skyLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> skyLightsBitset(numenvlights);
+
 	// First do direct lighting and collect strongest light directions
 	// from all light sources
 	for (int step = 0; step < 2; step++)
@@ -409,7 +427,7 @@ void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sa
 			{
 				for (; l; l = l->next)
 				{
-					AddLight(l, directions, pos, pvs, nullptr, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false, true, false);
+					AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, nullptr, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false, true, false);
 				}
 			}
 		}
@@ -428,7 +446,7 @@ void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sa
 			if (l && (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
 			{
 				for (; l; l = l->next)
-					AddLight(l, directions, pos, pvs, nullptr, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true, true, false);
+					AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, nullptr, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true, true, false);
 			}
 		}
 	}
@@ -467,9 +485,13 @@ void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sa
 
 		vec3_t transparency;
 		int opaquestyle;
+#if 0
 		if (TestSegmentAgainstOpaqueList(pos, p->origin, transparency, opaquestyle, true))
 			continue;
-
+#else
+		VectorFill(transparency, 1);
+		opaquestyle = -1;
+#endif
 		for (int j = 0; j < MAXLIGHTMAPS && p->totalstyle[j] != 255; j++)
 		{
 			// Account for opaque
@@ -496,7 +518,6 @@ void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sa
 				vec3_t patch_add;
 				VectorMA(adds_ambient[bouncestyle], scale, p->totallight[j], patch_add);
 				VectorMultiply(patch_add, transparency, adds_ambient[bouncestyle]);
-				//VectorMultiply(patch_add, transparency, adds_diffuse[bouncestyle]);
 			}
 		}
 	}
@@ -606,6 +627,10 @@ int LightGrid_BuildOctree( int* pmins, const int* psize, int depth, int& occlude
 		occludedcellcount += (psize[0] * psize[1] * psize[2]);
 		return FL_OCTREE_NODE_OCCLUDED;
 	}
+	else
+	{
+		occludedcellcount += numoccluded;
+	}
 
 	// Create a leaf if: We're less than the min node dim on any of the
 	// axes, or we've reached the max depth, or if we have less than
@@ -674,11 +699,11 @@ void LightGrid_OctreeLookup_Recursive( int nodeindex, const int* ptestpoint, boo
 // =====================================================================================
 void MakeOctreeLump( void )
 {
+#ifdef DEBUG
 	int points1[3];
 	int points2[3];
 	int points3[3];
 
-#ifdef DEBUG
 	// Perform sanity checks on funtions to ensure they work properly
 	points1[0] = 1; points1[1] = 1; points1[2] = 1;
 	points2[0] = 2; points2[1] = 2; points2[2] = 2;
@@ -733,14 +758,9 @@ void MakeOctreeLump( void )
 		storedcellcount += count;
 	}
 
-	Log("Light grid octree statistics:\n");
-	Log(" - %d grid nodes stored\n", storedcellcount);
-	Log(" - %d occluded nodes\n", occludednodecount);
-	Log(" - %d nodes total\n", (occludednodecount + storedcellcount));
-
+#ifdef DEBUG
 	DumpSMD_LightGrid();
 
-#ifdef DEBUG
 	// Perform self-check
 	for(int z = 0; z < g_gridSize[2]; z++)
 	{
@@ -802,13 +822,164 @@ void MakeOctreeLump( void )
 			}
 		}
 	}
+	
+	float sizekbytes = (static_cast<float>(rawsampledatasize * 3) / 1024.0f);
+
+	int totalcount = (occludednodecount + storedcellcount);
+	Log("Light grid octree statistics:\n");
+	Log(" - %d grid nodes stored(%d%%)\n", storedcellcount, static_cast<int>((static_cast<float>(storedcellcount) / static_cast<float>(totalcount)) * 100));
+	Log(" - %d occluded nodes(%d%%)\n", occludednodecount, static_cast<int>((static_cast<float>(occludednodecount) / static_cast<float>(totalcount)) * 100));
+	Log(" - %d nodes total\n", totalcount);
+	Log("Light grid raw sample data size: %.4f kbytes\n", sizekbytes);
+
+	int compressiontypes[NB_LIGHTGRID_DATA_LAYERS] = { 0 };
+	int compressionlevels[NB_LIGHTGRID_DATA_LAYERS] = { 0 };
+	int lightdatasizes[NB_LIGHTGRID_DATA_LAYERS] = { 0 };
+	byte* psampledata[NB_LIGHTGRID_DATA_LAYERS] = { nullptr };
+	for(int i = 0; i < NB_LIGHTGRID_DATA_LAYERS; i++)
+	{
+		psampledata[i] = new byte[rawsampledatasize];
+		memset(psampledata[i], 0, sizeof(byte)*rawsampledatasize);
+	}
+
+	// Create buffers for light data
+	int rawsampledataoffset = 0;
+	int sampleindexoffset = 0;
+	std::vector<int> sampleindexes(storedcellcount);
+
+	for(int i = 0; i < g_octreeLeavesVector.size(); i++)
+	{
+		octree_leaf_t& leaf = g_octreeLeavesVector[i];
+
+		int maxs[3];
+		for(int j = 0; j < 3; j++)
+			maxs[j] = leaf.mins[j] + leaf.size[j];
+
+		// Save samples
+		leaf.firstsample = sampleindexoffset;
+		for(int z = leaf.mins[2]; z < maxs[2]; z++)
+		{
+			for(int y = leaf.mins[1]; y < maxs[1]; y++)
+			{
+				for(int x = leaf.mins[0]; x < maxs[0]; x++)
+				{
+					// Get source sample
+					int sampleindex = LightGrid_GetGridIndex(x, y, z);
+					lightgrid_sample_t& sample = g_lightGridSamplesVector[sampleindex];
+
+					// Get destination sample
+					sampleindexes[sampleindexoffset] = sampleindex;
+					sampleindexoffset++;
+
+					if(sample.occluded)
+					{
+						// Don't bother with this sample if it's occluded
+						// Note: Still needs to be added to the output as
+						// we need fast indexing via the tile coords
+						sample.rawsampleoffset = -1;
+						continue;
+					}
+
+					sample.rawsampleoffset = rawsampledataoffset;
+
+					int j = 0;
+					int stylecount = 0;
+					for(; j < MAXLIGHTMAPS; j++)
+					{
+						if(sample.styles[j] == 255)
+							continue;
+
+						// Set final ambient
+						for(int k = 0; k < 3; k++)
+						{
+							float value = sample.light_ambient[j][k];
+							if (value < g_minlight)
+								value = g_minlight;
+
+							if (g_colour_qgamma[k] != 1.0)
+								value = (float)pow(value / 256.0f, g_colour_qgamma[k]) * 256.0f;
+
+							int ivalue = value;
+							if(ivalue < 0)
+								ivalue = 0;
+							else if(ivalue > 255)
+								ivalue = 255;
+
+							byte* pdestdata = (psampledata[LIGHTGRID_LAYER_AMBIENT] + sample.rawsampleoffset + j * 3) + k;
+							(*pdestdata) = ivalue;
+						}
+
+						// Set final diffuse
+						for(int k = 0; k < 3; k++)
+						{
+							float value = sample.light_diffuse[j][k];
+							value *= g_colour_lightscale[k];
+							if (value < g_minlight)
+								value = g_minlight;
+
+							if (g_colour_qgamma[k] != 1.0)
+								value = (float)pow(value / 256.0f, g_colour_qgamma[k]) * 256.0f;
+
+							int ivalue = value;
+							if(ivalue < 0)
+								ivalue = 0;
+							else if(ivalue > 255)
+								ivalue = 255;
+
+							byte* pdestdata = (psampledata[LIGHTGRID_LAYER_DIFFUSE] + sample.rawsampleoffset + j * 3) + k;
+							(*pdestdata) = ivalue;
+						}
+
+						// Set final lightvec
+						for(int k = 0; k < 3; k++)
+						{
+							float value = sample.light_direction[j][k];
+							int ivalue = (value + 1.0f) * 127.5f;
+							if(ivalue < 0)
+								ivalue = 0;
+							else if(ivalue > 255)
+								ivalue = 255;
+
+							byte* pdestdata = (psampledata[LIGHTGRID_LAYER_VECTORS] + sample.rawsampleoffset + j * 3) + k;
+							(*pdestdata) = ivalue;
+						}
+
+						stylecount++;
+					}
+
+					// Increment offset into sampling data
+					rawsampledataoffset += (stylecount * 3);
+				}
+			}
+		}
+
+		// Set final count
+		leaf.numsamples = sampleindexoffset - leaf.firstsample;
+	}
+
+	// Compress lightmap data
+	FinalizeLightData(rawsampledatasize, psampledata[LIGHTGRID_LAYER_AMBIENT], lightdatasizes[LIGHTGRID_LAYER_AMBIENT], compressionlevels[LIGHTGRID_LAYER_AMBIENT], compressiontypes[LIGHTGRID_LAYER_AMBIENT], nullptr);
+	FinalizeLightData(rawsampledatasize, psampledata[LIGHTGRID_LAYER_DIFFUSE], lightdatasizes[LIGHTGRID_LAYER_DIFFUSE], compressionlevels[LIGHTGRID_LAYER_DIFFUSE], compressiontypes[LIGHTGRID_LAYER_DIFFUSE], nullptr);
+	FinalizeLightData(rawsampledatasize, psampledata[LIGHTGRID_LAYER_VECTORS], lightdatasizes[LIGHTGRID_LAYER_VECTORS], compressionlevels[LIGHTGRID_LAYER_VECTORS], compressiontypes[LIGHTGRID_LAYER_VECTORS], nullptr);
+
+	Log("Done compressing sample data for light grid\n");
+
+	float sizekbytesold = (static_cast<float>(rawsampledatasize) / 1024.0f);
+	float sizekbytesnew = (static_cast<float>(lightdatasizes[LIGHTGRID_LAYER_AMBIENT]) / 1024.0f);
+	Log("Reduced ambient data from %.2f kbytes to %.2f kbytes(%.2f%%)\n", sizekbytesold, sizekbytesnew, static_cast<float>((sizekbytesnew/sizekbytesold)*100));
+
+	sizekbytesnew = (static_cast<float>(lightdatasizes[LIGHTGRID_LAYER_DIFFUSE]) / 1024.0f);
+	Log("Reduced diffuse data from %.2f kbytes to %.2f kbytes(%.2f%%)\n", sizekbytesold, sizekbytesnew, static_cast<float>((sizekbytesnew/sizekbytesold)*100));
+
+	sizekbytesnew = (static_cast<float>(lightdatasizes[LIGHTGRID_LAYER_VECTORS]) / 1024.0f);
+	Log("Reduced vectors data from %.2f kbytes to %.2f kbytes(%.2f%%)\n", sizekbytesold, sizekbytesnew, static_cast<float>((sizekbytesnew/sizekbytesold)*100));
 
 	// Count in header, nodes, leaves, samples and sample indexes
 	int lumpdatasize = sizeof(dlightgridlumpheader_t);
 	lumpdatasize += g_octreeLeavesVector.size() * sizeof(dlightgridleaf_t);
 	lumpdatasize += g_octreeNodesVector.size() * sizeof(dlightgridnode_t);
 	lumpdatasize += storedcellcount * sizeof(dlightgridsample_t);
-	lumpdatasize += rawsampledatasize * 3;
+	lumpdatasize += lightdatasizes[LIGHTGRID_LAYER_AMBIENT] + lightdatasizes[LIGHTGRID_LAYER_DIFFUSE] + lightdatasizes[LIGHTGRID_LAYER_VECTORS];
 
 	if(g_dlightgriddata)
 		delete[] g_dlightgriddata;
@@ -830,6 +1001,7 @@ void MakeOctreeLump( void )
 
 	pheader->rawsampledatasize = rawsampledatasize;
 	pheader->rootnodeindex = rootnodeindex;
+	pheader->totalsize = lumpdatasize;
 	pheader->nodesoffset = dataoffset;
 	pheader->numnodes = g_octreeNodesVector.size();
 	dataoffset += pheader->numnodes * sizeof(dlightgridnode_t);
@@ -854,23 +1026,12 @@ void MakeOctreeLump( void )
 	// Get ptr to samples
 	dlightgridsample_t* pdestsamples = reinterpret_cast<dlightgridsample_t*>(reinterpret_cast<byte*>(pheader) + pheader->sampleoffset);
 
-	// Allocate sampling data blocks
-	pheader->ambientdataoffset = dataoffset;
-	dataoffset += pheader->rawsampledatasize;
-
-	pheader->diffusedataoffset = dataoffset;
-	dataoffset += pheader->rawsampledatasize;
-
-	pheader->lightvectorsoffset = dataoffset;
-	dataoffset += pheader->rawsampledatasize;
-
 	// Save leaves and samples
 	pheader->leafsoffset = dataoffset;
 	pheader->numleafs = g_octreeLeavesVector.size();
 	dataoffset += pheader->numleafs * sizeof(dlightgridleaf_t);
 
-	int rawsampledataoffset = 0;
-	int sampleindexoffset = 0;
+	sampleindexoffset = 0;
 	for(int i = 0; i < pheader->numleafs; i++)
 	{
 		dlightgridleaf_t* pdestleaf = reinterpret_cast<dlightgridleaf_t*>(reinterpret_cast<byte*>(pheader) + pheader->leafsoffset) + i;
@@ -886,102 +1047,70 @@ void MakeOctreeLump( void )
 		for(int j = 0; j < 3; j++)
 			maxs[j] = srcleaf.mins[j] + srcleaf.size[j];
 
+		pdestleaf->firstsample = srcleaf.firstsample;
+		pdestleaf->numsamples = srcleaf.numsamples;
+
 		// Save samples
 		pdestleaf->firstsample = sampleindexoffset;
-		for(int z = srcleaf.mins[2]; z < maxs[2]; z++)
+		for(int j = 0; j < srcleaf.numsamples; j++)
 		{
-			for(int y = srcleaf.mins[1]; y < maxs[1]; y++)
+			int srcsampleindex = sampleindexes[sampleindexoffset];
+			lightgrid_sample_t& srcsample = g_lightGridSamplesVector[srcsampleindex];
+			dlightgridsample_t* pdestsample = &pdestsamples[sampleindexoffset];
+			sampleindexoffset++;
+
+			if(srcsample.occluded)
 			{
-				for(int x = srcleaf.mins[0]; x < maxs[0]; x++)
-				{
-					// Get source sample
-					int sampleindex = LightGrid_GetGridIndex(x, y, z);
-					lightgrid_sample_t& srcsample = g_lightGridSamplesVector[sampleindex];
+				// Occluded sample, don't bother with it
+				pdestsample->rawsampleoffset = -1;
+			}
+			else
+			{
+				pdestsample->rawsampleoffset = srcsample.rawsampleoffset;
 
-					// Get destination sample
-					dlightgridsample_t* pdestsample = &pdestsamples[sampleindexoffset];
-					pdestsample->rawsampleoffset = rawsampledataoffset;
-					sampleindexoffset++;
-					
-					int j = 0;
-					int stylecount = 0;
-					for(; j < MAXLIGHTMAPS; j++)
-					{
-						pdestsample->styles[j] = srcsample.styles[j];
-						if(srcsample.styles[j] == 255)
-							continue;
-
-						// Set final ambient
-						for(int k = 0; k < 3; k++)
-						{
-							float value = srcsample.light_ambient[j][k];
-							if (value < g_minlight)
-								value = g_minlight;
-
-							if (g_colour_qgamma[k] != 1.0)
-								value = (float)pow(value / 256.0f, g_colour_qgamma[k]) * 256.0f;
-
-							int ivalue = value;
-							if(ivalue < 0)
-								ivalue = 0;
-							else if(ivalue > 255)
-								ivalue = 255;
-
-							byte* pdestdata = (reinterpret_cast<byte*>(pheader) + pheader->ambientdataoffset + pdestsample->rawsampleoffset + j * 3) + k;
-							(*pdestdata) = ivalue;
-						}
-
-						// Set final diffuse
-						for(int k = 0; k < 3; k++)
-						{
-							float value = srcsample.light_diffuse[j][k];
-							value *= g_colour_lightscale[k];
-							if (value < g_minlight)
-								value = g_minlight;
-
-							if (g_colour_qgamma[k] != 1.0)
-								value = (float)pow(value / 256.0f, g_colour_qgamma[k]) * 256.0f;
-
-							int ivalue = value;
-							if(ivalue < 0)
-								ivalue = 0;
-							else if(ivalue > 255)
-								ivalue = 255;
-
-							byte* pdestdata = (reinterpret_cast<byte*>(pheader) + pheader->diffusedataoffset + pdestsample->rawsampleoffset + j * 3) + k;
-							(*pdestdata) = ivalue;
-						}
-
-						// Set final lightvec
-						for(int k = 0; k < 3; k++)
-						{
-							float value = srcsample.light_direction[j][k];
-							int ivalue = (value + 1.0f) * 127.5f;
-							if(ivalue < 0)
-								ivalue = 0;
-							else if(ivalue > 255)
-								ivalue = 255;
-
-							byte* pdestdata = (reinterpret_cast<byte*>(pheader) + pheader->lightvectorsoffset + pdestsample->rawsampleoffset + j * 3) + k;
-							(*pdestdata) = ivalue;
-						}
-
-						stylecount++;
-					}
-
-					// Increment offset into sampling data
-					rawsampledataoffset += (stylecount * 3);
-				}
+				for(int k = 0; k < MAXLIGHTMAPS; k++)
+					pdestsample->styles[k] = srcsample.styles[k];
 			}
 		}
-
-		// Set final count
-		pdestleaf->numsamples = sampleindexoffset - pdestleaf->firstsample;
 	}
 
+	// Save compressed ambient data
+	pheader->ambientdataoffset = dataoffset;
+	pheader->ambientcompressedsize = lightdatasizes[LIGHTGRID_LAYER_AMBIENT];
+	pheader->ambientcompressionlevel = compressionlevels[LIGHTGRID_LAYER_AMBIENT];
+	pheader->ambientcompressiontype = compressiontypes[LIGHTGRID_LAYER_AMBIENT];
+	dataoffset += pheader->ambientcompressedsize;
+
+	byte* pdestdata = reinterpret_cast<byte*>(pheader) + pheader->ambientdataoffset;
+	memcpy(pdestdata, psampledata[LIGHTGRID_LAYER_AMBIENT], sizeof(byte)*pheader->ambientcompressedsize);
+
+	// Save compressed diffuse data
+	pheader->diffusedataoffset = dataoffset;
+	pheader->diffusecompressedsize = lightdatasizes[LIGHTGRID_LAYER_DIFFUSE];
+	pheader->diffusecompressionlevel = compressionlevels[LIGHTGRID_LAYER_DIFFUSE];
+	pheader->diffusecompressiontype = compressiontypes[LIGHTGRID_LAYER_DIFFUSE];
+	dataoffset += pheader->diffusecompressedsize;
+
+	pdestdata = reinterpret_cast<byte*>(pheader) + pheader->diffusedataoffset;
+	memcpy(pdestdata, psampledata[LIGHTGRID_LAYER_DIFFUSE], sizeof(byte)*pheader->diffusecompressedsize);
+
+	// Save compressed diffuse data
+	pheader->vectorsdataoffset = dataoffset;
+	pheader->vectorscompressedsize = lightdatasizes[LIGHTGRID_LAYER_VECTORS];
+	pheader->vectorscompressionlevel = compressionlevels[LIGHTGRID_LAYER_VECTORS];
+	pheader->vectorscompressiontype = compressiontypes[LIGHTGRID_LAYER_VECTORS];
+	dataoffset += pheader->vectorscompressedsize;
+
+	pdestdata = reinterpret_cast<byte*>(pheader) + pheader->vectorsdataoffset;
+	memcpy(pdestdata, psampledata[LIGHTGRID_LAYER_VECTORS], sizeof(byte)*pheader->vectorscompressedsize);
+
+	// Sanity check
 	assert(sampleindexoffset == storedcellcount);
 	assert(rawsampledataoffset == rawsampledatasize);
 	assert(dataoffset == lumpdatasize);
+
+	for(int i = 0; i < NB_LIGHTGRID_DATA_LAYERS; i++)
+		delete[] psampledata[i];
 
 	// Clear all data used
 	g_lightGridSamplesVector.clear();

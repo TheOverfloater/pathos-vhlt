@@ -28,6 +28,11 @@ vbaked_threadinfo_t*	g_pBakedVertexThreadInfos = nullptr;
 // Number of baked vertex thread infos
 int						g_numBakedVertexThreadInfos = 0;
 
+// Number of direct lights		
+extern int						numdlights;
+// Number of light_env lights
+extern int						numenvlights;
+
 // Env model flags
 static const int ENVMODEL_SF_NO_SHADOWS				= (1<<4);
 
@@ -581,6 +586,16 @@ void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t nor
 	memset(add_styles, 0, sizeof(add_styles));
 	add_styles[0] = 0;
 
+	// Bitsets for optimizing traces
+	CBitSet directLightTraceSetBitset(numdlights);
+	CBitSet directLightTraceBitset(numdlights);
+
+	std::vector<CBitSet> envLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> envLightsBitset(numenvlights);
+
+	std::vector<CBitSet> skyLightsTraceSetBitset(numenvlights);
+	std::vector<CBitSet> skyLightsBitset(numenvlights);
+
 	// First do direct lighting and collect strongest light directions
 	// from all light sources
 	for (int step = 0; step < 2; step++)
@@ -595,7 +610,7 @@ void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t nor
 			{
 				for (; l; l = l->next)
 				{
-					AddLight(l, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false, true, false);
+					AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, false, true, false);
 				}
 			}
 		}
@@ -614,7 +629,7 @@ void GatherVertexLight(const vec3_t pos, const byte* const pvs, const vec3_t nor
 			if (l && (i == 0 ? g_sky_lighting_fix : pvs[(i - 1) >> 3] & (1 << ((i - 1) & 7))))
 			{
 				for (; l; l = l->next)
-					AddLight(l, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true, true, false);
+					AddLight(l, directLightTraceBitset, directLightTraceSetBitset, envLightsBitset, envLightsTraceSetBitset, skyLightsBitset, skyLightsTraceSetBitset, directions, pos, pvs, normal, 1.0, add_styles, step, 0, -1, adds, adds_ambient, adds_diffuse, NULL, NULL, true, true, false);
 			}
 		}
 	}

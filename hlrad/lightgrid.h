@@ -36,7 +36,8 @@ struct lightgrid_sample_t
 {
 	lightgrid_sample_t():
 		dataoffset(-1),
-		occluded(false)
+		occluded(false),
+		rawsampleoffset(-1)
 	{
 		memset(styles, 255, sizeof(styles));
 		styles[0] = 0;
@@ -66,6 +67,7 @@ struct lightgrid_sample_t
 	vec3_t light_direction[MAXLIGHTMAPS];
 	int dataoffset;
 	bool occluded;
+	int rawsampleoffset;
 };
 
 struct octree_node_t
@@ -108,13 +110,16 @@ struct octree_leaf_t
 
 	int mins[3];
 	int size[3];
+
+	int firstsample;
+	int numsamples;
 };
 
 extern void BuildLightGrid( void );
 extern void CalcLightGridBounds( vec3_t& outmins, vec3_t& outmaxs );
 extern void ProcessGridSamplePoints( int sampleIndex );
 extern bool IsPointInSolidRecursive( const dmodel_t& model, int nodeindex, const vec3_t& point );
-extern bool FixLightOnFace( const dmodel_t& model, const vec3_t& point, float distance, vec3_t outpos );
+extern bool FixLightOnFace( const dmodel_t& model, const vec3_t& point, float distance, vec3_t& outpos );
 extern void GatherGridPointLight( const vec3_t pos, const byte* const pvs, lightgrid_sample_t& gridsample );
 extern void MakeOctreeLump( void );
 extern void CountOccludedAndUnoccludedSamples( const int* pmins, const int* psize, int& numoccluded, int& numunoccluded );
